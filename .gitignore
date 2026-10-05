@@ -1,0 +1,24 @@
+# Ignore everything; explicitly allow source and project configuration.
+*
+!/.gitignore
+!/.clang-format
+!/AGENTS.md
+!/README.md
+!/CMakeLists.txt
+!/Makefile
+!/include/
+!/include/**/
+!/include/**/*.hpp
+!/src/
+!/src/**/
+!/src/**/*.cpp
+!/tests/
+!/tests/**/
+!/tests/**/*.cpp
+!/tests/**/*.cmake
+!/docs/
+!/docs/**/
+!/docs/**/*.md
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*.yml
