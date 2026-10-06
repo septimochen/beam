@@ -32,3 +32,28 @@ Windows exclusive storage and credential provisioning remain future work. MsQuic
 is pinned by the explicit `make deps` workflow. Regular CMake configuration discovers
 installed dependencies and never downloads code. See [TLS](tls.md) for peer authorization,
 [wire protocol](protocol.md), and the upstream [MsQuic build guide](https://github.com/microsoft/msquic/blob/v2.6.2/docs/BUILD.md).
+
+## Design constraints
+
+Keep dependencies flowing downward. Protocol, transfer, discovery, and transport code
+must not depend on CLI or native UI code. Keep platform-specific clipboard, notifications,
+share sheets, and GUI logic outside the reusable core. Native applications call the core
+rather than copying transfer logic; Android should eventually use Kotlin through JNI.
+Add platform directories only when implementing their functionality.
+
+QUIC is the primary transport. Prefer MsQuic; consider quiche only when platform support
+requires it, and ngtcp2 only when lower-level control is necessary. Hide backend details
+behind the internal transport boundary. Do not implement QUIC or TLS manually, and do not
+introduce HTTP/3 without a concrete requirement.
+
+Keep the application protocol small, versioned, deterministic, and bounded. Metadata and
+coordination belong on a dedicated control stream; file payloads normally use independent
+unidirectional streams. Do not manually multiplex bulk payloads into the control stream.
+The current format is described in [protocol](protocol.md); evolve that format instead of
+adding a serialization framework solely for popularity.
+
+Future trusted peers may reuse long-lived connections, but Phase 1 deliberately uses one
+connection per transfer. LAN discovery should use mDNS with minimal connection metadata.
+Tailscale addresses remain ordinary endpoints: prefer direct LAN paths when available,
+fall back to Tailscale when appropriate, and keep both discovery and Tailscale optional.
+See [the roadmap](ROADMAP.md) before implementing those features.
