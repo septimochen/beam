@@ -12,6 +12,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev perl clang-format
+      - name: Install macOS prerequisites
+        if: runner.os == 'macOS'
+        run: brew install openssl@3 clang-format
+      - name: Build pinned MsQuic
+        if: runner.os != 'Windows'
+        run: cmake -DBEAM_DEPS_DIR="$PWD/build/deps" -P cmake/BootstrapMsQuic.cmake
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: make format-check
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
       - name: Build

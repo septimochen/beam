@@ -10,15 +10,15 @@
 
 ## First reliable direct transfer
 
-- [ ] Integrate MsQuic behind an internal transport boundary with RAII and safe callbacks.
-- [ ] Define certificate provisioning and verified peers for the CLI milestone.
-- [ ] Define bounded versioned metadata/control framing; test malformed and fragmented input.
-- [ ] Implement offer/accept/reject and one streamed file payload, with backpressure.
-- [ ] Write exclusively inside the selected receive directory; prevent symlink escapes and overwrites.
-- [ ] Verify SHA-256 using a cryptographic library; report success only after verification.
-- [ ] Handle interruption, timeout, rejection, invalid metadata, checksum mismatch, and disk errors.
-- [ ] Add localhost integration tests for success and failure, without public internet access.
-- [ ] Verify on macOS and Linux before expanding the product.
+- [x] Integrate MsQuic behind an internal transport boundary with RAII and safe callbacks.
+- [x] Define certificate provisioning and verified peers for the CLI milestone.
+- [x] Define bounded versioned metadata/control framing; test malformed and fragmented input.
+- [x] Implement offer/accept/reject and one streamed file payload, with backpressure.
+- [x] Write exclusively inside the selected receive directory; prevent symlink escapes and overwrites.
+- [x] Verify SHA-256 using a cryptographic library; report success only after verification.
+- [x] Handle interruption, timeout, rejection, invalid metadata, checksum mismatch, and disk errors.
+- [x] Add localhost integration tests for success and failure, without public internet access.
+- [ ] Verify on Linux before expanding the product (macOS localhost verified; Linux CI configured).
 
 ## Later
 

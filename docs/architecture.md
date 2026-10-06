@@ -1,33 +1,34 @@
 # Architecture
 
-## Current scaffold
+Dependency flow is `CLI -> beam-core -> protocol/transfer -> transport -> MsQuic`.
+The CLI parses arguments and reports outcomes; application code sees no MsQuic handles.
+The core exposes `send_file`/`receive_file`, credentials, endpoints, and transfer results.
+Errors cross the CLI boundary as exceptions; C callbacks catch exceptions locally.
 
-`beam` is a thin executable linked to `Beam::Core` (`beam-core`). The core contains
-version information and a conservative filename validator, with no UI, OS, or networking
-dependencies. Tests use CTest and a small standalone C++ executable; no test framework
-dependency is needed at this scale. Tests remain active in Release builds.
+`src/transport/transport.hpp` is the internal QUIC boundary. Its connection and stream
+interfaces let the core use blocking operations while MsQuic performs asynchronous
+networking on its worker threads. RAII owns the API table, registration, configuration,
+listener, connection, and stream handles. Teardown shuts streams/connections down,
+waits for completion, then closes handles while callback contexts remain alive.
+A separate OpenSSL X.509 store containing only `--ca` verifies the portable peer
+certificate chain, in addition to MsQuic TLS verification: MsQuic also loads system
+roots, which must not grant Beam peer authorization. No detached application threads or shared ownership are needed.
 
-The filename validator rejects paths, control bytes, Windows device names, hidden names,
-leading spaces, trailing dots/spaces, and names longer than 255 bytes. It currently accepts printable ASCII
-only. It does not write files or guarantee filesystem containment. The future receiver
-must separately enforce receive-directory containment, avoid following symlinks, create
-files exclusively, and handle case-insensitive collisions without overwriting files.
+A stream send waits for buffer release with MsQuic send buffering disabled, preventing
+unbounded queued file data. Receive callbacks retain a single pending MsQuic event;
+application reads consume it before `StreamReceiveComplete` permits more delivery.
+Zero-byte FIN receive events complete inline. The payload buffer and configured
+receive window are 64 KiB. Each wait has a deadline and peer-abort propagation.
 
-## Transfer milestone
+`src/protocol` defines bounded versioned frames and transfer IDs. `src/core/transfer.cpp`
+implements offer/accept/payload/verified-completion state transitions. `src/transfer`
+uses OpenSSL EVP SHA-256 and RAND for established cryptographic primitives, plus POSIX
+file operations isolated from protocol/transport. Directory-relative exclusive creation
+and no-replace publication protect the selected destination from symlinks, races, and
+collisions; incomplete files never occupy their final name.
 
-Keep the dependency direction `CLI -> core -> protocol/transfer -> transport`.
-Add components only as the direct transfer requires them:
-
-- An internal transport boundary wrapping MsQuic handles and callback lifetimes with RAII.
-- A bounded, versioned control codec for metadata and acceptance/results.
-- One unidirectional QUIC stream for the file, using bounded read/write buffers.
-- SHA-256 verification through an established cryptographic library.
-- Explicit server certificate and peer verification configuration before any network use.
-
-MsQuic is the preferred QUIC backend. Choose and document a pinned dependency and
-supported platform build strategy when implementing it; the scaffold does not download
-dependencies during configuration. Do not disable verification for local development.
-
-The wire format is not defined yet. Freeze it with encoding, decoding, malformed-input,
-and stream-fragmentation tests during the transfer implementation. Keep bulk file data
-out of the control stream and propagate transport failures into useful CLI errors.
+Phase 1 targets macOS/Linux. Windows still builds the portable filename/core scaffold;
+Windows exclusive storage and credential provisioning remain future work. MsQuic v2.6.2
+is pinned by the explicit `make deps` workflow. Regular CMake configuration discovers
+installed dependencies and never downloads code. See [TLS](tls.md) for peer authorization,
+[wire protocol](protocol.md), and the upstream [MsQuic build guide](https://github.com/microsoft/msquic/blob/v2.6.2/docs/BUILD.md).

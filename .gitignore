@@ -22,3 +22,8 @@
 !/.github/
 !/.github/workflows/
 !/.github/workflows/*.yml
+
+!/src/**/*.hpp
+!/tests/**/*.sh
+!/cmake/
+!/cmake/**/*.cmake
