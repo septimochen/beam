@@ -10,7 +10,9 @@ for prerequisites, dependency provisioning, and build/test commands.
   `transfer_id`, and `peer_endpoint`. Keep functions focused and classes small.
 - Use `std::span`, `std::string_view`, `std::filesystem`, `std::chrono`, and value types
   where appropriate. Use `std::optional` or typed errors when they clarify an API.
-- Apply the repository's `clang-format` configuration. Avoid macros except where
+- Apply the repository's `clang-format` configuration using clang-format 23, matching
+  CI. `make format` and `make format-check` reject other major versions; use
+  `CLANG_FORMAT` to select the executable. Avoid macros except where
   platform APIs or build configuration require them.
 - Modify existing components before adding new systems. Add directories only when
   functionality needs them; do not scaffold hypothetical native apps or services.
@@ -61,5 +63,12 @@ A feature is complete when it builds on applicable supported platforms, handles 
 cleans up resources, avoids data loss, produces useful errors, preserves architecture
 boundaries, and has appropriate tests. Record platform validation limits honestly.
 Documentation-only changes need link/content checks rather than new executable tests.
+The automatic CI status check runs formatting, `make lint`, and tests only on pushes
+to `main`. `make lint` uses Clang Static Analyzer and focused clang-tidy checks for
+assertion side effects, duplicated branches, infinite loops, incorrect `sizeof`,
+and suspicious expressions/calls, with warnings treated as errors. Install clang-tidy
+before running it locally. Opt-in analyzer checks are excluded because the enum-range
+check misdiagnoses MsQuic bitmask flags. Override `CLANG_TIDY_CHECKS` to explore other checks.
+The full three-platform build/test matrix can be triggered manually in GitHub Actions.
 Commit completed work with a descriptive message and push when a remote is configured;
 leave unrelated changes unstaged.

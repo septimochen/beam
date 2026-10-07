@@ -8,14 +8,17 @@ No discovery, pairing service, cloud infrastructure, or GUI is involved.
 ## Build and test
 
 Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, OpenSSL development
-headers/libraries (1.1.1+), and `clang-format` for `make check`. The pinned MsQuic
+headers/libraries (1.1.1+), and `clang-format` 23 for `make check`. The pinned MsQuic
 build uses its own quictls TLS implementation; Beam uses the installed OpenSSL
 libcrypto for hashing and random transfer IDs. These dependencies provide QUIC/TLS
 and cryptographic primitives without implementing them ourselves.
 
-On macOS, install the build tools with Homebrew (`cmake`, `openssl@3`, `clang-format`).
+On macOS, install the build tools with Homebrew (`cmake`, `openssl@3`, `llvm`) and
+run `export CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format"` (LLVM 23).
 On Linux, install the corresponding tools, including `build-essential`, `libssl-dev`,
-`perl`, `cmake`, and `clang-format` on Debian/Ubuntu.
+`perl`, and `cmake` on Debian/Ubuntu. Install `clang-format-23` from the
+[official LLVM package repository](https://apt.llvm.org/) for your distribution,
+and run `export CLANG_FORMAT=clang-format-23`.
 
 ```sh
 make deps        # explicit network download/build of MsQuic v2.6.2; takes a few minutes
@@ -84,9 +87,11 @@ frames, the SHA-256 standard test vector, exclusive receive storage, and actual
 localhost QUIC transfers. Integration cases include empty/binary/3 MiB files,
 IPv4/IPv6, overwrite rejection, wrong server names, untrusted clients and default trust roots outside `--ca`, checksum/size/ID errors,
 invalid metadata/state, interruption cleanup, and listener timeout. No public network
-is required for tests. CI builds the full milestone on macOS/Linux and the scaffold on Windows.
+is required for tests.
 
-Run `make format` to apply formatting. The allowlist `.gitignore` keeps builds,
+Run `make format` to apply formatting. Formatting commands require clang-format 23
+to keep local and CI results consistent; `CLANG_FORMAT` can be set in the environment
+or passed to Make. The allowlist `.gitignore` keeps builds,
 certificates, keys, and local receive directories untracked. Installing `beam` with
 `cmake --install build --prefix ./install` requires the MsQuic/OpenSSL shared libraries
 to remain available to the runtime loader; this milestone does not bundle an installer.

@@ -3,10 +3,13 @@ BUILD_TYPE ?= Debug
 CMAKE ?= cmake
 CTEST ?= ctest
 CLANG_FORMAT ?= clang-format
+CLANG_TIDY ?= clang-tidy
+CLANG_TIDY_CHECKS ?= -*,clang-analyzer-*,-clang-analyzer-optin.*,bugprone-assert-side-effect,bugprone-branch-clone,bugprone-infinite-loop,bugprone-sizeof-expression,bugprone-suspicious-*
 CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp")
+CXX_TRANSLATION_UNITS := $(filter %.cpp,$(CXX_SOURCES))
 CMAKE_ARGS ?=
 
-.PHONY: all deps configure build test check format format-check clean help
+.PHONY: all deps configure build test check lint format format-check format-version clean help
 all: build
 
 deps:
@@ -23,10 +26,23 @@ test: build
 
 check: format-check test
 
-format:
+lint: configure
+	@set -e; for source in $(CXX_TRANSLATION_UNITS); do \
+		$(CLANG_TIDY) -p "$(BUILD_DIR)" --checks='$(CLANG_TIDY_CHECKS)' \
+			--header-filter='^$(CURDIR)/(include|src|tests)/' --warnings-as-errors='*' "$$source"; \
+	done
+
+format-version:
+	@formatter_version="$$($(CLANG_FORMAT) --version)"; \
+	case "$$formatter_version" in \
+		*"version 23."*) ;; \
+		*) echo "Beam requires clang-format 23; set CLANG_FORMAT to its executable (found: $$formatter_version)" >&2; exit 1 ;; \
+	esac
+
+format: format-version
 	$(CLANG_FORMAT) -i $(CXX_SOURCES)
 
-format-check:
+format-check: format-version
 	$(CLANG_FORMAT) --dry-run --Werror $(CXX_SOURCES)
 
 clean:
@@ -35,3 +51,4 @@ clean:
 help:
 	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format and tests"
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"
+	@echo "lint: configure and run clang-tidy lint and static analysis (requires clang-tidy)"

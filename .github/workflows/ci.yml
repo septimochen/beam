@@ -1,29 +1,67 @@
 name: CI
 on:
   push:
-  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
+  status:
+    name: Status check
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    env:
+      CLANG_FORMAT: clang-format-23
+      CLANG_TIDY: clang-tidy-23
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install check prerequisites
+        run: |
+          curl --compressed -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o /tmp/llvm.asc
+          sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
+          echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev perl clang-format-23 clang-tidy-23
+          clang-format-23 --version
+          clang-tidy-23 --version
+      - name: Check formatting
+        run: make format-check
+      - name: Build pinned MsQuic
+        run: make deps
+      - name: Lint and static analysis
+        run: make lint BUILD_TYPE=Release
+      - name: Build and test
+        run: make test BUILD_TYPE=Release
+
   build:
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-26.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux prerequisites
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev perl clang-format
+        run: |
+          curl --compressed -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o /tmp/llvm.asc
+          sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
+          echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev perl clang-format-23
+          clang-format-23 --version
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'
-        run: brew install openssl@3 clang-format
+        run: brew install openssl@3
       - name: Build pinned MsQuic
         if: runner.os != 'Windows'
         run: cmake -DBEAM_DEPS_DIR="$PWD/build/deps" -P cmake/BootstrapMsQuic.cmake
       - name: Check formatting
         if: runner.os == 'Linux'
-        run: make format-check
+        run: make format-check CLANG_FORMAT=clang-format-23
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
       - name: Build

@@ -6,7 +6,7 @@
 - [x] Make build, test, check, and formatting commands; allowlist gitignore.
 - [x] Portable filename rejection with malicious-input and boundary tests.
 - [x] CLI help/version and explicit errors for unavailable transfers.
-- [x] CTest and macOS/Linux/Windows CI configuration.
+- [x] CTest, automatic main-branch checks, and manual macOS/Linux/Windows CI builds.
 
 ## First reliable direct transfer
 
