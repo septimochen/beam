@@ -49,7 +49,7 @@ before the direct transfer path is reliable on macOS and Linux.
 - [x] Core stop-token cancellation and CLI Ctrl-C, including blocked network waits.
 - [x] Propagate cancellation/failure categories to a blocked peer and clean partial files.
 - [x] Test malformed failures, wrong responses, cancellation, callback errors, and final-exchange preservation.
-- [ ] Verify Phase 2 on Linux CI (macOS Debug, Release, and sanitizer checks run locally).
+- [x] Verify Phase 2 on Linux CI ([run 37775319586](https://github.com/septimochen/beam/actions/runs/37775319586)); macOS Debug, Release, sanitizer, and scaffold-only checks passed.
 
 ## Product scope
 
