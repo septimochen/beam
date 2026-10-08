@@ -12,21 +12,23 @@
 namespace beam::transfer {
 namespace {
 [[noreturn]] void file_error(const char* operation) {
-    throw std::runtime_error(std::string(operation) + ": " + std::strerror(errno));
+    const auto code =
+        errno == EEXIST ? TransferErrorCode::destination_exists : TransferErrorCode::io;
+    throw TransferError(code, std::string(operation) + ": " + std::strerror(errno));
 }
 void crypto_check(int result) {
     if (result != 1)
-        throw std::runtime_error("OpenSSL SHA-256 operation failed");
+        throw TransferError(TransferErrorCode::io, "OpenSSL SHA-256 operation failed");
 }
 } // namespace
 struct Hash::Impl {
     EVP_MD_CTX* context{EVP_MD_CTX_new()};
     Impl() {
         if (!context)
-            throw std::runtime_error("allocate SHA-256 context failed");
+            throw TransferError(TransferErrorCode::io, "allocate SHA-256 context failed");
         if (EVP_DigestInit_ex(context, EVP_sha256(), nullptr) != 1) {
             EVP_MD_CTX_free(context);
-            throw std::runtime_error("initialize SHA-256 failed");
+            throw TransferError(TransferErrorCode::io, "initialize SHA-256 failed");
         }
     }
     ~Impl() { EVP_MD_CTX_free(context); }
@@ -42,7 +44,7 @@ protocol::Digest Hash::finish() {
     crypto_check(
         EVP_DigestFinal_ex(impl->context, reinterpret_cast<unsigned char*>(digest.data()), &size));
     if (size != digest.size())
-        throw std::runtime_error("unexpected SHA-256 size");
+        throw TransferError(TransferErrorCode::io, "unexpected SHA-256 size");
     return digest;
 }
 Source::Source(const std::filesystem::path& path) {
@@ -53,7 +55,8 @@ Source::Source(const std::filesystem::path& path) {
     if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode) || status.st_size < 0) {
         ::close(descriptor);
         descriptor = -1;
-        throw std::runtime_error("input must be a regular file, not a symlink or directory");
+        throw TransferError(TransferErrorCode::io,
+                            "input must be a regular file, not a symlink or directory");
     }
     size = static_cast<std::uint64_t>(status.st_size);
 }
@@ -94,14 +97,15 @@ Destination::Destination(const std::filesystem::path& output, const std::string&
     : Destination(ReceiveDirectory{output}, name) {}
 Destination::Destination(const ReceiveDirectory& output, const std::string& name) : filename(name) {
     if (!is_safe_filename(name))
-        throw std::runtime_error("unsafe receive filename");
+        throw TransferError(TransferErrorCode::io, "unsafe receive filename");
     directory = fcntl(output.descriptor, F_DUPFD_CLOEXEC, 0);
     if (directory < 0)
         file_error("retain receive directory");
     try {
         struct stat status{};
         if (fstatat(directory, filename.c_str(), &status, AT_SYMLINK_NOFOLLOW) == 0)
-            throw std::runtime_error("destination already exists; refusing to overwrite");
+            throw TransferError(TransferErrorCode::destination_exists,
+                                "destination already exists; refusing to overwrite");
         if (errno != ENOENT)
             file_error("check destination");
         temporary = ".beam-" + std::to_string(random_id()) + ".part";

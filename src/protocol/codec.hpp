@@ -22,6 +22,7 @@ struct Message {
     std::uint64_t size{};
     Digest digest{};
     std::string text;
+    TransferErrorCode error{TransferErrorCode::none};
 };
 std::vector<std::byte> encode(const Message& message);
 Message decode(std::span<const std::byte> bytes);

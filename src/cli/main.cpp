@@ -3,6 +3,7 @@
 #include "beam/transfer.hpp"
 #endif
 #include <charconv>
+#include <csignal>
 #include <iostream>
 #include <map>
 #include <stdexcept>
@@ -17,15 +18,49 @@ void print_help() {
                  "  beam --help\n"
                  "  beam --version\n"
                  "  beam receive --listen PORT --output DIR --cert PEM --key PEM --ca PEM "
-                 "[--timeout SECONDS]\n"
+                 "[--timeout SECONDS] [--no-progress]\n"
                  "  beam send IP:PORT FILE --cert PEM --key PEM --ca PEM [--server-name NAME] "
-                 "[--timeout SECONDS]\n\n"
+                 "[--timeout SECONDS] [--no-progress]\n\n"
                  "Receive one file from one authenticated peer, then exit. DIR must exist.\n"
                  "Both peers need certificates issued by the private CA supplied in --ca.\n"
                  "The server certificate must match IP or --server-name. IPv6: [ADDRESS]:PORT.\n"
+                 "Progress goes to stderr; --no-progress disables it. Ctrl-C cancels cleanly.\n"
                  "Timeout defaults to 30 seconds per wait. Existing files are never overwritten.\n";
 }
 #ifdef BEAM_HAS_QUIC
+volatile std::sig_atomic_t interrupted = 0;
+void interrupt_handler(int) { interrupted = 1; }
+class InterruptGuard {
+    struct sigaction previous{};
+
+  public:
+    InterruptGuard() {
+        interrupted = 0;
+        struct sigaction action{};
+        action.sa_handler = interrupt_handler;
+        sigemptyset(&action.sa_mask);
+        if (sigaction(SIGINT, &action, &previous) != 0)
+            throw std::runtime_error("install Ctrl-C handler failed");
+    }
+    ~InterruptGuard() { sigaction(SIGINT, &previous, nullptr); }
+};
+const char* stage_name(beam::TransferStage stage) {
+    switch (stage) {
+    case beam::TransferStage::hashing:
+        return "Hashing";
+    case beam::TransferStage::connecting:
+        return "Connecting";
+    case beam::TransferStage::waiting:
+        return "Waiting";
+    case beam::TransferStage::transferring:
+        return "Transferring";
+    case beam::TransferStage::verifying:
+        return "Verifying";
+    case beam::TransferStage::complete:
+        return "Complete";
+    }
+    return "Unknown";
+}
 unsigned number(const std::string& text, unsigned maximum, const char* label) {
     unsigned value = 0;
     const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
@@ -40,6 +75,11 @@ int transfer_command(int argc, char** argv, bool receive) {
         const std::string argument = argv[index];
         if (!argument.starts_with("--")) {
             positional.push_back(argument);
+            continue;
+        }
+        if (argument == "--no-progress") {
+            if (!options.emplace(argument, "").second)
+                throw std::invalid_argument("duplicate option: " + argument);
             continue;
         }
         if (argument != "--cert" && argument != "--key" && argument != "--ca" &&
@@ -62,6 +102,28 @@ int transfer_command(int argc, char** argv, bool receive) {
     if (options.contains("--timeout"))
         configuration.timeout =
             std::chrono::seconds(number(options.at("--timeout"), 86400, "timeout"));
+    InterruptGuard interrupts;
+    configuration.should_cancel = [] { return interrupted != 0; };
+    auto last_update = std::chrono::steady_clock::time_point{};
+    auto last_stage = beam::TransferStage::complete;
+    if (!options.contains("--no-progress")) {
+        configuration.on_progress = [&](const beam::TransferProgress& update) {
+            const auto now = std::chrono::steady_clock::now();
+            // The final chunk may precede verification; only Complete denotes success.
+            if (update.stage == last_stage && now - last_update < std::chrono::milliseconds(250))
+                return;
+            last_stage = update.stage;
+            last_update = now;
+            std::cerr << stage_name(update.stage);
+            if (!update.filename.empty())
+                std::cerr << " " << update.filename;
+            if (update.stage == beam::TransferStage::hashing ||
+                update.stage == beam::TransferStage::transferring ||
+                update.stage == beam::TransferStage::complete)
+                std::cerr << ": " << update.bytes << "/" << update.total << " bytes";
+            std::cerr << '\n';
+        };
+    }
     beam::TransferResult result;
     if (receive) {
         if (!positional.empty())
@@ -118,6 +180,11 @@ int main(int argc, char** argv) {
     } catch (const std::invalid_argument& error) {
         std::cerr << "beam: " << error.what() << '\n';
         return 2;
+#ifdef BEAM_HAS_QUIC
+    } catch (const beam::TransferError& error) {
+        std::cerr << "beam [" << beam::error_name(error.code) << "]: " << error.what() << '\n';
+        return error.code == beam::TransferErrorCode::cancelled ? 130 : 1;
+#endif
     } catch (const std::exception& error) {
         std::cerr << "beam: " << error.what() << '\n';
         return 1;

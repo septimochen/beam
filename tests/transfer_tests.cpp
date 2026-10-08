@@ -9,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unistd.h>
 
 namespace {
@@ -81,7 +82,19 @@ int attack(int argc, char** argv) {
             throw std::logic_error("malicious transfer was accepted");
         if (result.type != beam::protocol::Type::failed)
             throw std::logic_error("unexpected malicious transfer result");
-    } catch (const std::runtime_error&) { /* Peer may abort the connection immediately. */
+    } catch (const beam::TransferError& error) {
+        // Structured connection closure must preserve the receiver's reason even
+        // while this sender is still transmitting the payload.
+        if (mode == "checksum" || mode == "truncated" || mode == "oversized" ||
+            mode == "wrong-id") {
+            const auto expected = mode == "checksum"   ? beam::TransferErrorCode::integrity
+                                  : mode == "wrong-id" ? beam::TransferErrorCode::protocol
+                                                       : beam::TransferErrorCode::size;
+            if (!error.remote || error.code != expected) {
+                std::cerr << "incorrect peer failure category: " << error.what() << '\n';
+                return 1;
+            }
+        }
     }
     return 0;
 }
@@ -103,11 +116,105 @@ int main(int argc, char** argv) {
         } catch (const std::runtime_error&) {
         }
     };
+    const auto rejects_with = [&](auto function, beam::TransferErrorCode code, const char* label) {
+        try {
+            function();
+            check(false, label);
+        } catch (const beam::TransferError& error) {
+            check(error.code == code, label);
+        }
+    };
     const beam::protocol::Message offer{beam::protocol::Type::offer, 17, 123, {}, "hello.txt"};
     const auto encoded = beam::protocol::encode(offer);
     const auto decoded = beam::protocol::decode(encoded);
     check(decoded.id == 17 && decoded.size == 123 && decoded.text == "hello.txt",
           "offer roundtrip");
+    for (unsigned code = 1; code <= 10; ++code) {
+        const beam::protocol::Message failure{beam::protocol::Type::failed,
+                                              17,
+                                              0,
+                                              {},
+                                              "failed",
+                                              static_cast<beam::TransferErrorCode>(code)};
+        const auto frame = beam::protocol::encode(failure);
+        Fragmented fragments(frame);
+        check(beam::protocol::read(fragments).error == failure.error,
+              "fragmented structured failure code");
+        for (std::size_t length = 0; length < frame.size(); ++length)
+            rejects_with([&] { beam::protocol::decode(std::span{frame}.first(length)); },
+                         beam::TransferErrorCode::protocol, "truncated structured failure");
+    }
+    beam::protocol::Message failure{beam::protocol::Type::reject,     17, 0, {}, "refused",
+                                    beam::TransferErrorCode::rejected};
+    auto bad_code = beam::protocol::encode(failure);
+    bad_code[14] = std::byte{255};
+    rejects_with([&] { beam::protocol::decode(bad_code); }, beam::TransferErrorCode::protocol,
+                 "unknown wire error code");
+    failure.error = beam::TransferErrorCode::none;
+    rejects_with([&] { beam::protocol::encode(failure); }, beam::TransferErrorCode::protocol,
+                 "failure requires nonzero code");
+    auto invalid_offer = offer;
+    invalid_offer.error = beam::TransferErrorCode::cancelled;
+    rejects_with([&] { beam::protocol::encode(invalid_offer); }, beam::TransferErrorCode::protocol,
+                 "offer rejects error code");
+    failure.error = beam::TransferErrorCode::rejected;
+    failure.text = std::string(256, 'x');
+    check(beam::protocol::decode(beam::protocol::encode(failure)).text.size() == 256,
+          "maximum error text accepted");
+    failure.text.push_back('x');
+    rejects([&] { beam::protocol::encode(failure); }, "overlong error text rejected");
+    failure.text = "bad\ntext";
+    rejects([&] { beam::protocol::encode(failure); }, "error control characters rejected");
+    // Invalid headers fail before waiting for a declared payload.
+    auto bad_header = std::vector(encoded.begin(), encoded.begin() + 6);
+    bad_header[0] = std::byte{1};
+    Fragmented obsolete(bad_header);
+    rejects_with([&] { beam::protocol::read(obsolete); }, beam::TransferErrorCode::protocol,
+                 "obsolete version rejected before payload");
+    check(obsolete.position == 6, "obsolete header consumes no payload");
+    // Cancellation remains responsive during a blocked wait; spurious wakeups
+    // must not extend the operation deadline.
+    {
+        std::mutex mutex;
+        std::condition_variable changed;
+        beam::TransferOptions options{};
+        options.timeout = std::chrono::milliseconds(100);
+        std::stop_source stop;
+        options.stop_token = stop.get_token();
+        std::jthread cancel([&] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            stop.request_stop();
+        });
+        const auto start = std::chrono::steady_clock::now();
+        std::unique_lock lock(mutex);
+        rejects_with(
+            [&] {
+                beam::transport::wait_for_operation(
+                    changed, lock, options, [] { return false; }, "test timeout");
+            },
+            beam::TransferErrorCode::cancelled, "stop token wakes blocked wait");
+        check(std::chrono::steady_clock::now() - start < std::chrono::seconds(1),
+              "cancellation is bounded");
+        options.stop_token = {};
+        std::jthread wake([&](std::stop_token token) {
+            while (!token.stop_requested()) {
+                changed.notify_all();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
+        const auto timeout_start = std::chrono::steady_clock::now();
+        rejects_with(
+            [&] {
+                beam::transport::wait_for_operation(
+                    changed, lock, options, [] { return false; }, "test timeout");
+            },
+            beam::TransferErrorCode::timeout, "deadline survives spurious wakeups");
+        check(std::chrono::steady_clock::now() - timeout_start < std::chrono::seconds(1),
+              "spurious wakeups do not reset deadline");
+        options.should_cancel = [] { return true; };
+        rejects_with([&] { beam::transport::check_cancel(options); },
+                     beam::TransferErrorCode::cancelled, "signal predicate cancellation");
+    }
     Fragmented fragmented(encoded);
     check(beam::protocol::read(fragmented).text == "hello.txt", "byte-fragmented control frame");
     for (std::size_t length = 0; length < encoded.size(); ++length)
@@ -117,13 +224,15 @@ int main(int argc, char** argv) {
                             beam::protocol::Type::acknowledged, beam::protocol::Type::reject,
                             beam::protocol::Type::failed}) {
         beam::protocol::Message message{type, 17, 0, {}, {}};
-        if (type == beam::protocol::Type::reject || type == beam::protocol::Type::failed)
+        if (type == beam::protocol::Type::reject || type == beam::protocol::Type::failed) {
             message.text = "refused";
+            message.error = beam::TransferErrorCode::rejected;
+        }
         check(beam::protocol::decode(beam::protocol::encode(message)).type == type,
               "control message roundtrip");
     }
     auto invalid = encoded;
-    invalid[0] = std::byte{2};
+    invalid[0] = std::byte{1};
     rejects([&] { beam::protocol::decode(invalid); }, "unknown version");
     invalid = encoded;
     invalid[1] = std::byte{99};

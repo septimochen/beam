@@ -18,13 +18,14 @@
 - [x] Verify SHA-256 using a cryptographic library; report success only after verification.
 - [x] Handle interruption, timeout, rejection, invalid metadata, checksum mismatch, and disk errors.
 - [x] Add localhost integration tests for success and failure, without public internet access.
-- [ ] Verify on Linux before expanding the product (macOS localhost verified; Linux CI configured).
+- [x] Verify direct transfers on Linux (Ubuntu CI run [37630803802](https://github.com/septimochen/beam/actions/runs/37630803802)); macOS localhost verified.
 
 ## Development phases
 
 Keep this order unless the user explicitly changes priorities. Phase 1 now includes
 the metadata, IDs, checksums, and errors required for a reliable transfer; Phase 2
-refines that implementation rather than creating a replacement.
+refines that implementation rather than creating a replacement. Both peers now use
+protocol v2; see [protocol](protocol.md) for compatibility and cancellation semantics.
 
 | Phase | Scope |
 | --- | --- |
@@ -39,6 +40,16 @@ refines that implementation rather than creating a replacement.
 
 Do not begin discovery, GUI, Android packaging, clipboard integration, or history
 before the direct transfer path is reliable on macOS and Linux.
+
+## Phase 2 implementation
+
+- [x] Versioned machine-readable failure categories and early header validation.
+- [x] Calling-thread progress for hashing, payload bytes, verification, and completion.
+- [x] CLI progress on stderr and `--no-progress` for scripts.
+- [x] Core stop-token cancellation and CLI Ctrl-C, including blocked network waits.
+- [x] Propagate cancellation/failure categories to a blocked peer and clean partial files.
+- [x] Test malformed failures, wrong responses, cancellation, callback errors, and final-exchange preservation.
+- [ ] Verify Phase 2 on Linux CI (macOS Debug, Release, and sanitizer checks run locally).
 
 ## Product scope
 

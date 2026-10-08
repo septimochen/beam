@@ -5,6 +5,7 @@
 #include <openssl/x509v3.h>
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -48,7 +49,11 @@ void checked(QUIC_STATUS status, const char* operation) {
         std::ostringstream message;
         message << operation << ": " << describe(status) << " (MsQuic status 0x" << std::hex
                 << status << "; check peer certificates, endpoint and network)";
-        throw std::runtime_error(message.str());
+        const auto code =
+            status == QUIC_STATUS_CONNECTION_TIMEOUT || status == QUIC_STATUS_CONNECTION_IDLE
+                ? TransferErrorCode::timeout
+                : TransferErrorCode::transport;
+        throw TransferError(code, message.str());
     }
 }
 struct Runtime {
@@ -64,7 +69,7 @@ struct Runtime {
                                                                QUIC_EXECUTION_PROFILE_LOW_LATENCY};
             checked(api->RegistrationOpen(&registration_config, &registration),
                     "open registration");
-            std::string alpn_text = "beam/1";
+            std::string alpn_text = "beam/2";
             const QUIC_BUFFER alpn{static_cast<std::uint32_t>(alpn_text.size()),
                                    reinterpret_cast<std::uint8_t*>(alpn_text.data())};
             QUIC_SETTINGS settings{};
@@ -86,7 +91,8 @@ struct Runtime {
             const auto ca = options.credentials.ca_certificate.string();
             trust.reset(X509_STORE_new());
             if (!trust || X509_STORE_load_locations(trust.get(), ca.c_str(), nullptr) != 1)
-                throw std::runtime_error("load dedicated peer CA trust store failed");
+                throw TransferError(TransferErrorCode::transport,
+                                    "load dedicated peer CA trust store failed");
             QUIC_CERTIFICATE_FILE files{key.c_str(), certificate.c_str()};
             QUIC_CREDENTIAL_CONFIG credentials{};
             credentials.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
@@ -154,24 +160,31 @@ struct Runtime {
 class QuicStream final : public Stream {
   public:
     const QUIC_API_TABLE* api;
-    HQUIC handle{};
+    HQUIC handle{}, connection_handle{};
     bool unidirectional;
-    std::chrono::milliseconds timeout;
+    const TransferOptions& options;
+    const std::atomic<TransferErrorCode>& close_code;
     std::mutex mutex;
     std::condition_variable changed;
     std::vector<QUIC_BUFFER> received;
     std::size_t buffer_index{}, buffer_offset{};
     std::uint64_t pending_length{};
     bool eof{}, failed{}, sent{}, send_finished{}, started{}, stopped{};
-    QuicStream(const QUIC_API_TABLE* table, bool uni, std::chrono::milliseconds duration)
-        : api(table), unidirectional(uni), timeout(duration) {}
-    void close() noexcept {
+    bool peer_error_pending{};
+    std::uint64_t peer_error{};
+    QuicStream(const QUIC_API_TABLE* table, bool uni, const TransferOptions& configuration,
+               const std::atomic<TransferErrorCode>& error)
+        : api(table), unidirectional(uni), options(configuration), close_code(error) {}
+    void close(TransferErrorCode code = TransferErrorCode::none) noexcept {
         if (!handle)
             return;
+        if (code == TransferErrorCode::none)
+            code = close_code.load();
         if (started) {
             const auto flags = static_cast<QUIC_STREAM_SHUTDOWN_FLAGS>(
                 QUIC_STREAM_SHUTDOWN_FLAG_ABORT | QUIC_STREAM_SHUTDOWN_FLAG_IMMEDIATE);
-            const auto status = api->StreamShutdown(handle, flags, 1);
+            const auto status =
+                api->StreamShutdown(handle, flags, static_cast<std::uint16_t>(code));
             if (QUIC_SUCCEEDED(status)) {
                 std::unique_lock lock(mutex);
                 changed.wait(lock, [&] { return stopped; });
@@ -200,6 +213,8 @@ class QuicStream final : public Stream {
             case QUIC_STREAM_EVENT_SEND_COMPLETE:
                 self.sent = true;
                 self.failed |= event->SEND_COMPLETE.Canceled != FALSE;
+                self.peer_error_pending |=
+                    event->SEND_COMPLETE.Canceled != FALSE && !self.peer_error;
                 break;
             case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
                 self.eof = true;
@@ -207,13 +222,25 @@ class QuicStream final : public Stream {
             case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
                 self.send_finished = true;
                 self.failed |= event->SEND_SHUTDOWN_COMPLETE.Graceful == FALSE;
+                self.peer_error_pending |=
+                    event->SEND_SHUTDOWN_COMPLETE.Graceful == FALSE && !self.peer_error;
                 break;
             case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-            case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+                self.peer_error = event->PEER_SEND_ABORTED.ErrorCode;
                 self.failed = true;
+                self.peer_error_pending = false;
+                break;
+            case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+                self.peer_error = event->PEER_RECEIVE_ABORTED.ErrorCode;
+                self.failed = true;
+                self.peer_error_pending = false;
                 break;
             case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
                 self.stopped = true;
+                if (event->SHUTDOWN_COMPLETE.ConnectionShutdownByApp &&
+                    event->SHUTDOWN_COMPLETE.ConnectionClosedRemotely &&
+                    event->SHUTDOWN_COMPLETE.ConnectionErrorCode != 0)
+                    self.peer_error = event->SHUTDOWN_COMPLETE.ConnectionErrorCode;
                 if (!self.eof && !self.send_finished)
                     self.failed = true;
                 break;
@@ -228,16 +255,25 @@ class QuicStream final : public Stream {
     }
     template <typename Predicate>
     void wait(std::unique_lock<std::mutex>& lock, Predicate predicate) {
-        if (!changed.wait_for(lock, timeout, [&] { return failed || stopped || predicate(); }))
-            throw std::runtime_error("QUIC stream timed out");
+        wait_for_operation(
+            changed, lock, options,
+            [&] { return stopped || (failed && !peer_error_pending) || (!failed && predicate()); },
+            "QUIC stream timed out");
+        if (peer_error != 0) {
+            const auto code = peer_error <= 10 ? static_cast<TransferErrorCode>(peer_error)
+                                               : TransferErrorCode::protocol;
+            throw TransferError(code, std::string("peer: ") + error_name(code), true);
+        }
         if (failed || (stopped && !predicate()))
-            throw std::runtime_error("QUIC stream interrupted or rejected by peer");
+            throw TransferError(TransferErrorCode::transport,
+                                "QUIC stream interrupted or rejected by peer");
     }
     void send(std::span<const std::byte> bytes) override {
         if (bytes.empty())
             return;
         if (bytes.size() > 65536)
-            throw std::runtime_error("transport send exceeds bounded buffer");
+            throw TransferError(TransferErrorCode::transport,
+                                "transport send exceeds bounded buffer");
         std::unique_lock lock(mutex);
         sent = false;
         QUIC_BUFFER buffer{static_cast<std::uint32_t>(bytes.size()),
@@ -245,9 +281,15 @@ class QuicStream final : public Stream {
         checked(api->StreamSend(handle, &buffer, 1, QUIC_SEND_FLAG_NONE, nullptr), "send stream");
         try {
             wait(lock, [&] { return sent; });
-        } catch (...) {
+        } catch (const TransferError& error) {
             // MsQuic may still own the caller's buffer on timeout. Closing synchronously
             // releases it and drains callbacks before unwinding the caller's storage.
+            lock.unlock();
+            api->ConnectionShutdown(connection_handle, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE,
+                                    static_cast<std::uint16_t>(error.code));
+            close(error.code);
+            throw;
+        } catch (...) {
             lock.unlock();
             close();
             throw;
@@ -290,15 +332,17 @@ class QuicStream final : public Stream {
 class QuicConnection final : public Connection {
   public:
     Runtime runtime;
+    std::atomic<TransferErrorCode> close_code{TransferErrorCode::transport};
     HQUIC handle{}, listener{};
-    std::chrono::milliseconds timeout;
+    const TransferOptions& options;
     std::mutex mutex;
     std::condition_variable changed;
     std::deque<std::unique_ptr<QuicStream>> incoming;
     bool connected{}, stopped{}, failed{}, accepted{}, bidi_seen{}, uni_seen{};
+    std::uint64_t peer_error{};
     QUIC_STATUS failure_status{QUIC_STATUS_SUCCESS};
     explicit QuicConnection(const TransferOptions& options, bool client)
-        : runtime(options, client), timeout(options.timeout) {}
+        : runtime(options, client), options(options) {}
     ~QuicConnection() override {
         if (listener)
             runtime.api->ListenerClose(listener);
@@ -330,6 +374,7 @@ class QuicConnection final : public Connection {
                 self.failed = true;
                 break;
             case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
+                self.peer_error = event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode;
                 self.failed = true;
                 break;
             case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
@@ -338,8 +383,10 @@ class QuicConnection final : public Connection {
             case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED: {
                 const bool uni =
                     (event->PEER_STREAM_STARTED.Flags & QUIC_STREAM_OPEN_FLAG_UNIDIRECTIONAL) != 0;
-                auto stream = std::make_unique<QuicStream>(self.runtime.api, uni, self.timeout);
+                auto stream = std::make_unique<QuicStream>(self.runtime.api, uni, self.options,
+                                                           self.close_code);
                 stream->handle = event->PEER_STREAM_STARTED.Stream;
+                stream->connection_handle = self.handle;
                 stream->started = true;
                 self.runtime.api->SetCallbackHandler(
                     stream->handle, reinterpret_cast<void*>(QuicStream::callback), stream.get());
@@ -393,15 +440,29 @@ class QuicConnection final : public Connection {
     }
     template <typename Predicate>
     void wait(std::unique_lock<std::mutex>& lock, Predicate predicate) {
-        if (!changed.wait_for(lock, timeout, [&] { return failed || stopped || predicate(); }))
-            throw std::runtime_error("QUIC connection timed out waiting for authenticated peer");
+        wait_for_operation(
+            changed, lock, options, [&] { return failed || stopped || predicate(); },
+            "QUIC connection timed out waiting for authenticated peer");
+        if (peer_error != 0) {
+            const auto code = peer_error <= 10 ? static_cast<TransferErrorCode>(peer_error)
+                                               : TransferErrorCode::protocol;
+            throw TransferError(code, std::string("peer: ") + error_name(code), true);
+        }
         if (failed || stopped) {
             checked(failure_status, "QUIC handshake/connection");
-            throw std::runtime_error("QUIC connection closed by peer");
+            throw TransferError(TransferErrorCode::transport, "QUIC connection closed by peer");
         }
     }
+    void abort(TransferErrorCode code) noexcept override {
+        close_code.store(code);
+        if (handle)
+            runtime.api->ConnectionShutdown(handle, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE,
+                                            static_cast<std::uint16_t>(code));
+    }
     std::unique_ptr<Stream> open(bool uni) override {
-        auto stream = std::make_unique<QuicStream>(runtime.api, uni, timeout);
+        check_cancel(options);
+        auto stream = std::make_unique<QuicStream>(runtime.api, uni, options, close_code);
+        stream->connection_handle = handle;
         checked(runtime.api->StreamOpen(
                     handle, uni ? QUIC_STREAM_OPEN_FLAG_UNIDIRECTIONAL : QUIC_STREAM_OPEN_FLAG_NONE,
                     QuicStream::callback, stream.get(), &stream->handle),
@@ -417,14 +478,17 @@ class QuicConnection final : public Connection {
         auto stream = std::move(incoming.front());
         incoming.pop_front();
         lock.unlock();
-        if (stream->unidirectional != uni)
-            throw std::runtime_error("unexpected QUIC stream direction");
+        if (stream->unidirectional != uni) {
+            abort(TransferErrorCode::protocol);
+            throw TransferError(TransferErrorCode::protocol, "unexpected QUIC stream direction");
+        }
         return stream;
     }
 };
 } // namespace
 std::unique_ptr<Connection> connect(const Endpoint& endpoint, const std::string& server_name,
                                     const TransferOptions& options) {
+    check_cancel(options);
     auto connection = std::make_unique<QuicConnection>(options, true);
     auto& api = *connection->runtime.api;
     checked(api.ConnectionOpen(connection->runtime.registration, QuicConnection::callback,
@@ -432,7 +496,8 @@ std::unique_ptr<Connection> connect(const Endpoint& endpoint, const std::string&
             "open connection");
     QUIC_ADDR address{};
     if (!QuicAddrFromString(endpoint.host.c_str(), endpoint.port, &address))
-        throw std::runtime_error("endpoint must contain a numeric IPv4 or IPv6 address");
+        throw TransferError(TransferErrorCode::transport,
+                            "endpoint must contain a numeric IPv4 or IPv6 address");
     checked(
         api.SetParam(connection->handle, QUIC_PARAM_CONN_REMOTE_ADDRESS, sizeof(address), &address),
         "set peer address");
@@ -440,10 +505,17 @@ std::unique_ptr<Connection> connect(const Endpoint& endpoint, const std::string&
                                 address.Ip.sa_family, server_name.c_str(), endpoint.port),
             "connect");
     std::unique_lock lock(connection->mutex);
-    connection->wait(lock, [&] { return connection->connected; });
+    try {
+        connection->wait(lock, [&] { return connection->connected; });
+    } catch (const TransferError& error) {
+        lock.unlock();
+        connection->abort(error.code);
+        throw;
+    }
     return connection;
 }
 std::unique_ptr<Connection> listen(std::uint16_t port, const TransferOptions& options) {
+    check_cancel(options);
     auto connection = std::make_unique<QuicConnection>(options, false);
     auto& api = *connection->runtime.api;
     checked(api.ListenerOpen(connection->runtime.registration, QuicConnection::listener_callback,
@@ -452,21 +524,27 @@ std::unique_ptr<Connection> listen(std::uint16_t port, const TransferOptions& op
     QUIC_ADDR address{};
     QuicAddrSetFamily(&address, QUIC_ADDRESS_FAMILY_UNSPEC);
     QuicAddrSetPort(&address, port);
-    std::string alpn_text = "beam/1";
+    std::string alpn_text = "beam/2";
     const QUIC_BUFFER alpn{static_cast<std::uint32_t>(alpn_text.size()),
                            reinterpret_cast<std::uint8_t*>(alpn_text.data())};
     checked(api.ListenerStart(connection->listener, &alpn, 1, &address), "listen");
     if (options.on_listening)
         options.on_listening();
     std::unique_lock lock(connection->mutex);
-    connection->wait(lock, [&] { return connection->connected; });
+    try {
+        connection->wait(lock, [&] { return connection->connected; });
+    } catch (const TransferError& error) {
+        lock.unlock();
+        connection->abort(error.code);
+        throw;
+    }
     return connection;
 }
 void read_exact(Stream& stream, std::span<std::byte> bytes) {
     while (!bytes.empty()) {
         const auto count = stream.read(bytes);
         if (!count)
-            throw std::runtime_error("truncated QUIC stream");
+            throw TransferError(TransferErrorCode::protocol, "truncated QUIC stream");
         bytes = bytes.subspan(count);
     }
 }

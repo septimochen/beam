@@ -1,8 +1,8 @@
 # Beam
 
-A CLI-first peer-to-peer sharing tool built with C++23 and CMake. Phase 1 transfers
+A CLI-first peer-to-peer sharing tool built with C++23 and CMake. Phase 2 transfers
 one file over a direct, mutually authenticated QUIC connection on macOS/Linux,
-streams with bounded buffers, and verifies SHA-256 before publishing the received file.
+reports progress, supports cancellation, streams with bounded buffers, and verifies SHA-256 before publishing the received file.
 No discovery, pairing service, cloud infrastructure, or GUI is involved.
 
 ## Build and test
@@ -39,7 +39,7 @@ make build BUILD_DIR=build-release BUILD_TYPE=Release
 ```
 
 Windows still builds the help/version and filename-validation scaffold by default;
-Phase 1 filesystem handling is currently POSIX-only. To build only the scaffold on
+Transfer filesystem handling is currently POSIX-only. To build only the scaffold on
 any platform, configure with `-DBEAM_ENABLE_QUIC=OFF`.
 
 ## Transfer a file
@@ -69,6 +69,25 @@ its IP, add `--server-name my-laptop`. `--timeout 120` allows longer individual 
 the default is 30 seconds. Allow UDP port 4269 through the receiver's firewall.
 The receiver accepts one authenticated connection and one file, then exits.
 
+Progress goes to stderr, with byte counts and hashing/transfer/verification stages.
+Use `--no-progress` for quiet scripts; verified success remains on stdout. Press Ctrl-C
+on either peer to cancel, including while waiting for a connection or stream. Beam
+exits with code 130 for local or peer cancellation, 2 for argument errors, and 1 for
+other failures. Partial receive files are removed before exit. Network waits check
+cancellation every 50 ms; synchronous filesystem operations and user callbacks must
+finish before cancellation can proceed.
+
+Both peers must use Phase 2 builds (`beam/2`); Phase 1 peers fail protocol negotiation.
+Errors include a category such as `destination exists`, `integrity verification failed`,
+or `timed out`. Peer errors contain safe category text rather than remote paths.
+
+Core callers can set `TransferOptions::stop_token`, `on_progress`, and an optional
+`should_cancel` predicate. Progress and cancellation predicates run on the calling
+thread. Progress counts payload bytes separately from hashing, starts at zero, and
+reports `complete` only after verification and acknowledgement. Callback exceptions
+abort the transfer and propagate to the caller. `TransferError` provides a category
+and a `remote` flag and remains compatible with `std::runtime_error` handlers.
+
 Success means the receiver checked the exact byte count and SHA-256, flushed the file,
 and published it without replacing any existing filename. The receiver stores files
 with mode 0600. Names must be portable printable ASCII basenames (up to 255 bytes).
@@ -76,7 +95,7 @@ Paths, hidden names, reserved Windows names, source symlinks, symlink receive di
 and destination collisions are rejected. A failed transfer removes its temporary file;
 force-killing the receiver or power loss can leave a hidden `.beam-*.part` file.
 
-An interrupted final acknowledgement may leave a fully verified file while the sender
+An interrupted or cancelled final acknowledgement may leave a fully verified file while the sender
 reports failure. Check the destination before retrying: Beam refuses to overwrite it.
 Inputs should remain unchanged during a transfer; a changed input fails size/hash validation.
 
@@ -86,7 +105,10 @@ CTest covers filename validation, CLI arguments, malformed and fragmented protoc
 frames, the SHA-256 standard test vector, exclusive receive storage, and actual
 localhost QUIC transfers. Integration cases include empty/binary/3 MiB files,
 IPv4/IPv6, overwrite rejection, wrong server names, untrusted clients and default trust roots outside `--ca`, checksum/size/ID errors,
-invalid metadata/state, interruption cleanup, and listener timeout. No public network
+invalid metadata/state, interruption cleanup, and listener timeout. Phase 2 adds
+progress callback contracts, local/peer cancellation during hashing/streaming/verification,
+Ctrl-C during listener/payload/acceptance/acknowledgement waits, callback failure cleanup,
+structured error parsing, and deadlines under spurious wakeups. No public network
 is required for tests.
 
 Run `make format` to apply formatting. Formatting commands require clang-format 23

@@ -3,7 +3,7 @@
 Dependency flow is `CLI -> beam-core -> protocol/transfer -> transport -> MsQuic`.
 The CLI parses arguments and reports outcomes; application code sees no MsQuic handles.
 The core exposes `send_file`/`receive_file`, credentials, endpoints, and transfer results.
-Errors cross the CLI boundary as exceptions; C callbacks catch exceptions locally.
+Typed transfer errors carry a category and peer/local origin across the CLI boundary; C callbacks catch exceptions locally.
 
 `src/transport/transport.hpp` is the internal QUIC boundary. Its connection and stream
 interfaces let the core use blocking operations while MsQuic performs asynchronous
@@ -17,7 +17,11 @@ roots, which must not grant Beam peer authorization. No detached application thr
 A stream send waits for buffer release with MsQuic send buffering disabled, preventing
 unbounded queued file data. Receive callbacks retain a single pending MsQuic event;
 application reads consume it before `StreamReceiveComplete` permits more delivery.
-Zero-byte FIN receive events complete inline. The payload buffer and configured
+Zero-byte FIN receive events complete inline. Cancellation uses a caller-owned stop token
+or calling-thread predicate, checked between buffers and every 50 ms during waits.
+Failures close with a bounded application error code, including cancellation, so a
+blocked peer payload operation sees the reason without an extra control reader thread.
+Progress callbacks run synchronously on the application thread and never in C callbacks. The payload buffer and configured
 receive window are 64 KiB. Each wait has a deadline and peer-abort propagation.
 
 `src/protocol` defines bounded versioned frames and transfer IDs. `src/core/transfer.cpp`
@@ -27,7 +31,7 @@ file operations isolated from protocol/transport. Directory-relative exclusive c
 and no-replace publication protect the selected destination from symlinks, races, and
 collisions; incomplete files never occupy their final name.
 
-Phase 1 targets macOS/Linux. Windows still builds the portable filename/core scaffold;
+The transfer implementation targets macOS/Linux. Windows still builds the portable filename/core scaffold;
 Windows exclusive storage and credential provisioning remain future work. MsQuic v2.6.2
 is pinned by the explicit `make deps` workflow. Regular CMake configuration discovers
 installed dependencies and never downloads code. See [TLS](tls.md) for peer authorization,
@@ -52,7 +56,7 @@ unidirectional streams. Do not manually multiplex bulk payloads into the control
 The current format is described in [protocol](protocol.md); evolve that format instead of
 adding a serialization framework solely for popularity.
 
-Future trusted peers may reuse long-lived connections, but Phase 1 deliberately uses one
+Future trusted peers may reuse long-lived connections, but the current implementation deliberately uses one
 connection per transfer. LAN discovery should use mDNS with minimal connection metadata.
 Tailscale addresses remain ordinary endpoints: prefer direct LAN paths when available,
 fall back to Tailscale when appropriate, and keep both discovery and Tailscale optional.
