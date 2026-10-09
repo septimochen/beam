@@ -51,6 +51,17 @@ before the direct transfer path is reliable on macOS and Linux.
 - [x] Test malformed failures, wrong responses, cancellation, callback errors, and final-exchange preservation.
 - [x] Verify Phase 2 on Linux CI ([run 37775319586](https://github.com/septimochen/beam/actions/runs/37775319586)); macOS Debug, Release, sanitizer, and scaffold-only checks passed.
 
+## Phase 3 implementation
+
+- [x] Optional Bonjour/Avahi DNS-SD backend behind a reusable core API.
+- [x] `beam devices` with bounded browsing, numeric IPv4/IPv6 endpoints, and Ctrl-C.
+- [x] Advertise bound receivers with names and protocol metadata; allow `--no-discovery`.
+- [x] Withdraw advertisements and pending queries on completion, failure, and cancellation.
+- [x] Validate untrusted records; retain certificate authentication for discovered endpoints.
+- [x] Test records, duplicates/removals, interface scopes, resource bounds, and daemon failures.
+- [x] Verify live macOS discovery and a TLS-verified CLI transfer through a discovered endpoint.
+- [x] Add Linux Avahi discovery/transfer checks to CI; retain the Windows scaffold.
+
 ## Product scope
 
 Beam is an ad-hoc sharing tool for files, images, music, clipboard text, URLs, and

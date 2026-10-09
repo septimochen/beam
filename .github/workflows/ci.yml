@@ -23,7 +23,7 @@ jobs:
           sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
           sudo apt-get update
-          sudo apt-get install -y libssl-dev perl clang-format-23 clang-tidy-23
+          sudo apt-get install -y libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon clang-format-23 clang-tidy-23
           clang-format-23 --version
           clang-tidy-23 --version
       - name: Check formatting
@@ -34,6 +34,10 @@ jobs:
         run: make lint BUILD_TYPE=Release
       - name: Build and test
         run: make test BUILD_TYPE=Release
+      - name: Test LAN discovery with Avahi
+        run: |
+          sudo systemctl start avahi-daemon
+          make discovery-test BUILD_TYPE=Release
 
   build:
     if: github.event_name == 'workflow_dispatch'
@@ -51,7 +55,7 @@ jobs:
           sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
           sudo apt-get update
-          sudo apt-get install -y libssl-dev perl clang-format-23
+          sudo apt-get install -y libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon clang-format-23
           clang-format-23 --version
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'
@@ -68,3 +72,9 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
+      - name: Test LAN discovery
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then sudo systemctl start avahi-daemon; fi
+          make discovery-test BUILD_TYPE=Release

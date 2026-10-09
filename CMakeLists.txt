@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(Beam VERSION 0.2.0 LANGUAGES CXX)
+project(Beam VERSION 0.3.0 LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "Use an out-of-tree build: cmake -S . -B build")
@@ -32,6 +32,23 @@ if(BEAM_ENABLE_QUIC)
     target_compile_definitions(beam-core PUBLIC BEAM_HAS_QUIC=1)
 endif()
 
+option(BEAM_ENABLE_DISCOVERY "Build LAN discovery with Bonjour/Avahi DNS-SD" ${BEAM_ENABLE_QUIC})
+if(BEAM_ENABLE_DISCOVERY)
+    if(NOT UNIX)
+        message(FATAL_ERROR "LAN discovery currently supports macOS/Linux only")
+    endif()
+    find_package(Threads REQUIRED)
+    find_path(DNSSD_INCLUDE_DIR dns_sd.h REQUIRED)
+    if(NOT APPLE)
+        find_library(DNSSD_LIBRARY NAMES dns_sd REQUIRED)
+        target_link_libraries(beam-core PRIVATE "${DNSSD_LIBRARY}")
+    endif()
+    target_sources(beam-core PRIVATE src/discovery/dnssd.cpp)
+    target_include_directories(beam-core SYSTEM PRIVATE "${DNSSD_INCLUDE_DIR}")
+    target_link_libraries(beam-core PRIVATE Threads::Threads)
+    target_compile_definitions(beam-core PUBLIC BEAM_HAS_DISCOVERY=1)
+endif()
+
 add_executable(beam src/cli/main.cpp)
 target_link_libraries(beam PRIVATE Beam::Core)
 
@@ -55,7 +72,21 @@ if(BUILD_TESTING)
         "-DBEAM_EXECUTABLE=$<TARGET_FILE:beam>"
         "-DBEAM_VERSION=${PROJECT_VERSION}"
         "-DBEAM_HAS_QUIC=${BEAM_ENABLE_QUIC}"
+        "-DBEAM_HAS_DISCOVERY=${BEAM_ENABLE_DISCOVERY}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_tests.cmake")
+    if(BEAM_ENABLE_DISCOVERY)
+        add_executable(beam-discovery-tests tests/discovery_tests.cpp src/discovery/dnssd.cpp)
+        target_compile_features(beam-discovery-tests PRIVATE cxx_std_23)
+        target_include_directories(beam-discovery-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        target_include_directories(beam-discovery-tests SYSTEM PRIVATE "${DNSSD_INCLUDE_DIR}")
+        target_link_libraries(beam-discovery-tests PRIVATE Threads::Threads)
+        beam_enable_warnings(beam-discovery-tests)
+        add_test(NAME discovery COMMAND beam-discovery-tests)
+        set_tests_properties(discovery PROPERTIES TIMEOUT 10)
+        add_executable(beam-discovery-live-tests tests/discovery_live_tests.cpp)
+        target_link_libraries(beam-discovery-live-tests PRIVATE Beam::Core)
+        beam_enable_warnings(beam-discovery-live-tests)
+    endif()
     if(BEAM_ENABLE_QUIC)
         add_executable(beam-transfer-tests tests/transfer_tests.cpp)
         target_include_directories(beam-transfer-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -72,6 +103,20 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.sh" "$<TARGET_FILE:beam>"
             "${OPENSSL_EXECUTABLE}" "$<TARGET_FILE:beam-transfer-tests>" "$<TARGET_FILE:beam-phase2-tests>")
         set_tests_properties(quic-localhost PROPERTIES TIMEOUT 120)
+    endif()
+    if(BEAM_ENABLE_DISCOVERY)
+        if(BEAM_ENABLE_QUIC)
+            add_custom_target(discovery-test
+                COMMAND "$<TARGET_FILE:beam-discovery-live-tests>"
+                COMMAND "${BASH_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.sh"
+                    "$<TARGET_FILE:beam>" "${OPENSSL_EXECUTABLE}"
+                    "$<TARGET_FILE:beam-transfer-tests>" "$<TARGET_FILE:beam-phase2-tests>" discovery
+                DEPENDS beam-discovery-live-tests beam beam-transfer-tests beam-phase2-tests
+                USES_TERMINAL)
+        else()
+            add_custom_target(discovery-test COMMAND "$<TARGET_FILE:beam-discovery-live-tests>"
+                DEPENDS beam-discovery-live-tests USES_TERMINAL)
+        endif()
     endif()
 endif()
 

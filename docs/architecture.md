@@ -57,7 +57,25 @@ The current format is described in [protocol](protocol.md); evolve that format i
 adding a serialization framework solely for popularity.
 
 Future trusted peers may reuse long-lived connections, but the current implementation deliberately uses one
-connection per transfer. LAN discovery should use mDNS with minimal connection metadata.
+connection per transfer. LAN discovery uses mDNS with minimal connection metadata.
 Tailscale addresses remain ordinary endpoints: prefer direct LAN paths when available,
 fall back to Tailscale when appropriate, and keep both discovery and Tailscale optional.
 See [the roadmap](ROADMAP.md) before implementing those features.
+
+## LAN discovery
+
+`include/beam/discovery.hpp` exposes bounded browsing and an RAII receiver
+advertisement. `src/discovery/dnssd.cpp` owns Bonjour/Avahi references behind that
+boundary; it does not depend on CLI, QUIC, or certificate storage. The CLI starts
+advertisement through the existing calling-thread `on_listening` hook and owns it
+until the transfer finishes. Core API callers can use the same hook explicitly.
+
+Browsing polls daemon sockets on the calling thread, resolves SRV/TXT and A/AAAA
+records, tracks removals and interface-specific endpoints, and checks cancellation
+at most every 50 ms between daemon batches. C callbacks retain exceptions for the
+application thread. Completed resolve references are closed outside callbacks.
+Advertisement registers synchronously with a bounded deadline, then a scoped
+`std::jthread` processes daemon events. Destruction joins the worker before releasing
+its registration and callback state. Asynchronous registration errors are surfaced
+by `check()`; the CLI warns and withdraws the advertisement while preserving transfer.
+See [discovery](discovery.md) for wire metadata and trust boundaries.

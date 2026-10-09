@@ -9,7 +9,7 @@ CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp")
 CXX_TRANSLATION_UNITS := $(filter %.cpp,$(CXX_SOURCES))
 CMAKE_ARGS ?=
 
-.PHONY: all deps configure build test check lint format format-check format-version clean help
+.PHONY: all deps configure build test check discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -25,6 +25,10 @@ test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure
 
 check: format-check test
+
+# Explicit LAN test: requires a running Bonjour/Avahi daemon and multicast access.
+discovery-test: configure
+	$(CMAKE) --build "$(BUILD_DIR)" --target discovery-test --config $(BUILD_TYPE)
 
 lint: configure
 	@set -e; for source in $(CXX_TRANSLATION_UNITS); do \
@@ -52,3 +56,4 @@ help:
 	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format and tests"
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"
 	@echo "lint: configure and run clang-tidy lint and static analysis (requires clang-tidy)"
+	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"

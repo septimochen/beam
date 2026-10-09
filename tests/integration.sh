@@ -4,6 +4,7 @@ beam=$1
 openssl=$2
 attacker=$3
 phase2=$4
+discovery_mode=${5:-}
 peer_pid=
 root=$(mktemp -d)
 receiver_pid=
@@ -22,11 +23,13 @@ start_receiver() {
     if [[ -n "${receiver_mode:-}" ]]; then
         "$phase2" "$receiver_mode" "127.0.0.1:$port" server.pem server.key ca.pem output >receiver.log 2>&1 &
     else
-        SSL_CERT_FILE="${system_ca:-ca.pem}" "$beam" receive --listen "$port" --output output --cert "${server_cert:-server.pem}" --key "${server_key:-server.key}" --ca ca.pem --timeout 5 >receiver.log 2>&1 &
+        local discovery_flags=(--no-discovery)
+        if [[ -n "${discovery_name:-}" ]]; then discovery_flags=(--name "$discovery_name"); fi
+        SSL_CERT_FILE="${system_ca:-ca.pem}" "$beam" receive --listen "$port" --output output --cert "${server_cert:-server.pem}" --key "${server_key:-server.key}" --ca ca.pem --timeout 5 "${discovery_flags[@]}" >receiver.log 2>&1 &
     fi
     receiver_pid=$!
     local attempt
-    for attempt in {1..200}; do
+    for attempt in {1..500}; do
         if grep -q '^Listening' receiver.log; then return; fi
         if ! kill -0 "$receiver_pid" 2>/dev/null; then cat receiver.log; wait_receiver || true; exit 1; fi
         sleep 0.01
@@ -48,11 +51,38 @@ for file in empty.bin small.bin large.bin; do
         small.bin) printf 'Beam binary\000content\377\n' > "source/$file" ;;
         large.bin) dd if=/dev/urandom of="source/$file" bs=65536 count=48 2>/dev/null ;;
     esac
+    if [[ "$discovery_mode" == discovery && "$file" == empty.bin ]]; then
+        discovery_name="Beam-CLI-Test-$$"
+    fi
     start_receiver
+    if [[ -n "${discovery_name:-}" ]]; then
+        "$beam" devices --timeout 2 >devices.log 2>devices.err
+        # Choose a discovered IPv4 endpoint; explicitly use the provisioned TLS name.
+        discovered_endpoint=$(awk -F '\t' -v name="$discovery_name" '$1 == name && $2 !~ /^\[/ {print $2; exit}' devices.log)
+        if [[ -z "$discovered_endpoint" ]]; then cat devices.log devices.err receiver.log; exit 1; fi
+        if ! "$beam" send "$discovered_endpoint" "source/$file" --server-name localhost --cert client.pem --key client.key --ca ca.pem --timeout 5 >sender.log 2>&1; then cat sender.log receiver.log; exit 1; fi
+        if ! wait_receiver; then cat receiver.log; exit 1; fi
+        cmp "source/$file" "output/$file"
+        "$beam" devices --timeout 1 >devices.log 2>devices.err
+        if awk -F '\t' -v name="$discovery_name" '$1 == name {found=1} END {exit !found}' devices.log; then echo 'exited receiver still advertised'; exit 1; fi
+        unset discovery_name
+        continue
+    fi
     if ! send "source/$file"; then cat sender.log receiver.log; exit 1; fi
     if ! wait_receiver; then cat receiver.log; exit 1; fi
     cmp "source/$file" "output/$file"
 done
+# Discovery polling remains cancellable without receiver announcements.
+if [[ "$discovery_mode" == discovery ]]; then
+    "$beam" devices --timeout 60 >devices.log 2>devices.err &
+    peer_pid=$!
+    sleep 0.2
+    kill -INT "$peer_pid"
+    status=0
+    wait "$peer_pid" || status=$?
+    peer_pid=
+    if [[ "$status" != 130 ]]; then cat devices.log devices.err; echo 'discovery Ctrl-C failed'; exit 1; fi
+fi
 # Exercise IPv6 numeric endpoint parsing, TLS SAN verification, and UDP connectivity.
 cp source/small.bin source/ipv6.bin
 destination='[::1]'
@@ -109,7 +139,7 @@ for mode in checksum truncated oversized wrong-id interrupted invalid-name inval
     if compgen -G 'output/.beam-*' >/dev/null; then echo "temporary file leaked for $mode"; exit 1; fi
 done
 # A listener with no sender expires instead of hanging indefinitely.
-"$beam" receive --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 >receiver.log 2>&1 && exit 1
+"$beam" receive --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 --no-discovery >receiver.log 2>&1 && exit 1
 if "$beam" receive --listen "$port" --output missing-directory --cert server.pem --key server.key --ca ca.pem --timeout 1 >receiver.log 2>&1; then exit 1; fi
 grep -q 'open receive directory' receiver.log
 # Phase 2: progress callbacks on both sides, including zero-sized payloads.
@@ -222,7 +252,7 @@ if send source/quiet.bin; then exit 1; fi
 if wait_receiver; then exit 1; fi
 grep -q 'peer: destination exists' sender.log
 # The listener timeout has an explicit category.
-"$beam" receive --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 >receiver.log 2>&1 && exit 1
+"$beam" receive --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 --no-discovery >receiver.log 2>&1 && exit 1
 grep -q 'timed out' receiver.log
 echo 'Phase 2: callback progress, cancellation, Ctrl-C, typed errors and cleanup verified'
 echo 'QUIC integration: binary/empty/large success; overwrite, TLS, malicious and interrupted transfers rejected'
