@@ -67,7 +67,7 @@ DNSServiceErrorType DNSSD_API DNSServiceBrowse(DNSServiceRef* ref, DNSServiceFla
     require(std::string_view(type) == "_beam._udp" && std::string_view(domain) == "local.",
             "discovery escaped LAN domain");
     if (scenario == 5)
-        return kDNSServiceErr_ServiceNotRunning;
+        return kDNSServiceErr_Unknown;
     return create(ref, [=](DNSServiceRef handle) {
         if (scenario == 6) {
             callback(handle, 0, 0, kDNSServiceErr_Unknown, nullptr, nullptr, nullptr, context);
