@@ -60,7 +60,7 @@ before the direct transfer path is reliable on macOS and Linux.
 - [x] Validate untrusted records; retain certificate authentication for discovered endpoints.
 - [x] Test records, duplicates/removals, interface scopes, resource bounds, and daemon failures.
 - [x] Verify live macOS discovery and a TLS-verified CLI transfer through a discovered endpoint.
-- [x] Add Linux Avahi discovery/transfer checks to CI; retain the Windows scaffold.
+- [x] Verify Phase 3 on Linux CI ([run 37936998371](https://github.com/septimochen/beam/actions/runs/37936998371)), including live Avahi discovery and a verified transfer; macOS Debug, Release, sanitizer, scaffold-only, and discovery-only checks passed.
 
 ## Product scope
 
