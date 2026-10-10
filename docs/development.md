@@ -1,8 +1,79 @@
 # Development Guide
 
 Use C++23 and CMake for the core and CLI. Build out of tree; the workflow must work
-without an IDE. Keep common commands in the root Makefile. See the [README](../README.md#build-and-test)
-for prerequisites, dependency provisioning, and build/test commands.
+without an IDE. Keep common commands in the root Makefile. See the [README](../README.md#quick-start)
+for a first transfer.
+
+## Build setup
+
+Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL development
+headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy.
+The pinned MsQuic build uses its own quictls TLS implementation; Beam uses the
+installed OpenSSL libcrypto for hashing and random transfer IDs.
+
+On macOS, install the build tools with Homebrew:
+
+```sh
+brew install cmake openssl@3 llvm
+export CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format"
+export CLANG_TIDY="$(brew --prefix llvm)/bin/clang-tidy"
+```
+
+Formatting requires LLVM 23; check the installed version before running contributor
+checks. Bonjour is included with macOS.
+
+On Debian/Ubuntu, install `build-essential`, `libssl-dev`, `perl`, `cmake`, `git`,
+`libavahi-compat-libdnssd-dev`, and `avahi-daemon`. Linux discovery requires a
+running Avahi daemon. Install `clang-format-23` and `clang-tidy-23` from the
+[official LLVM package repository](https://apt.llvm.org/) for your distribution:
+
+```sh
+export CLANG_FORMAT=clang-format-23
+export CLANG_TIDY=clang-tidy-23
+```
+
+From the repository root:
+
+```sh
+make deps   # explicit network download/build of MsQuic v2.6.2
+make check  # formatting, build, unit tests, and localhost QUIC integration
+```
+
+`make deps` checks commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`, initializes only
+its pinned TLS submodule, and installs into ignored `build/deps/install`. Normal
+CMake configuration never downloads dependencies. The allowlist `.gitignore`
+keeps builds, certificates, keys, and local receive directories untracked.
+
+## Build options
+
+Use Make for a separate Release build:
+
+```sh
+make build BUILD_DIR=build-release BUILD_TYPE=Release
+make test BUILD_DIR=build-release BUILD_TYPE=Release
+```
+
+To use an existing OpenSSL-backed MsQuic installation, pass its prefix to CMake:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMSQUIC_ROOT=/path/to/prefix
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+Discovery defaults to the QUIC setting. To build direct transfers without
+Bonjour/Avahi, use `make build CMAKE_ARGS='-DBEAM_ENABLE_DISCOVERY=OFF'`.
+Windows builds only the help/version and filename-validation scaffold by default;
+transfer filesystem handling is currently POSIX-only. To select the scaffold on
+any platform, disable both features explicitly:
+
+```sh
+make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF'
+```
+
+Installing with `cmake --install build --prefix ./install` requires the
+MsQuic/OpenSSL shared libraries to remain available to the runtime loader.
+Beam does not yet bundle an installer.
 
 ## Implementation style
 
