@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -189,14 +190,19 @@ void validate_endpoint(const std::string& text) {
     const auto scope = endpoint.host.find('%');
     const auto address = endpoint.host.substr(0, scope);
     std::array<unsigned char, 16> bytes{};
-    checked(inet_pton(AF_INET, address.c_str(), bytes.data()) == 1 ||
-                inet_pton(AF_INET6, address.c_str(), bytes.data()) == 1,
+    const bool ipv6 = inet_pton(AF_INET6, address.c_str(), bytes.data()) == 1;
+    checked(ipv6 || (scope == std::string::npos &&
+                     inet_pton(AF_INET, address.c_str(), bytes.data()) == 1),
             "stored endpoint must contain a numeric IPv4 or IPv6 address");
-    if (scope != std::string::npos)
-        checked(scope + 1 < endpoint.host.size() &&
-                    std::all_of(endpoint.host.begin() + static_cast<std::ptrdiff_t>(scope + 1),
-                                endpoint.host.end(), [](char c) { return c >= '0' && c <= '9'; }),
-                "IPv6 scope must be a numeric interface index");
+    if (scope != std::string::npos) {
+        const auto index_text = std::string_view(endpoint.host).substr(scope + 1);
+        std::uint32_t index = 0;
+        const auto [end, error] =
+            std::from_chars(index_text.data(), index_text.data() + index_text.size(), index);
+        checked(ipv6 && index > 0 && error == std::errc{} &&
+                    end == index_text.data() + index_text.size(),
+                "IPv6 scope must be a nonzero 32-bit numeric interface index");
+    }
 }
 int open_directory(const std::filesystem::path& path, bool create) {
     if (path.empty())
@@ -261,6 +267,7 @@ struct IdentityStore::Impl {
         return false;
     }
     void write(const std::string& name, const std::string& contents, bool replace = false) const {
+        checked(contents.size() <= max_certificate, "identity store record is too large");
         std::array<unsigned char, 16> random{};
         checked(RAND_bytes(random.data(), static_cast<int>(random.size())) == 1,
                 "generate state temporary name failed");

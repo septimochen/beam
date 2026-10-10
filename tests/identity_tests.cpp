@@ -45,7 +45,7 @@ struct CertificateVariant {
 };
 CertificateVariant altered_certificate(const std::string& pem,
                                        const std::filesystem::path& key_path,
-                                       const std::string& mode) {
+                                       const std::string& mode, std::size_t padding_size = 0) {
     std::unique_ptr<BIO, decltype(&BIO_free)> input(
         BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())), BIO_free);
     std::unique_ptr<X509, decltype(&X509_free)> certificate(
@@ -55,6 +55,23 @@ CertificateVariant altered_certificate(const std::string& pem,
     std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> key(
         PEM_read_bio_PrivateKey(key_input.get(), nullptr, nullptr, nullptr), EVP_PKEY_free);
     require(certificate && key, "load certificate fixture failed");
+    if (mode == "padding") {
+        const std::string padding(padding_size, 'a');
+        std::unique_ptr<ASN1_OCTET_STRING, decltype(&ASN1_OCTET_STRING_free)> value(
+            ASN1_OCTET_STRING_new(), ASN1_OCTET_STRING_free);
+        std::unique_ptr<ASN1_OBJECT, decltype(&ASN1_OBJECT_free)> object(
+            OBJ_txt2obj("1.3.6.1.4.1.55555.1", 1), ASN1_OBJECT_free);
+        require(value && object &&
+                    ASN1_OCTET_STRING_set(value.get(),
+                                          reinterpret_cast<const unsigned char*>(padding.data()),
+                                          static_cast<int>(padding.size())) == 1,
+                "create large certificate fixture failed");
+        std::unique_ptr<X509_EXTENSION, decltype(&X509_EXTENSION_free)> extension(
+            X509_EXTENSION_create_by_OBJ(nullptr, object.get(), 0, value.get()),
+            X509_EXTENSION_free);
+        require(extension && X509_add_ext(certificate.get(), extension.get(), -1) == 1,
+                "add fixture extension failed");
+    }
     if (mode == "expired") {
         require(X509_gmtime_adj(X509_getm_notBefore(certificate.get()), -3600) &&
                     X509_gmtime_adj(X509_getm_notAfter(certificate.get()), -60),
@@ -134,6 +151,10 @@ int main() {
                     "DNS endpoint accepted");
             rejects([&] { store.pair("bob", bob_certificate, bob.fingerprint, "127.0.0.1:0"); },
                     "zero port accepted");
+            for (const std::string endpoint :
+                 {"127.0.0.1%2:4269", "[fe80::1%4294967296]:4269", "[fe80::1%0]:4269"})
+                rejects([&] { store.pair("bob", bob_certificate, bob.fingerprint, endpoint); },
+                        "invalid interface scope accepted");
             for (const std::string mode : {"expired", "future", "invalid-date", "bad-signature"}) {
                 const auto altered =
                     altered_certificate(bob.certificate_pem, bob_path / "identity.pem", mode);
@@ -145,6 +166,34 @@ int main() {
                     "invalid signed device certificate was paired");
                 require(store.peers().empty(), "invalid certificate changed trust");
             }
+            // A valid certificate can fit the import limit while its serialized
+            // peer record (certificate plus endpoint) would exceed the store limit.
+            std::size_t low = 0, high = 13000;
+            while (low + 1 < high) {
+                const auto middle = (low + high) / 2;
+                const auto candidate = altered_certificate(
+                    bob.certificate_pem, bob_path / "identity.pem", "padding", middle);
+                if (candidate.pem.size() <= 16384)
+                    low = middle;
+                else
+                    high = middle;
+            }
+            auto large =
+                altered_certificate(bob.certificate_pem, bob_path / "identity.pem", "padding", low);
+            while (large.pem.size() > 16384 && low > 0)
+                large = altered_certificate(bob.certificate_pem, bob_path / "identity.pem",
+                                            "padding", --low);
+            require(large.pem.size() <= 16384 && large.pem.size() + 15 > 16384,
+                    "certificate fixture did not reach the peer record boundary");
+            save(workspace.path / "boundary.pem", large.pem);
+            rejects(
+                [&] {
+                    store.pair("boundary", workspace.path / "boundary.pem", large.fingerprint,
+                               "127.0.0.1:4269");
+                },
+                "oversized serialized peer record accepted");
+            require(store.peers().empty() && !std::filesystem::exists(alice_path / "boundary.peer"),
+                    "oversized record was published");
             const auto peer = store.pair("bob", bob_certificate, bob.fingerprint, "127.0.0.1:4269");
             require(peer.identity.fingerprint == bob.fingerprint && store.peers().size() == 1,
                     "pairing did not persist");
