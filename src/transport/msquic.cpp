@@ -1,10 +1,12 @@
 #include "transport.hpp"
 #include <msquic.h>
+#include <openssl/pem.h>
 #include <openssl/pkcs7.h>
 #include <openssl/x509_vfy.h>
 #include <openssl/x509v3.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
@@ -12,6 +14,7 @@
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
+#include <unistd.h>
 #include <vector>
 
 namespace beam::transport {
@@ -56,11 +59,44 @@ void checked(QUIC_STATUS status, const char* operation) {
         throw TransferError(code, message.str());
     }
 }
+// MsQuic loads CA files by path. Keep an immutable per-runtime snapshot rather
+// than a mutable trust bundle shared by processes or future pairing changes.
+struct TrustFile {
+    std::array<char, 32> path{};
+    int descriptor{-1};
+    explicit TrustFile(const std::string& pem) {
+        std::strcpy(path.data(), "/tmp/beam-trust-XXXXXX");
+        descriptor = mkstemp(path.data());
+        if (descriptor < 0)
+            throw TransferError(TransferErrorCode::transport,
+                                "create paired trust snapshot failed");
+        std::size_t offset = 0;
+        while (offset < pem.size()) {
+            const auto count = ::write(descriptor, pem.data() + offset, pem.size() - offset);
+            if (count < 0 && errno == EINTR)
+                continue;
+            if (count <= 0) {
+                ::close(descriptor);
+                unlink(path.data());
+                throw TransferError(TransferErrorCode::transport,
+                                    "write paired trust snapshot failed");
+            }
+            offset += static_cast<std::size_t>(count);
+        }
+    }
+    ~TrustFile() {
+        if (descriptor >= 0)
+            ::close(descriptor);
+        unlink(path.data());
+    }
+};
 struct Runtime {
     const QUIC_API_TABLE* api{};
     HQUIC registration{};
     HQUIC configuration{};
     std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> trust{nullptr, X509_STORE_free};
+    std::unique_ptr<TrustFile> paired_trust;
+    std::vector<std::array<unsigned char, 32>> pinned_fingerprints;
     bool client;
     explicit Runtime(const TransferOptions& options, bool is_client) : client(is_client) {
         try {
@@ -88,8 +124,36 @@ struct Runtime {
                     "open configuration");
             const auto key = options.credentials.private_key.string();
             const auto certificate = options.credentials.certificate.string();
-            const auto ca = options.credentials.ca_certificate.string();
+            auto ca = options.credentials.ca_certificate.string();
             trust.reset(X509_STORE_new());
+            if (!options.credentials.pinned_certificates.empty()) {
+                if (!ca.empty() || options.credentials.pinned_certificates.size() > 128 || !trust)
+                    throw TransferError(TransferErrorCode::transport,
+                                        "invalid paired trust configuration");
+                std::string bundle;
+                for (const auto& pem : options.credentials.pinned_certificates) {
+                    if (pem.empty() || pem.size() > 16384)
+                        throw TransferError(TransferErrorCode::transport,
+                                            "invalid paired certificate size");
+                    std::unique_ptr<BIO, decltype(&BIO_free)> input(
+                        BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())), BIO_free);
+                    std::unique_ptr<X509, decltype(&X509_free)> leaf(
+                        input ? PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr) : nullptr,
+                        X509_free);
+                    std::array<unsigned char, 32> fingerprint{};
+                    unsigned length = 0;
+                    if (!leaf ||
+                        X509_digest(leaf.get(), EVP_sha256(), fingerprint.data(), &length) != 1 ||
+                        length != fingerprint.size())
+                        throw TransferError(TransferErrorCode::transport,
+                                            "invalid paired certificate");
+                    pinned_fingerprints.push_back(fingerprint);
+                    bundle += pem;
+                    bundle += '\n';
+                }
+                paired_trust = std::make_unique<TrustFile>(bundle);
+                ca = paired_trust->path.data();
+            }
             if (!trust || X509_STORE_load_locations(trust.get(), ca.c_str(), nullptr) != 1)
                 throw TransferError(TransferErrorCode::transport,
                                     "load dedicated peer CA trust store failed");
@@ -126,6 +190,15 @@ struct Runtime {
             d2i_X509(nullptr, &cursor, static_cast<long>(certificate->Length)), X509_free);
         if (!leaf || cursor != certificate->Buffer + certificate->Length)
             return false;
+        if (!pinned_fingerprints.empty()) {
+            std::array<unsigned char, 32> fingerprint{};
+            unsigned length = 0;
+            if (X509_digest(leaf.get(), EVP_sha256(), fingerprint.data(), &length) != 1 ||
+                length != fingerprint.size() ||
+                std::find(pinned_fingerprints.begin(), pinned_fingerprints.end(), fingerprint) ==
+                    pinned_fingerprints.end())
+                return false;
+        }
         std::unique_ptr<PKCS7, decltype(&PKCS7_free)> certificates(nullptr, PKCS7_free);
         if (chain && chain->Length) {
             if (!chain->Buffer || chain->Length > 1048576)

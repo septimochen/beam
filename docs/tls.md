@@ -1,10 +1,17 @@
-# Phase 1 TLS setup
+# TLS setup
+
+For everyday use, follow [device identity and pairing](pairing.md). Beam creates
+persistent device certificates and trusts only explicitly paired certificates.
+The instructions below preserve the original dedicated-CA workflow.
+
+## Dedicated-CA transfers
 
 Beam uses MsQuic's TLS 1.3 certificate validation with mandatory client authentication.
 An additional OpenSSL X.509 verification step restricts peers to the supplied CA even
-if another root is available in the TLS system store. Use a dedicated private CA for the devices permitted to send/receive. Any certificate
-issued by this CA with the appropriate TLS usage is authorized; per-device pairing and
-revocation management are future work. Keep the CA signing key off the transfer devices.
+if another root is available in the TLS system store. Use a dedicated private CA
+for the devices permitted to send/receive. Any certificate issued by this CA with
+the appropriate TLS usage is authorized; this legacy mode does not use the stored
+peer allowlist. Keep the CA signing key off the transfer devices.
 Exchange the CA certificate through a trusted channel and verify its SHA-256 fingerprint
 out of band. Do not use an organizational/public CA that also authorizes unrelated clients.
 

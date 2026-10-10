@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(Beam VERSION 0.3.0 LANGUAGES CXX)
+project(Beam VERSION 0.4.0 LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "Use an out-of-tree build: cmake -S . -B build")
@@ -24,7 +24,7 @@ if(BEAM_ENABLE_QUIC)
     set(MSQUIC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install" CACHE PATH "Installed MsQuic prefix")
     find_path(MSQUIC_INCLUDE_DIR msquic.h HINTS "${MSQUIC_ROOT}/include" REQUIRED)
     find_library(MSQUIC_LIBRARY NAMES msquic HINTS "${MSQUIC_ROOT}/lib" "${MSQUIC_ROOT}/lib64" REQUIRED)
-    target_sources(beam-core PRIVATE src/core/transfer.cpp src/core/errors.cpp src/protocol/codec.cpp
+    target_sources(beam-core PRIVATE src/core/identity.cpp src/core/transfer.cpp src/core/errors.cpp src/protocol/codec.cpp
         src/transfer/files.cpp src/transport/msquic.cpp)
     target_include_directories(beam-core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(beam-core SYSTEM PRIVATE "${MSQUIC_INCLUDE_DIR}")
@@ -88,6 +88,11 @@ if(BUILD_TESTING)
         beam_enable_warnings(beam-discovery-live-tests)
     endif()
     if(BEAM_ENABLE_QUIC)
+        add_executable(beam-identity-tests tests/identity_tests.cpp)
+        target_link_libraries(beam-identity-tests PRIVATE Beam::Core OpenSSL::Crypto)
+        beam_enable_warnings(beam-identity-tests)
+        add_test(NAME identity COMMAND beam-identity-tests)
+        set_tests_properties(identity PROPERTIES TIMEOUT 15)
         add_executable(beam-transfer-tests tests/transfer_tests.cpp)
         target_include_directories(beam-transfer-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
         target_link_libraries(beam-transfer-tests PRIVATE Beam::Core)
@@ -99,6 +104,9 @@ if(BUILD_TESTING)
         beam_enable_warnings(beam-phase2-tests)
         find_program(OPENSSL_EXECUTABLE openssl REQUIRED)
         find_program(BASH_EXECUTABLE bash REQUIRED)
+        add_test(NAME pairing-localhost COMMAND "${BASH_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/pairing_integration.sh" "$<TARGET_FILE:beam>" "${OPENSSL_EXECUTABLE}")
+        set_tests_properties(pairing-localhost PROPERTIES TIMEOUT 45)
         add_test(NAME quic-localhost COMMAND "${BASH_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.sh" "$<TARGET_FILE:beam>"
             "${OPENSSL_EXECUTABLE}" "$<TARGET_FILE:beam-transfer-tests>" "$<TARGET_FILE:beam-phase2-tests>")

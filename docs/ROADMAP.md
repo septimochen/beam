@@ -62,6 +62,20 @@ before the direct transfer path is reliable on macOS and Linux.
 - [x] Verify live macOS discovery and a TLS-verified CLI transfer through a discovered endpoint.
 - [x] Verify Phase 3 on Linux CI ([run 37936998371](https://github.com/septimochen/beam/actions/runs/37936998371)), including live Avahi discovery and a verified transfer; macOS Debug, Release, sanitizer, scaffold-only, and discovery-only checks passed.
 
+## Phase 4 implementation
+
+- [x] Persistent OpenSSL device certificate/key and stable TLS identity on macOS/Linux.
+- [x] Explicit reciprocal pairing after independent full SHA-256 fingerprint verification.
+- [x] Owner-only, bounded, locked, atomic identity and trusted-peer storage.
+- [x] Peer listing, explicit removal, and address updates without changing trust.
+- [x] `beam send FILE PEER` and receivers using stored paired credentials.
+- [x] Exact leaf certificate pinning alongside normal TLS validation; retain dedicated-CA mode.
+- [x] Test restart/concurrent initialization, storage safety, invalid pairing, authenticated
+  name-based transfers, IPv6/address changes, wrong identities, and revocation.
+- [x] Verify macOS Debug, Release, ASan/UBSan, direct-only, discovery-only, scaffold,
+  and live Bonjour discovery checks.
+- [ ] Verify Phase 4 on Linux CI.
+
 ## Product scope
 
 Beam is an ad-hoc sharing tool for files, images, music, clipboard text, URLs, and
@@ -71,8 +85,10 @@ LAN/Tailscale reachability, and minimal dependencies or operational complexity.
 
 Future everyday commands should select known devices by name, such as
 `beam send photo.jpg pixel` or `beam clipboard laptop`. Ports, routing, stream IDs,
-and certificate details should eventually live below that UX. The current CLI
-intentionally exposes endpoints and credentials to prove the first milestone.
+and certificate details should eventually live below that UX. Phase 4 now selects
+paired receivers by local alias for file sending, with stored
+or explicitly overridden endpoints. Discovery remains an untrusted address hint;
+see [pairing](pairing.md) for identity and trust management.
 
 Do not add cloud infrastructure or accounts unless explicitly requested. Full folder
 synchronization, backup, distributed filesystems, cloud storage, messaging, and remote

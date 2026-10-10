@@ -38,8 +38,12 @@ void validate_options(const TransferOptions& options) {
     if (options.timeout.count() <= 0 || options.timeout > std::chrono::hours(24))
         throw std::invalid_argument("timeout must be positive and no longer than 24 hours");
     if (options.credentials.certificate.empty() || options.credentials.private_key.empty() ||
-        options.credentials.ca_certificate.empty())
+        (options.credentials.ca_certificate.empty() &&
+         options.credentials.pinned_certificates.empty()))
         throw std::invalid_argument("certificate, private key and trusted CA are required");
+    if (!options.credentials.ca_certificate.empty() &&
+        !options.credentials.pinned_certificates.empty())
+        throw std::invalid_argument("CA credentials cannot be combined with paired credentials");
     transport::check_cancel(options);
 }
 void progress(const TransferOptions& options, TransferStage stage, const std::string& filename,

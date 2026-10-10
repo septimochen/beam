@@ -11,8 +11,15 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   Keep QUIC encryption enabled even when the connection travels over Tailscale.
 - Discovery is a convenience, not authentication. Never automatically trust a
   discovered machine or advertise secrets in discovery records.
-- Future persistent identity must survive network changes; an IP address is not
-  device identity. Pairing must explicitly verify identity before storing trust.
+- Persistent identity must survive network changes; an IP address is not
+  device identity. Pairing must explicitly verify the full certificate fingerprint
+  through an independent channel before storing trust. See [pairing](pairing.md).
+- Paired transfers must check the exact leaf certificate and normal TLS validity
+  and hostname rules. Never authorize another certificate solely because a paired
+  certificate or system root signed it. Empty trust sets must fail closed.
+- Keep identity keys and peer records in an owner-only store. Reject symlink and
+  hardlink records, bound file/peer counts, serialize mutations, and publish them
+  atomically. Never silently replace a damaged identity or an existing peer.
 
 ## Remote input and files
 

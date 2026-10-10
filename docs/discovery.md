@@ -25,10 +25,11 @@ it can remain visible while the one transfer is in progress. Force-killing a pro
 can leave cached records until the daemon withdraws them or they expire.
 
 Copy a discovered endpoint into the existing `beam send IP:PORT FILE ...` command.
-All certificate flags and verification still apply. Set `--server-name` to the
+In dedicated-CA mode, all certificate flags and verification still apply. Set `--server-name` to the
 independently provisioned certificate name if its SAN does not contain the endpoint
-IP. Never treat the advertised name or hostname as verified identity. Persistent
-identity, pairing, and selecting trusted peers by name belong to Phase 4.
+IP. Never treat the advertised name or hostname as verified identity. For a paired peer, use `beam peer NAME --endpoint IP:PORT` or
+`beam send FILE NAME --endpoint IP:PORT`; the saved certificate remains authoritative.
+See [pairing](pairing.md) for setup.
 
 ## Records and bounds
 
@@ -53,7 +54,8 @@ identity, pairing, and selecting trusted peers by name belong to Phase 4.
 
 Discovery is unauthenticated. Any local machine can spoof a record or a name. It
 does not add a CA, approve a peer, weaken TLS, or make a discovered service trusted.
-Receivers still require the dedicated private CA described in [TLS setup](tls.md).
+Receivers authenticate using explicitly [paired certificates](pairing.md) or the
+dedicated private CA described in [TLS setup](tls.md).
 Advertising reveals that a Beam receiver is running, its label, host, and port to
 other devices on the link. Use `--no-discovery` when that visibility is unwanted.
 

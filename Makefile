@@ -9,7 +9,7 @@ CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp")
 CXX_TRANSLATION_UNITS := $(filter %.cpp,$(CXX_SOURCES))
 CMAKE_ARGS ?=
 
-.PHONY: all deps configure build test check discovery-test lint format format-check format-version clean help
+.PHONY: all deps configure build test check pairing-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -25,6 +25,9 @@ test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure
 
 check: format-check test
+
+pairing-test: build
+	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^(identity|pairing-localhost)$$'
 
 # Explicit LAN test: requires a running Bonjour/Avahi daemon and multicast access.
 discovery-test: configure
@@ -57,3 +60,4 @@ help:
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"
 	@echo "lint: configure and run clang-tidy lint and static analysis (requires clang-tidy)"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"
+	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"

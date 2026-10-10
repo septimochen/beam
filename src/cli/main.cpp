@@ -3,6 +3,7 @@
 #include "beam/discovery.hpp"
 #endif
 #ifdef BEAM_HAS_QUIC
+#include "beam/identity.hpp"
 #include "beam/transfer.hpp"
 #endif
 #include <charconv>
@@ -21,13 +22,24 @@ void print_help() {
            "Usage:\n"
            "  beam --help\n"
            "  beam --version\n"
+           "  beam identity init|show|export [--state-dir DIR]\n"
+           "  beam pair NAME --cert PEM --fingerprint SHA256 [--endpoint IP:PORT] [--state-dir "
+           "DIR]\n"
+           "  beam peers [--state-dir DIR]\n"
+           "  beam unpair NAME [--state-dir DIR]\n"
+           "  beam peer NAME --endpoint IP:PORT [--state-dir DIR]\n"
+           "  beam send FILE PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS] "
+           "[--no-progress]\n"
+           "  beam receive --output DIR [--listen PORT] [--state-dir DIR] [--name NAME] "
+           "[--no-discovery]\n"
            "  beam devices [--timeout SECONDS]\n"
            "  beam receive --listen PORT --output DIR --cert PEM --key PEM --ca PEM "
            "[--timeout SECONDS] [--no-progress] [--name NAME] [--no-discovery]\n"
            "  beam send IP:PORT FILE --cert PEM --key PEM --ca PEM [--server-name NAME] "
            "[--timeout SECONDS] [--no-progress]\n\n"
            "Receive one file from one authenticated peer, then exit. DIR must exist.\n"
-           "Both peers need certificates issued by the private CA supplied in --ca.\n"
+           "Initialize an identity and explicitly pair certificates with verified fingerprints.\n"
+           "Legacy --cert/--key/--ca transfers still require a dedicated private CA.\n"
            "The server certificate must match IP or --server-name. IPv6: [ADDRESS]:PORT.\n"
            "Progress goes to stderr; --no-progress disables it. Ctrl-C cancels cleanly.\n"
            "Receivers advertise on LAN; --no-discovery disables this. Discovery is not trust.\n"
@@ -99,11 +111,85 @@ int devices_command(int argc, char** argv) {
                                                                        : "[" + endpoint.host + "]")
                       << ':' << endpoint.port << '\t' << device.hostname << '\t'
                       << device.interface_index << '\n';
-    std::cerr << "Discovered endpoints are untrusted; sending still requires certificates.\n";
+    std::cerr << "Discovered endpoints are untrusted; use a paired peer or verified CA credentials.\n";
     return 0;
 }
 #endif
 #ifdef BEAM_HAS_QUIC
+std::filesystem::path state_directory(const std::map<std::string, std::string>& options) {
+    return options.contains("--state-dir") ? std::filesystem::path(options.at("--state-dir"))
+                                           : beam::default_state_directory();
+}
+int identity_command(int argc, char** argv) {
+    const std::string command = argv[1];
+    std::map<std::string, std::string> options;
+    std::vector<std::string> positional;
+    for (int index = 2; index < argc; ++index) {
+        const std::string argument = argv[index];
+        if (!argument.starts_with("--")) {
+            positional.push_back(argument);
+            continue;
+        }
+        if (argument != "--state-dir" &&
+            !(command == "pair" &&
+              (argument == "--cert" || argument == "--fingerprint" || argument == "--endpoint")) &&
+            !(command == "peer" && argument == "--endpoint"))
+            throw std::invalid_argument("unknown option: " + argument);
+        if (++index == argc || std::string_view(argv[index]).starts_with("--"))
+            throw std::invalid_argument("missing value for " + argument);
+        if (!options.emplace(argument, argv[index]).second)
+            throw std::invalid_argument("duplicate option: " + argument);
+    }
+    const auto required = [&](const char* name) -> std::string {
+        if (!options.contains(name) || options.at(name).empty())
+            throw std::invalid_argument(std::string("missing required option ") + name);
+        return options.at(name);
+    };
+    if (command == "identity") {
+        if (positional.size() != 1 ||
+            (positional[0] != "init" && positional[0] != "show" && positional[0] != "export"))
+            throw std::invalid_argument("identity requires init, show, or export");
+        beam::IdentityStore store(state_directory(options), positional[0] == "init");
+        const auto identity = positional[0] == "init" ? store.initialize() : store.identity();
+        if (positional[0] == "export")
+            std::cout << identity.certificate_pem;
+        else
+            std::cout << "Identity: " << identity.tls_name
+                      << "\nFingerprint: " << identity.fingerprint << '\n';
+        return 0;
+    }
+    if (command == "peers") {
+        if (!positional.empty())
+            throw std::invalid_argument("peers takes no positional arguments");
+        beam::IdentityStore store(state_directory(options));
+        std::cout << "NAME\tENDPOINT\tFINGERPRINT\n";
+        for (const auto& peer : store.peers())
+            std::cout << peer.name << '\t' << (peer.endpoint.empty() ? "(unset)" : peer.endpoint)
+                      << '\t' << peer.identity.fingerprint << '\n';
+        return 0;
+    }
+    if (positional.size() != 1 || !beam::is_peer_name(positional[0]))
+        throw std::invalid_argument("command requires one lowercase peer name");
+    if (command == "pair") {
+        const auto certificate = required("--cert");
+        const auto fingerprint = required("--fingerprint");
+        beam::IdentityStore store(state_directory(options));
+        const auto peer =
+            store.pair(positional[0], certificate, fingerprint,
+                       options.contains("--endpoint") ? options.at("--endpoint") : "");
+        std::cout << "Paired " << peer.name << " (" << peer.identity.fingerprint << ")\n";
+    } else if (command == "unpair") {
+        beam::IdentityStore store(state_directory(options));
+        store.unpair(positional[0]);
+        std::cout << "Removed trusted peer " << positional[0] << '\n';
+    } else {
+        const auto endpoint = required("--endpoint");
+        beam::IdentityStore store(state_directory(options));
+        store.set_endpoint(positional[0], endpoint);
+        std::cout << "Updated endpoint for " << positional[0] << '\n';
+    }
+    return 0;
+}
 int transfer_command(int argc, char** argv, bool receive) {
     std::map<std::string, std::string> options;
     std::vector<std::string> positional;
@@ -119,10 +205,10 @@ int transfer_command(int argc, char** argv, bool receive) {
             continue;
         }
         if (argument != "--cert" && argument != "--key" && argument != "--ca" &&
-            argument != "--timeout" &&
+            argument != "--timeout" && argument != "--state-dir" &&
             !(receive &&
               (argument == "--listen" || argument == "--output" || argument == "--name")) &&
-            !(!receive && argument == "--server-name"))
+            !(!receive && (argument == "--server-name" || argument == "--endpoint")))
             throw std::invalid_argument("unknown option: " + argument);
         if (++index == argc || std::string_view{argv[index]}.starts_with("--"))
             throw std::invalid_argument("missing value for " + argument);
@@ -135,7 +221,46 @@ int transfer_command(int argc, char** argv, bool receive) {
             throw std::invalid_argument(std::string("missing required option ") + name);
         return found->second;
     };
-    beam::TransferOptions configuration{{required("--cert"), required("--key"), required("--ca")}};
+    const bool manual =
+        options.contains("--cert") || options.contains("--key") || options.contains("--ca");
+    beam::TransferOptions configuration{};
+    beam::Endpoint endpoint{};
+    std::string filename, server_name;
+    if (manual) {
+        if (options.contains("--state-dir") || options.contains("--endpoint"))
+            throw std::invalid_argument(
+                "manual credentials cannot be combined with --state-dir or --endpoint");
+        configuration.credentials = {required("--cert"), required("--key"), required("--ca")};
+    }
+    if (receive) {
+        if (!positional.empty())
+            throw std::invalid_argument("receive takes no positional arguments");
+        static_cast<void>(required("--output"));
+        if (options.contains("--listen"))
+            static_cast<void>(number(options.at("--listen"), 65535, "listen port"));
+    } else {
+        if (positional.size() != 2)
+            throw std::invalid_argument("send requires IP:PORT and FILE, or FILE and PEER");
+        if (manual || positional[0].find(':') != std::string::npos) {
+            if (!manual)
+                static_cast<void>(required("--cert"));
+            try {
+                endpoint = beam::parse_endpoint(positional[0]);
+            } catch (const std::exception& error) {
+                throw std::invalid_argument(error.what());
+            }
+            filename = positional[1];
+            server_name =
+                options.contains("--server-name") ? options.at("--server-name") : endpoint.host;
+        } else {
+            if (options.contains("--server-name"))
+                throw std::invalid_argument(
+                    "paired sends use the saved TLS identity; omit --server-name");
+            if (!beam::is_peer_name(positional[1]))
+                throw std::invalid_argument("invalid peer name");
+            filename = positional[0];
+        }
+    }
 #ifdef BEAM_HAS_DISCOVERY
     if (options.contains("--name") && !beam::is_discovery_name(options.at("--name")))
         throw std::invalid_argument("name must be 1-63 printable ASCII bytes without outer spaces");
@@ -148,6 +273,26 @@ int transfer_command(int argc, char** argv, bool receive) {
     if (options.contains("--timeout"))
         configuration.timeout =
             std::chrono::seconds(number(options.at("--timeout"), 86400, "timeout"));
+    if (!manual) {
+        beam::IdentityStore store(state_directory(options));
+        if (receive) {
+            configuration.credentials = store.credentials();
+        } else {
+            const auto peer = store.peer(positional[1]);
+            const auto address =
+                options.contains("--endpoint") ? options.at("--endpoint") : peer.endpoint;
+            if (address.empty())
+                throw std::invalid_argument("peer has no saved endpoint; use --endpoint IP:PORT or "
+                                            "beam peer NAME --endpoint IP:PORT");
+            try {
+                endpoint = beam::parse_endpoint(address);
+            } catch (const std::exception& error) {
+                throw std::invalid_argument(error.what());
+            }
+            server_name = peer.identity.tls_name;
+            configuration.credentials = store.credentials(peer.name);
+        }
+    }
     InterruptGuard interrupts;
     configuration.should_cancel = [] { return interrupted != 0; };
     auto last_update = std::chrono::steady_clock::time_point{};
@@ -174,8 +319,9 @@ int transfer_command(int argc, char** argv, bool receive) {
     if (receive) {
         if (!positional.empty())
             throw std::invalid_argument("receive takes no positional arguments");
-        const auto port =
-            static_cast<std::uint16_t>(number(required("--listen"), 65535, "listen port"));
+        const auto port = static_cast<std::uint16_t>(
+            options.contains("--listen") ? number(options.at("--listen"), 65535, "listen port")
+                                         : 4269);
         const auto output = required("--output");
 #ifdef BEAM_HAS_DISCOVERY
         std::unique_ptr<beam::ReceiverAdvertisement> advertisement;
@@ -215,18 +361,7 @@ int transfer_command(int argc, char** argv, bool receive) {
         result = beam::receive_file(port, output, configuration);
         std::cout << "Received and verified ";
     } else {
-        if (positional.size() != 2)
-            throw std::invalid_argument("send requires IP:PORT and FILE");
-        beam::Endpoint endpoint;
-        try {
-            endpoint = beam::parse_endpoint(positional[0]);
-        } catch (const std::exception& error) {
-            throw std::invalid_argument(error.what());
-        }
-        result = beam::send_file(endpoint, positional[1],
-                                 options.contains("--server-name") ? options.at("--server-name")
-                                                                   : endpoint.host,
-                                 configuration);
+        result = beam::send_file(endpoint, filename, server_name, configuration);
         std::cout << "Sent and verified by peer ";
     }
     std::cout << result.filename << " (" << result.bytes << " bytes, SHA-256)\n";
@@ -246,6 +381,14 @@ int main(int argc, char** argv) {
     }
     const std::string_view command{argv[1]};
     try {
+        if (command == "identity" || command == "pair" || command == "peers" ||
+            command == "unpair" || command == "peer") {
+#ifdef BEAM_HAS_QUIC
+            return identity_command(argc, argv);
+#else
+            throw std::runtime_error("persistent identity is available in macOS/Linux QUIC builds");
+#endif
+        }
         if (command == "devices") {
 #ifdef BEAM_HAS_DISCOVERY
             return devices_command(argc, argv);

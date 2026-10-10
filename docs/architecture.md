@@ -12,7 +12,9 @@ listener, connection, and stream handles. Teardown shuts streams/connections dow
 waits for completion, then closes handles while callback contexts remain alive.
 A separate OpenSSL X.509 store containing only `--ca` verifies the portable peer
 certificate chain, in addition to MsQuic TLS verification: MsQuic also loads system
-roots, which must not grant Beam peer authorization. No detached application threads or shared ownership are needed.
+roots, which must not grant Beam peer authorization. In paired mode, the runtime
+loads an immutable bundle of approved self-signed certificates and checks the
+exact SHA-256 leaf fingerprint as well as normal TLS chain/hostname verification. No detached application threads or shared ownership are needed.
 
 A stream send waits for buffer release with MsQuic send buffering disabled, preventing
 unbounded queued file data. Receive callbacks retain a single pending MsQuic event;
@@ -79,3 +81,21 @@ Advertisement registers synchronously with a bounded deadline, then a scoped
 its registration and callback state. Asynchronous registration errors are surfaced
 by `check()`; the CLI warns and withdraws the advertisement while preserving transfer.
 See [discovery](discovery.md) for wire metadata and trust boundaries.
+
+## Persistent identity and trusted peers
+
+`include/beam/identity.hpp` exposes initialization, public certificate export,
+fingerprint-verified pairing, peer lookup, address changes, removal, and credential
+snapshots. `src/core/identity.cpp` uses the existing OpenSSL dependency for P-256
+keys, self-signed certificates, and SHA-256 fingerprints. POSIX directory-relative
+storage, file ownership/permission checks, a process lock, and atomic publication
+protect the persistent identity and peer records. No crypto protocol is introduced.
+
+The CLI loads a credential snapshot and releases the store lock before network
+operations. A sender selects one peer; a receiver snapshots all currently paired
+peers. Runtime-owned temporary CA bundles adapt these immutable snapshots to
+MsQuic's existing certificate-file API. Exact leaf pinning prevents a system root,
+other paired peer, or a certificate issued by a paired identity from authorizing
+an unintended device. Explicit-CA transfers keep their original validation path.
+Device identity, local aliases, LAN display names, and numeric routing endpoints
+are separate: changing an address never changes trust. See [pairing](pairing.md).

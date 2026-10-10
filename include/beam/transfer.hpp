@@ -7,12 +7,16 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <vector>
 
 namespace beam {
 struct Credentials {
     std::filesystem::path certificate;
     std::filesystem::path private_key;
     std::filesystem::path ca_certificate;
+    // Exact leaf certificates approved by explicit pairing. When nonempty, these
+    // are the only trust anchors and accepted leaves; ca_certificate must be empty.
+    std::vector<std::string> pinned_certificates{};
 };
 struct Endpoint {
     std::string host;

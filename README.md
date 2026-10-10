@@ -4,8 +4,8 @@ Send a file directly between macOS and Linux devices from the command line.
 Beam discovers receivers on your LAN, encrypts transfers with QUIC, and verifies
 each file before reporting success. No account or cloud service is required.
 
-Beam currently transfers one file at a time. Device pairing and a GUI are on
-the [roadmap](docs/ROADMAP.md); for now, both devices need certificates.
+Beam currently transfers one file at a time between explicitly paired devices.
+See the [roadmap](docs/ROADMAP.md) for upcoming features.
 
 ## Quick start
 
@@ -25,50 +25,70 @@ make build
 
 The examples below run from the repository directory on each device.
 
-### 2. Set up certificates
+### 2. Create an identity and pair the devices
 
-Follow [TLS setup](docs/tls.md) to create certificates signed by a dedicated
-private CA. Put `server.pem`, `server.key`, and `ca.pem` on the receiver, and
-`client.pem`, `client.key`, and `ca.pem` on the sender. Use their full paths in
-the commands below if you store them outside the repository directory.
-Keep private keys out of source control.
+On each device, create an identity and export its public certificate:
+
+```sh
+./build/beam identity init
+./build/beam identity export > my-device.pem
+```
+
+Name the exported files `laptop.pem` on the receiver and `desktop.pem` on the
+sender, then exchange the public certificates. Compare the full fingerprint shown by
+`identity init` with the fingerprint on the original device, in person or through
+an independently trusted channel. Keep private keys on their original device.
+
+For a receiver called `laptop` and a sender called `desktop`, run on the sender:
+
+```sh
+./build/beam pair laptop --cert laptop.pem --fingerprint VERIFIED_LAPTOP_SHA256 \
+  --endpoint 192.168.1.50:4269
+```
+
+On the receiver:
+
+```sh
+./build/beam pair desktop --cert desktop.pem --fingerprint VERIFIED_DESKTOP_SHA256
+```
+
+Use the exchanged certificate paths and replace the placeholders with each
+verified 64-character fingerprint. See [pairing setup](docs/pairing.md) for details.
 
 ### 3. Start the receiver
 
-On the device receiving the file:
-
 ```sh
 mkdir -p received
-./build/beam receive --listen 4269 --output ./received --name Laptop \
-  --cert server.pem --key server.key --ca ca.pem
+./build/beam receive --output ./received --name Laptop
 ```
 
 Allow UDP port 4269 through its firewall. The receiver advertises itself on the
-LAN, accepts one file, and exits. Run it again to receive another file.
+LAN, accepts one file from a paired device, and exits. Run it again for another file.
 
-### 4. Find the receiver and send a file
+### 4. Send a file
 
-On the sending device, with the receiver running:
+On the sender:
+
+```sh
+./build/beam send hello.txt laptop
+```
+
+The verified file appears in the receiver's `received` directory. If you need to
+find or update its address:
 
 ```sh
 ./build/beam devices
+./build/beam peer laptop --endpoint 192.168.1.60:4269
 ```
 
-Copy an `IP:PORT` endpoint from the output, then send your file:
-
-```sh
-./build/beam send 192.168.1.50:4269 hello.txt \
-  --cert client.pem --key client.key --ca ca.pem
-```
-
-Replace `192.168.1.50:4269` with the receiver's endpoint and `hello.txt` with your
-file. You can also use a known IP address directly without discovery.
-The verified file appears in the receiver's `received` directory.
+Use an endpoint from discovery. A changed address does not require re-pairing.
 
 ## Useful options and tips
 
-- Add `--server-name my-laptop` to `send` if the receiver certificate names
-  `my-laptop` instead of its IP address. Discovery does not verify a device's identity.
+- Use `beam peers` to list trusted devices and `beam unpair NAME` to remove one.
+  Restart a running receiver after removal to apply the change.
+- Add `--endpoint IP:PORT` to `send` to use an address for just that transfer.
+  Discovery supplies addresses; pairing verifies identity.
 - Use `[IPv6]:4269` for an IPv6 endpoint.
 - Add `--no-discovery` to `receive` to keep it unadvertised; omit `--name` in that case.
 - Add `--timeout 120` to `send` or `receive` for longer individual waits
@@ -83,7 +103,8 @@ The verified file appears in the receiver's `received` directory.
 
 If discovery finds nothing, check that the receiver is running on the same LAN
 and Avahi is running on Linux. See [discovery troubleshooting](docs/discovery.md#verification-and-troubleshooting)
-for more help.
+for more help. Existing `send IP:PORT FILE --cert ... --key ... --ca ...`
+commands are still supported; see [dedicated-CA setup](docs/tls.md#dedicated-ca-transfers).
 
 ## Contributing
 

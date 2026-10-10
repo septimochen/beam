@@ -118,6 +118,12 @@ local filesystem details.
 
 ## Testing and completion
 
+`make pairing-test` runs the identity/store checks and authenticated paired
+localhost transfers. These cover fingerprint approval, restart/concurrent
+initialization, unsafe state files, address changes, exact leaf pinning, and
+revocation. They also run as part of `make check` and Linux CI; no discovery daemon
+is needed. See [pairing](pairing.md) for the user workflow.
+
 Run `make check` before completing code changes. Add focused tests for changes to
 protocol parsing, transfer states, input validation, or integrity checks. Cover:
 
