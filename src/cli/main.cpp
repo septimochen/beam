@@ -111,7 +111,8 @@ int devices_command(int argc, char** argv) {
                                                                        : "[" + endpoint.host + "]")
                       << ':' << endpoint.port << '\t' << device.hostname << '\t'
                       << device.interface_index << '\n';
-    std::cerr << "Discovered endpoints are untrusted; use a paired peer or verified CA credentials.\n";
+    std::cerr
+        << "Discovered endpoints are untrusted; use a paired peer or verified CA credentials.\n";
     return 0;
 }
 #endif
