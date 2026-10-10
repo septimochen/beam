@@ -62,10 +62,10 @@ void checked(QUIC_STATUS status, const char* operation) {
 // MsQuic loads CA files by path. Keep an immutable per-runtime snapshot rather
 // than a mutable trust bundle shared by processes or future pairing changes.
 struct TrustFile {
-    std::array<char, 32> path{};
+    std::array<char, sizeof("/tmp/beam-trust-XXXXXX")> path =
+        std::to_array("/tmp/beam-trust-XXXXXX");
     int descriptor{-1};
     explicit TrustFile(const std::string& pem) {
-        std::strcpy(path.data(), "/tmp/beam-trust-XXXXXX");
         descriptor = mkstemp(path.data());
         if (descriptor < 0)
             throw TransferError(TransferErrorCode::transport,
