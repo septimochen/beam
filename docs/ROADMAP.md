@@ -74,7 +74,8 @@ before the direct transfer path is reliable on macOS and Linux.
   name-based transfers, IPv6/address changes, wrong identities, and revocation.
 - [x] Verify macOS Debug, Release, ASan/UBSan, direct-only, discovery-only, scaffold,
   and live Bonjour discovery checks.
-- [ ] Verify Phase 4 on Linux CI.
+- [x] Verify Phase 4 on Linux CI ([run 38064001209](https://github.com/septimochen/beam/actions/runs/38064001209)),
+  including formatting, static analysis, paired transfers, and live Avahi discovery.
 
 ## Product scope
 

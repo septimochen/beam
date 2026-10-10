@@ -103,6 +103,7 @@ unset sender
 if [[ -e output/denied.bin ]]; then echo 'unauthorized file published'; exit 1; fi
 # A receiver with a different identity cannot impersonate the saved alias.
 pair alice charlie
+pair charlie alice
 receiver=charlie
 start_receiver
 if send denied.bin --endpoint "127.0.0.1:$port"; then echo 'wrong server identity accepted'; exit 1; fi
