@@ -145,16 +145,25 @@ std::string status_output(const DiscoveryOptions& options, const std::string& ex
     }
     for (;;) {
         check();
-        int status = 0;
-        const auto completed = waitpid(child.value, &status, WNOHANG);
-        if (completed == child.value) {
+        siginfo_t exited{};
+        const int observed =
+            waitid(P_PID, static_cast<id_t>(child.value), &exited, WEXITED | WNOHANG | WNOWAIT);
+        checked(observed == 0 || errno == EINTR, "observe Tailscale process failed");
+        if (observed == 0 && exited.si_pid == child.value) {
+            // Retain the exited child until its group is cleaned up, so its PID
+            // cannot be reused for an unrelated process group before kill().
             kill(-child.value, SIGKILL);
+            int status = 0;
+            pid_t reaped;
+            do {
+                reaped = waitpid(child.value, &status, 0);
+            } while (reaped < 0 && errno == EINTR);
+            checked(reaped == child.value, "reap Tailscale process failed");
             child.value = -1;
             checked(WIFEXITED(status) && WEXITSTATUS(status) == 0,
                     "tailscale status failed; check the local Tailscale daemon and login");
             return result;
         }
-        checked(completed == 0 || errno == EINTR, "reap Tailscale process failed");
         poll(nullptr, 0, 25);
     }
 }

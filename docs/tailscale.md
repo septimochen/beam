@@ -82,7 +82,7 @@ be combined with `--route`. Dedicated-CA transfers keep their single explicit
 endpoint workflow. The CLI prints `Trying IP:PORT` to stderr; `--no-progress`
 suppresses it along with progress. Sending never invokes the Tailscale CLI.
 
-With multiple candidates, each connection attempt gets at most three seconds,
+With multiple candidates, each connection setup wait gets at most three seconds,
 or the smaller `--timeout`. A single candidate keeps the usual connection timeout.
 Payload/verification waits retain their normal limits. A failed candidate is retried
 only when the transport identifies an unreachable, refused, or timed-out connection
