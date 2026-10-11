@@ -127,10 +127,13 @@ See [Tailscale](tailscale.md) for configuration and safety boundaries.
 - [x] Optional build/Make commands, macOS app bundle, Linux executable, and CI coverage.
 - [x] Verify macOS Debug/Release, ASan/UBSan, default CLI, direct-only desktop,
   scaffold, local static analysis, and live Bonjour desktop advertisement/transfers.
+- [x] Verify Phase 7 on Linux CI ([run 38138107214](https://github.com/septimochen/beam/actions/runs/38138107214)),
+  including formatting, LLVM 23 static analysis, authenticated desktop worker
+  transfers, offscreen UI privacy checks, and live Avahi advertisement/withdrawal.
 
-The native macOS window/accessibility smoke check passed. Native tray gestures,
-clipboard permissions, and OS notification delivery still require a desktop
-session check; deterministic/offscreen tests cannot confirm them.
+The native macOS window/accessibility and close-to-tray smoke checks passed.
+Tray menu gestures, clipboard permissions, and OS notification delivery still
+require a desktop session check; deterministic/offscreen tests cannot confirm them.
 
 Beam 0.7.0 retains protocol v3 and existing identity/route records. See
 [desktop](desktop.md) for build and launch instructions, the explicit clipboard
