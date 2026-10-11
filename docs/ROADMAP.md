@@ -114,6 +114,28 @@ write versioned records that older Beam binaries cannot read. A live Tailscale
 tailnet transfer remains unverified; deterministic tests need no account or daemon.
 See [Tailscale](tailscale.md) for configuration and safety boundaries.
 
+## Phase 7 implementation
+
+- [x] Optional macOS/Linux Qt 6 Widgets tray app, isolated from the reusable core.
+- [x] Paired device selection, local single-file drop/selection, and explicit Send.
+- [x] GUI-thread clipboard snapshot/review and typed text/URL sharing with byte bounds.
+- [x] Explicit receive folder/start/stop, repeated verified transfers, and fresh trust snapshots.
+- [x] Progress, send cancellation, bounded worker events, and joined shutdown.
+- [x] Tray open/quit and verified completion/error notifications with visible window results.
+- [x] Keep received content saved; never open, execute, or replace the clipboard automatically.
+- [x] Authenticated controller tests and offscreen drop/clipboard/UI privacy tests.
+- [x] Optional build/Make commands, macOS app bundle, Linux executable, and CI coverage.
+- [x] Verify macOS Debug/Release, ASan/UBSan, default CLI, direct-only desktop,
+  scaffold, local static analysis, and live Bonjour desktop advertisement/transfers.
+
+The native macOS window/accessibility smoke check passed. Native tray gestures,
+clipboard permissions, and OS notification delivery still require a desktop
+session check; deterministic/offscreen tests cannot confirm them.
+
+Beam 0.7.0 retains protocol v3 and existing identity/route records. See
+[desktop](desktop.md) for build and launch instructions, the explicit clipboard
+privacy design, and native desktop verification limits.
+
 ## Product scope
 
 Beam is an ad-hoc sharing tool for files, images, music, clipboard text, URLs, and

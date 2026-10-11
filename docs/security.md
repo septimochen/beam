@@ -46,6 +46,10 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   A received command remains plain text; opening a received URL requires user choice.
 - Clipboard sharing needs an explicit privacy design. Represent text and URLs as typed
   content (`text/plain`, `text/uri-list`), not disguised files.
+- Desktop clipboard reads require a Load action; sending requires a separate Send
+  action to a paired device. Never watch, automatically send, or replace clipboard
+  contents. Validate single local file drops and keep notifications free of payload
+  text. See [desktop privacy](desktop.md#clipboard-privacy).
 - Validate bounded UTF-8 text and single HTTP(S) URLs before sending and again before
   receive publication. Use locally generated storage names for typed content; never
   infer its type from a filename. Do not print payloads in progress or result logs.

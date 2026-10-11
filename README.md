@@ -4,7 +4,8 @@ Send a file, text, or URL directly between macOS and Linux devices from the comm
 Beam discovers receivers on your LAN, encrypts transfers with QUIC, and verifies
 each payload before reporting success. No account or cloud service is required.
 
-Beam currently transfers one payload at a time between explicitly paired devices.
+Beam transfers one payload at a time between explicitly paired devices, with an
+optional macOS/Linux desktop tray app.
 See the [roadmap](docs/ROADMAP.md) for upcoming features.
 
 ## Quick start
@@ -99,6 +100,19 @@ links, executes text, or copies content to the clipboard. See [content transfers
 for validation rules and options. Both devices must use this release's `beam/3`
 protocol; existing pairing records continue to work.
 
+## Desktop sharing
+
+Install Qt 6 Widgets (`brew install qtbase` on macOS or `qt6-base-dev` and
+`qt6-qpa-plugins` on Debian/Ubuntu), then run `make desktop`. Launch
+`build-desktop/beam-desktop` on Linux or `open build-desktop/beam-desktop.app`
+on macOS. Use the same CLI pairing setup, choose a device, drop or select one
+file, then click **Send**. Choose a folder and click **Start receiving** to
+receive repeated transfers.
+
+**Load clipboard text** captures a snapshot for review; sharing requires a
+separate **Send** click. Tray notifications report verified transfers, and
+**Quit Beam** stops workers. See [desktop setup and privacy](docs/desktop.md).
+
 ## Useful options and tips
 
 For devices on an existing tailnet, discover an address and save it alongside the
@@ -149,6 +163,7 @@ make lint            # run clang-tidy and static analysis
 make discovery-test  # test live LAN discovery; requires Bonjour/Avahi
 make content-test    # test typed text/URL validation and paired transfers
 make routing-test    # test Tailscale fixtures and safe endpoint fallback
+make desktop-test    # build Qt app, test worker transfers and offscreen UI
 ```
 
 See [build setup](docs/development.md#build-setup) for formatter and lint tool setup,

@@ -1,6 +1,6 @@
 # Architecture
 
-Dependency flow is `CLI -> beam-core -> protocol/transfer -> transport -> MsQuic`.
+Dependency flow is `CLI/UI -> beam-core -> protocol/transfer -> transport -> MsQuic`.
 The CLI parses arguments and reports outcomes; application code sees no MsQuic handles.
 The core exposes file/text/URL sending, `receive_content`, file-only `receive_file`,
 credentials, endpoints, and typed transfer results.
@@ -54,6 +54,16 @@ must not depend on CLI or native UI code. Keep platform-specific clipboard, noti
 share sheets, and GUI logic outside the reusable core. Native applications call the core
 rather than copying transfer logic; Android should eventually use Kotlin through JNI.
 Add platform directories only when implementing their functionality.
+
+The optional Qt 6 desktop app lives in `src/desktop`. A GUI-independent service
+owns one send `std::jthread` and one receive `std::jthread`, with stop-token
+cancellation and joining teardown. It calls the existing paired core APIs,
+reloads receiver credentials between transfers, and owns advertisements only
+while each listener exists. A bounded mailbox coalesces progress; a GUI timer
+drains events without crossing widget/clipboard operations onto worker threads.
+File drops and explicit clipboard reads only select content for a subsequent
+Send action. Success notifications follow the returned verified transfer result.
+See [desktop](desktop.md) for the clipboard privacy design and platform limits.
 
 QUIC is the primary transport. Prefer MsQuic; consider quiche only when platform support
 requires it, and ngtcp2 only when lower-level control is necessary. Hide backend details
