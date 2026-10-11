@@ -86,7 +86,7 @@ Use an endpoint from discovery. A changed address does not require re-pairing.
 
 ### 5. Send text or a URL
 
-With the same receiver running, send to its paired name:
+Restart the receiver for each transfer, then send to its paired name:
 
 ```sh
 ./build/beam text "hello" laptop

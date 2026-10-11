@@ -90,7 +90,8 @@ before the direct transfer path is reliable on macOS and Linux.
 - [x] Upgrade ALPN/control/discovery to v3; retain identity and pairing storage.
 - [x] Verify macOS Debug/Release, ASan/UBSan, direct-only, discovery-only, scaffold,
   and live Bonjour discovery/transfer checks.
-- [ ] Verify Phase 5 on Linux CI, including formatting, static analysis, transfers,
+- [x] Verify Phase 5 on Linux CI ([run 38132639495](https://github.com/septimochen/beam/actions/runs/38132639495)),
+  including formatting, LLVM 23 static analysis, typed/paired/file transfers,
   and live Avahi discovery.
 
 ## Product scope
