@@ -105,7 +105,9 @@ before the direct transfer path is reliable on macOS and Linux.
 - [x] Test route storage/selection, CLI discovery, bounded failures, and localhost fallback.
 - [x] Verify macOS Debug/Release, ASan/UBSan, direct-only, Tailscale-only discovery,
   discovery-only, scaffold, and live Bonjour discovery/transfer checks.
-- [ ] Verify Linux formatting, static analysis, and transfer/discovery CI.
+- [x] Verify Phase 6 on Linux CI ([run 38135083076](https://github.com/septimochen/beam/actions/runs/38135083076)),
+  including formatting, LLVM 23 static analysis, Tailscale fixtures, authenticated
+  endpoint fallback, typed/paired/file transfers, and live Avahi discovery.
 
 Beam 0.6.0 retains wire protocol v3 and reads legacy peer records. Route updates
 write versioned records that older Beam binaries cannot read. A live Tailscale
@@ -121,9 +123,9 @@ LAN/Tailscale reachability, and minimal dependencies or operational complexity.
 
 Future everyday commands should select known devices by name, such as
 `beam send photo.jpg pixel` or `beam clipboard laptop`. Ports, routing, stream IDs,
-and certificate details should eventually live below that UX. Phase 4 now selects
-paired receivers by local alias for file sending, with stored
-or explicitly overridden endpoints. Discovery remains an untrusted address hint;
+and certificate details should eventually live below that UX. Paired aliases now
+support file, text, and URL transfers with stored direct/Tailscale routes or an
+explicit endpoint override. Discovery remains an untrusted address hint;
 see [pairing](pairing.md) for identity and trust management.
 
 Do not add cloud infrastructure or accounts unless explicitly requested. Full folder

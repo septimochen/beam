@@ -126,6 +126,9 @@ on failure. Stdin/stderr are discarded; status secrets and CLI stderr are never 
 JSON/subprocess bounds, CLI output and Ctrl-C, authenticated localhost fallback
 for every payload kind, and refusal to retry identity/rejection/post-payload failures.
 These deterministic tests run in `make check` and CI without a Tailscale account
-or daemon. This development machine has no Tailscale installation, so a live
+or daemon. macOS Debug/Release, ASan/UBSan, optional builds, and live Bonjour checks
+passed. [Linux CI](https://github.com/septimochen/beam/actions/runs/38135083076) passed
+LLVM 23 formatting/static analysis, transfer tests, and live Avahi discovery.
+This development machine has no Tailscale installation, so a live
 tailnet transfer has not been verified. On a connected tailnet, select
 `--route tailscale`, compare received bytes, and confirm both pinned identities.
