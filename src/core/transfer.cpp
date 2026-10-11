@@ -1,5 +1,6 @@
 #include "beam/transfer.hpp"
 #include "beam/beam.hpp"
+#include "beam/routing.hpp"
 #include "protocol/codec.hpp"
 #include "transfer/files.hpp"
 #include "transport/transport.hpp"
@@ -37,6 +38,12 @@ void expect(const protocol::Message& message, protocol::Type type, std::uint64_t
 void validate_options(const TransferOptions& options) {
     if (options.timeout.count() <= 0 || options.timeout > std::chrono::hours(24))
         throw std::invalid_argument("timeout must be positive and no longer than 24 hours");
+    if (options.connect_timeout.count() < 0 || options.connect_timeout > options.timeout)
+        throw std::invalid_argument("connect timeout must be zero or no longer than timeout");
+    if (options.fallback_endpoints.size() > 3)
+        throw std::invalid_argument("at most three fallback endpoints are allowed");
+    for (const auto& endpoint : options.fallback_endpoints)
+        static_cast<void>(numeric_endpoint(endpoint_string(endpoint)));
     if (options.credentials.certificate.empty() || options.credentials.private_key.empty() ||
         (options.credentials.ca_certificate.empty() &&
          options.credentials.pinned_certificates.empty()))
@@ -45,6 +52,31 @@ void validate_options(const TransferOptions& options) {
         !options.credentials.pinned_certificates.empty())
         throw std::invalid_argument("CA credentials cannot be combined with paired credentials");
     transport::check_cancel(options);
+}
+std::unique_ptr<transport::Connection> connect_for_transfer(const Endpoint& endpoint,
+                                                            const std::string& server_name,
+                                                            const TransferOptions& options) {
+    std::vector<Endpoint> candidates{numeric_endpoint(endpoint_string(endpoint))};
+    for (const auto& fallback : options.fallback_endpoints) {
+        const auto normalized = numeric_endpoint(endpoint_string(fallback));
+        if (std::none_of(candidates.begin(), candidates.end(), [&](const auto& candidate) {
+                return endpoint_string(candidate) == endpoint_string(normalized);
+            }))
+            candidates.push_back(normalized);
+    }
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        transport::check_cancel(options);
+        if (options.on_connecting)
+            options.on_connecting(candidates[index]);
+        transport::check_cancel(options);
+        try {
+            return transport::connect(candidates[index], server_name, options);
+        } catch (const transport::ConnectFailure&) {
+            if (index + 1 == candidates.size())
+                throw;
+        }
+    }
+    throw std::logic_error("missing transfer endpoint");
 }
 void progress(const TransferOptions& options, TransferStage stage, const std::string& filename,
               std::uint64_t bytes, std::uint64_t total) {
@@ -62,7 +94,7 @@ TransferResult send_offer(const Endpoint& endpoint, const std::string& server_na
                                                             : "url";
     std::array<std::byte, 65536> buffer{};
     progress(options, TransferStage::connecting, filename, 0, offer.size);
-    auto connection = transport::connect(endpoint, server_name, options);
+    auto connection = connect_for_transfer(endpoint, server_name, options);
     // Keep streams alive through the catch so the application error reaches the
     // peer before stream teardown. The connection always outlives both streams.
     std::unique_ptr<transport::Stream> control, payload;

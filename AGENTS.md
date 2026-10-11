@@ -38,6 +38,7 @@ on macOS/Linux. Keep future features behind the milestones in [the roadmap](docs
 | Persistent identity, pairing, trusted peers | [Pairing](docs/pairing.md) |
 | Dedicated-CA certificate provisioning | [TLS setup](docs/tls.md) |
 | LAN discovery, advertisement, daemon dependencies | [Discovery](docs/discovery.md) |
+| Optional Tailscale discovery, routes, and safe fallback | [Tailscale](docs/tailscale.md) |
 | Input, filesystem, credentials, content safety | [Security](docs/security.md) |
 | C++ style, concurrency, errors, testing, completion criteria | [Development](docs/development.md) |
 | Current status, product scope, future phases | [Roadmap](docs/ROADMAP.md) |

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(Beam VERSION 0.5.0 LANGUAGES CXX)
+project(Beam VERSION 0.6.0 LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "Use an out-of-tree build: cmake -S . -B build")
@@ -24,12 +24,23 @@ if(BEAM_ENABLE_QUIC)
     set(MSQUIC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install" CACHE PATH "Installed MsQuic prefix")
     find_path(MSQUIC_INCLUDE_DIR msquic.h HINTS "${MSQUIC_ROOT}/include" REQUIRED)
     find_library(MSQUIC_LIBRARY NAMES msquic HINTS "${MSQUIC_ROOT}/lib" "${MSQUIC_ROOT}/lib64" REQUIRED)
-    target_sources(beam-core PRIVATE src/core/identity.cpp src/core/transfer.cpp src/core/errors.cpp src/protocol/codec.cpp
+    target_sources(beam-core PRIVATE src/core/identity.cpp src/core/routing.cpp src/core/transfer.cpp src/core/errors.cpp src/protocol/codec.cpp
         src/transfer/files.cpp src/transfer/content.cpp src/transport/msquic.cpp)
     target_include_directories(beam-core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
     target_include_directories(beam-core SYSTEM PRIVATE "${MSQUIC_INCLUDE_DIR}")
     target_link_libraries(beam-core PRIVATE OpenSSL::Crypto Threads::Threads "${MSQUIC_LIBRARY}")
     target_compile_definitions(beam-core PUBLIC BEAM_HAS_QUIC=1)
+endif()
+
+option(BEAM_ENABLE_TAILSCALE "Build optional local Tailscale CLI discovery" ${BEAM_ENABLE_QUIC})
+if(BEAM_ENABLE_TAILSCALE)
+    if(NOT BEAM_ENABLE_QUIC)
+        message(FATAL_ERROR "Tailscale discovery requires the macOS/Linux QUIC core")
+    endif()
+    find_package(nlohmann_json 3.11 REQUIRED)
+    target_sources(beam-core PRIVATE src/discovery/tailscale.cpp)
+    target_link_libraries(beam-core PRIVATE nlohmann_json::nlohmann_json)
+    target_compile_definitions(beam-core PUBLIC BEAM_HAS_TAILSCALE=1)
 endif()
 
 option(BEAM_ENABLE_DISCOVERY "Build LAN discovery with Bonjour/Avahi DNS-SD" ${BEAM_ENABLE_QUIC})
@@ -73,6 +84,7 @@ if(BUILD_TESTING)
         "-DBEAM_VERSION=${PROJECT_VERSION}"
         "-DBEAM_HAS_QUIC=${BEAM_ENABLE_QUIC}"
         "-DBEAM_HAS_DISCOVERY=${BEAM_ENABLE_DISCOVERY}"
+        "-DBEAM_HAS_TAILSCALE=${BEAM_ENABLE_TAILSCALE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_tests.cmake")
     if(BEAM_ENABLE_DISCOVERY)
         add_executable(beam-discovery-tests tests/discovery_tests.cpp src/discovery/dnssd.cpp)
@@ -88,6 +100,11 @@ if(BUILD_TESTING)
         beam_enable_warnings(beam-discovery-live-tests)
     endif()
     if(BEAM_ENABLE_QUIC)
+        add_executable(beam-routing-tests tests/routing_tests.cpp)
+        target_include_directories(beam-routing-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        target_link_libraries(beam-routing-tests PRIVATE Beam::Core)
+        beam_enable_warnings(beam-routing-tests)
+        add_test(NAME routing COMMAND beam-routing-tests)
         add_executable(beam-identity-tests tests/identity_tests.cpp)
         target_link_libraries(beam-identity-tests PRIVATE Beam::Core OpenSSL::Crypto)
         beam_enable_warnings(beam-identity-tests)
@@ -109,6 +126,20 @@ if(BUILD_TESTING)
         beam_enable_warnings(beam-phase2-tests)
         find_program(OPENSSL_EXECUTABLE openssl REQUIRED)
         find_program(BASH_EXECUTABLE bash REQUIRED)
+        add_test(NAME routing-localhost COMMAND "${BASH_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/routing_integration.sh"
+            "$<TARGET_FILE:beam>" "$<TARGET_FILE:beam-routing-tests>")
+        set_tests_properties(routing-localhost PROPERTIES TIMEOUT 45)
+        if(BEAM_ENABLE_TAILSCALE)
+            add_executable(beam-tailscale-tests tests/tailscale_tests.cpp)
+            target_link_libraries(beam-tailscale-tests PRIVATE Beam::Core)
+            beam_enable_warnings(beam-tailscale-tests)
+            add_test(NAME tailscale COMMAND beam-tailscale-tests)
+            set_tests_properties(tailscale PROPERTIES TIMEOUT 15)
+            add_test(NAME tailscale-cli COMMAND "${BASH_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/tailscale_cli.sh" "$<TARGET_FILE:beam>")
+            set_tests_properties(tailscale-cli PROPERTIES TIMEOUT 15)
+        endif()
         add_test(NAME content-localhost COMMAND "${BASH_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/content_integration.sh"
             "$<TARGET_FILE:beam>" "$<TARGET_FILE:beam-content-tests>")

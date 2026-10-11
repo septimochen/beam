@@ -101,6 +101,21 @@ protocol; existing pairing records continue to work.
 
 ## Useful options and tips
 
+For devices on an existing tailnet, discover an address and save it alongside the
+paired device's LAN endpoint:
+
+```sh
+./build/beam devices --tailscale
+./build/beam peer laptop --tailscale-endpoint 100.64.0.20:4269
+./build/beam send hello.txt laptop --route tailscale
+```
+
+The default route tries the saved direct address before a Tailscale address, with
+fallback only for connection failures before authentication. `--route direct` or
+`--route tailscale` selects one class; an explicit `--endpoint` selects exactly
+one address. See [Tailscale setup](docs/tailscale.md) for trust, build dependencies,
+and peer-record compatibility.
+
 - Use `beam peers` to list trusted devices and `beam unpair NAME` to remove one.
   Restart a running receiver after removal to apply the change.
 - Add `--endpoint IP:PORT` to `send`, `text`, or `url` to use an address for just that transfer.
@@ -133,6 +148,7 @@ make check           # check formatting, build, and run tests
 make lint            # run clang-tidy and static analysis
 make discovery-test  # test live LAN discovery; requires Bonjour/Avahi
 make content-test    # test typed text/URL validation and paired transfers
+make routing-test    # test Tailscale fixtures and safe endpoint fallback
 ```
 
 See [build setup](docs/development.md#build-setup) for formatter and lint tool setup,

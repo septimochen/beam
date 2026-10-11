@@ -6,6 +6,11 @@ through an independent channel. Transfers authenticate both devices using the
 existing QUIC/TLS connection. There is no network pairing protocol or trust on
 first use.
 
+Phase 6 adds an optional saved Tailscale endpoint beside the primary endpoint.
+Route updates preserve the approved certificate and use versioned peer records;
+the reader also accepts legacy records, while older Beam binaries cannot read an
+updated record. See [Tailscale routing](tailscale.md) for configuration and fallback.
+
 ## Initialize and exchange public certificates
 
 On each device:

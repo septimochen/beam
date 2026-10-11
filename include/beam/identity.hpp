@@ -15,6 +15,7 @@ struct TrustedPeer {
     std::string name;
     std::string endpoint;
     DeviceIdentity identity;
+    std::string tailscale_endpoint{};
 };
 [[nodiscard]] std::filesystem::path default_state_directory();
 [[nodiscard]] bool is_peer_name(std::string_view name) noexcept;
@@ -37,6 +38,8 @@ class IdentityStore {
     [[nodiscard]] TrustedPeer peer(const std::string& name) const;
     void unpair(const std::string& name);
     void set_endpoint(const std::string& name, const std::string& endpoint);
+    // An empty string explicitly removes the optional Tailscale route.
+    void set_tailscale_endpoint(const std::string& name, const std::string& endpoint);
     // Empty name authorizes all currently paired peers (receiver); a sender
     // authorizes exactly one peer. An empty trust set always fails closed.
     [[nodiscard]] Credentials credentials(const std::string& name = {}) const;

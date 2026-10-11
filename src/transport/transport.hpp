@@ -22,6 +22,19 @@ class Connection {
     virtual std::unique_ptr<Stream> accept(bool unidirectional) = 0;
     virtual void abort(TransferErrorCode code) noexcept = 0;
 };
+// Only a transport backend can mark a failure as safe to try at another address.
+// This means authentication has not succeeded and no application stream exists.
+class ConnectFailure : public TransferError {
+  public:
+    explicit ConnectFailure(const TransferError& error)
+        : TransferError(error.code, error.what(), error.remote) {}
+};
+// Distinguish our deadline from an exception thrown by an application callback.
+class DeadlineExceeded : public TransferError {
+  public:
+    explicit DeadlineExceeded(const char* context)
+        : TransferError(TransferErrorCode::timeout, context) {}
+};
 inline void check_cancel(const TransferOptions& options) {
     if (options.stop_token.stop_requested() || (options.should_cancel && options.should_cancel()))
         throw TransferError(TransferErrorCode::cancelled, "transfer cancelled locally");
@@ -30,15 +43,17 @@ inline void check_cancel(const TransferOptions& options) {
 // deadline across wakeups, including spurious notifications.
 template <typename Predicate>
 void wait_for_operation(std::condition_variable& changed, std::unique_lock<std::mutex>& lock,
-                        const TransferOptions& options, Predicate ready, const char* context) {
-    const auto deadline = std::chrono::steady_clock::now() + options.timeout;
+                        const TransferOptions& options, Predicate ready, const char* context,
+                        std::chrono::milliseconds timeout = {}) {
+    const auto deadline = std::chrono::steady_clock::now() +
+                          (timeout > std::chrono::milliseconds::zero() ? timeout : options.timeout);
     for (;;) {
         check_cancel(options);
         if (ready())
             return;
         const auto now = std::chrono::steady_clock::now();
         if (now >= deadline)
-            throw TransferError(TransferErrorCode::timeout, context);
+            throw DeadlineExceeded(context);
         changed.wait_until(lock, std::min(deadline, now + std::chrono::milliseconds(50)));
     }
 }

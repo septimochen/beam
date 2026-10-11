@@ -1,13 +1,12 @@
 #include "beam/identity.hpp"
+#include "beam/routing.hpp"
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/x509v3.h>
 
 #include <algorithm>
-#include <arpa/inet.h>
 #include <array>
 #include <cerrno>
-#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -183,26 +182,7 @@ std::string read_file(int fd, bool private_file) {
 void validate_endpoint(const std::string& text) {
     if (text.empty())
         return;
-    checked(text.size() <= 128 && text.find_first_of("\r\n\t ") == std::string::npos,
-            "invalid stored endpoint");
-    const auto endpoint = parse_endpoint(text);
-    // Use the same numeric-address parser as QUIC, without accepting hostnames.
-    const auto scope = endpoint.host.find('%');
-    const auto address = endpoint.host.substr(0, scope);
-    std::array<unsigned char, 16> bytes{};
-    const bool ipv6 = inet_pton(AF_INET6, address.c_str(), bytes.data()) == 1;
-    checked(ipv6 || (scope == std::string::npos &&
-                     inet_pton(AF_INET, address.c_str(), bytes.data()) == 1),
-            "stored endpoint must contain a numeric IPv4 or IPv6 address");
-    if (scope != std::string::npos) {
-        const auto index_text = std::string_view(endpoint.host).substr(scope + 1);
-        std::uint32_t index = 0;
-        const auto [end, error] =
-            std::from_chars(index_text.data(), index_text.data() + index_text.size(), index);
-        checked(ipv6 && index > 0 && error == std::errc{} &&
-                    end == index_text.data() + index_text.size(),
-                "IPv6 scope must be a nonzero 32-bit numeric interface index");
-    }
+    static_cast<void>(numeric_endpoint(text));
 }
 int open_directory(const std::filesystem::path& path, bool create) {
     if (path.empty())
@@ -352,12 +332,26 @@ TrustedPeer IdentityStore::peer(const std::string& name) const {
             "peer name must be 1-63 lowercase letters, digits, '-' or '_', starting with a letter");
     checked(implementation->exists(name + ".peer"), ("unknown trusted peer: " + name).c_str());
     const auto text = implementation->read(name + ".peer");
-    const auto newline = text.find('\n');
-    checked(newline != std::string::npos, "invalid peer record");
-    const auto endpoint = text.substr(0, newline);
+    std::string_view remaining(text);
+    const auto line = [&]() {
+        const auto newline = remaining.find('\n');
+        checked(newline != std::string_view::npos, "invalid peer record");
+        const std::string value(remaining.substr(0, newline));
+        remaining.remove_prefix(newline + 1);
+        return value;
+    };
+    auto endpoint = line();
+    std::string tailscale;
+    if (endpoint == "beam-peer-v2") {
+        endpoint = line();
+        tailscale = line();
+        if (!tailscale.empty())
+            checked(is_tailscale_address(numeric_endpoint(tailscale).host),
+                    "invalid stored Tailscale endpoint");
+    }
     validate_endpoint(endpoint);
-    auto certificate = parse_certificate(text.substr(newline + 1));
-    return {name, endpoint, describe(certificate.get(), false)};
+    auto certificate = parse_certificate(std::string(remaining));
+    return {name, endpoint, describe(certificate.get(), false), tailscale};
 }
 std::vector<TrustedPeer> IdentityStore::peers() const {
     // openat creates a fresh directory cursor; dup would share a previous scan's offset.
@@ -432,7 +426,20 @@ void IdentityStore::set_endpoint(const std::string& name, const std::string& end
         throw std::invalid_argument("endpoint must not be empty");
     validate_endpoint(endpoint);
     const auto saved = peer(name);
-    implementation->write(name + ".peer", endpoint + "\n" + saved.identity.certificate_pem, true);
+    implementation->write(name + ".peer",
+                          "beam-peer-v2\n" + endpoint + "\n" + saved.tailscale_endpoint + "\n" +
+                              saved.identity.certificate_pem,
+                          true);
+}
+void IdentityStore::set_tailscale_endpoint(const std::string& name, const std::string& endpoint) {
+    if (!endpoint.empty() && !is_tailscale_address(numeric_endpoint(endpoint).host))
+        throw std::invalid_argument(
+            "Tailscale endpoint must use 100.64.0.0/10 or fd7a:115c:a1e0::/48");
+    const auto saved = peer(name);
+    implementation->write(name + ".peer",
+                          "beam-peer-v2\n" + saved.endpoint + "\n" + endpoint + "\n" +
+                              saved.identity.certificate_pem,
+                          true);
 }
 Credentials IdentityStore::credentials(const std::string& name) const {
     static_cast<void>(identity());

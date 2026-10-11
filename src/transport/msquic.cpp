@@ -411,7 +411,8 @@ class QuicConnection final : public Connection {
     std::mutex mutex;
     std::condition_variable changed;
     std::deque<std::unique_ptr<QuicStream>> incoming;
-    bool connected{}, stopped{}, failed{}, accepted{}, bidi_seen{}, uni_seen{};
+    bool connected{}, stopped{}, failed{}, accepted{}, bidi_seen{}, uni_seen{},
+        authentication_failed{};
     std::uint64_t peer_error{};
     QUIC_STATUS failure_status{QUIC_STATUS_SUCCESS};
     explicit QuicConnection(const TransferOptions& options, bool client)
@@ -436,8 +437,10 @@ class QuicConnection final : public Connection {
             std::lock_guard lock(self.mutex);
             switch (event->Type) {
             case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
-                if (!self.runtime.verify_peer(*event))
+                if (!self.runtime.verify_peer(*event)) {
+                    self.authentication_failed = true;
                     return QUIC_STATUS_BAD_CERTIFICATE;
+                }
                 break;
             case QUIC_CONNECTION_EVENT_CONNECTED:
                 self.connected = true;
@@ -512,16 +515,30 @@ class QuicConnection final : public Connection {
         }
     }
     template <typename Predicate>
-    void wait(std::unique_lock<std::mutex>& lock, Predicate predicate) {
-        wait_for_operation(
-            changed, lock, options, [&] { return failed || stopped || predicate(); },
-            "QUIC connection timed out waiting for authenticated peer");
+    void wait(std::unique_lock<std::mutex>& lock, Predicate predicate,
+              std::chrono::milliseconds timeout = {}, bool connecting = false) {
+        try {
+            wait_for_operation(
+                changed, lock, options, [&] { return failed || stopped || predicate(); },
+                "QUIC connection timed out waiting for authenticated peer", timeout);
+        } catch (const DeadlineExceeded& error) {
+            if (connecting && !connected && !authentication_failed &&
+                failure_status == QUIC_STATUS_SUCCESS)
+                throw ConnectFailure(error);
+            throw;
+        }
         if (peer_error != 0) {
             const auto code = peer_error <= 10 ? static_cast<TransferErrorCode>(peer_error)
                                                : TransferErrorCode::protocol;
             throw TransferError(code, std::string("peer: ") + error_name(code), true);
         }
         if (failed || stopped) {
+            if (connecting && !connected && !authentication_failed &&
+                (failure_status == QUIC_STATUS_UNREACHABLE ||
+                 failure_status == QUIC_STATUS_CONNECTION_REFUSED ||
+                 failure_status == QUIC_STATUS_CONNECTION_TIMEOUT))
+                throw ConnectFailure(TransferError(TransferErrorCode::transport,
+                                                   "QUIC endpoint is unreachable or timed out"));
             checked(failure_status, "QUIC handshake/connection");
             throw TransferError(TransferErrorCode::transport, "QUIC connection closed by peer");
         }
@@ -579,7 +596,8 @@ std::unique_ptr<Connection> connect(const Endpoint& endpoint, const std::string&
             "connect");
     std::unique_lock lock(connection->mutex);
     try {
-        connection->wait(lock, [&] { return connection->connected; });
+        connection->wait(
+            lock, [&] { return connection->connected; }, options.connect_timeout, true);
     } catch (const TransferError& error) {
         lock.unlock();
         connection->abort(error.code);

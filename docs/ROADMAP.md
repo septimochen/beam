@@ -94,6 +94,24 @@ before the direct transfer path is reliable on macOS and Linux.
   including formatting, LLVM 23 static analysis, typed/paired/file transfers,
   and live Avahi discovery.
 
+## Phase 6 implementation
+
+- [x] Optional read-only local Tailscale CLI discovery with numeric address hints.
+- [x] Bounded JSON/process handling, deadlines, cancellation, and child cleanup.
+- [x] Save a Tailscale route beside a paired endpoint without changing trust.
+- [x] Normalize/deduplicate routes; prefer direct, support explicit route selection.
+- [x] Fall back only for connectivity failures before authentication/application data.
+- [x] Preserve pinned identity and prevent retries after rejection or payload transmission.
+- [x] Test route storage/selection, CLI discovery, bounded failures, and localhost fallback.
+- [x] Verify macOS Debug/Release, ASan/UBSan, direct-only, Tailscale-only discovery,
+  discovery-only, scaffold, and live Bonjour discovery/transfer checks.
+- [ ] Verify Linux formatting, static analysis, and transfer/discovery CI.
+
+Beam 0.6.0 retains wire protocol v3 and reads legacy peer records. Route updates
+write versioned records that older Beam binaries cannot read. A live Tailscale
+tailnet transfer remains unverified; deterministic tests need no account or daemon.
+See [Tailscale](tailscale.md) for configuration and safety boundaries.
+
 ## Product scope
 
 Beam is an ad-hoc sharing tool for files, images, music, clipboard text, URLs, and

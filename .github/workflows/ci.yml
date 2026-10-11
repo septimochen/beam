@@ -23,7 +23,7 @@ jobs:
           sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
           sudo apt-get update
-          sudo apt-get install -y libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon clang-format-23 clang-tidy-23
+          sudo apt-get install -y libssl-dev nlohmann-json3-dev perl libavahi-compat-libdnssd-dev avahi-daemon clang-format-23 clang-tidy-23
           clang-format-23 --version
           clang-tidy-23 --version
       - name: Check formatting
@@ -55,11 +55,11 @@ jobs:
           sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
           sudo apt-get update
-          sudo apt-get install -y libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon clang-format-23
+          sudo apt-get install -y libssl-dev nlohmann-json3-dev perl libavahi-compat-libdnssd-dev avahi-daemon clang-format-23
           clang-format-23 --version
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'
-        run: brew install openssl@3
+        run: brew install openssl@3 nlohmann-json
       - name: Build pinned MsQuic
         if: runner.os != 'Windows'
         run: cmake -DBEAM_DEPS_DIR="$PWD/build/deps" -P cmake/BootstrapMsQuic.cmake

@@ -1,6 +1,7 @@
 #include "beam/identity.hpp"
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iomanip>
 #include <iostream>
 #include <openssl/pem.h>
@@ -209,6 +210,13 @@ int main() {
             require(store.peer("bob").endpoint == "[::1]:5270" &&
                         store.peer("bob").identity.fingerprint == bob.fingerprint,
                     "endpoint update changed identity");
+            store.set_tailscale_endpoint("bob", "100.64.0.2:4269");
+            rejects([&] { store.set_tailscale_endpoint("bob", "127.0.0.1:4269"); },
+                    "non-Tailscale endpoint persisted");
+            store.set_endpoint("bob", "[::1]:5270");
+            require(store.peer("bob").tailscale_endpoint == "100.64.0.2:4269" &&
+                        store.peer("bob").identity.fingerprint == bob.fingerprint,
+                    "route update lost the second address or changed trust");
             const auto credentials = store.credentials("bob");
             require(credentials.ca_certificate.empty() &&
                         credentials.pinned_certificates.size() == 1 &&
@@ -224,6 +232,12 @@ int main() {
         {
             beam::IdentityStore store(alice_path);
             require(store.peer("bob").endpoint == "[::1]:5270", "peer endpoint did not persist");
+            require(store.peer("bob").tailscale_endpoint == "100.64.0.2:4269",
+                    "Tailscale endpoint did not persist");
+            store.set_tailscale_endpoint("bob", "");
+            require(store.peer("bob").tailscale_endpoint.empty() &&
+                        store.peer("bob").endpoint == "[::1]:5270",
+                    "clearing Tailscale changed the primary endpoint");
             require(store.credentials().pinned_certificates.size() == 1, "receiver trust missing");
             store.unpair("bob");
             require(store.peers().empty(), "unpair did not remove trust");
@@ -270,6 +284,14 @@ int main() {
             save(alice_path / "bob.peer", "invalid peer record");
             chmod((alice_path / "bob.peer").c_str(), 0600);
             rejects([&] { static_cast<void>(store.peers()); }, "corrupt trust record accepted");
+            for (const auto& record : std::initializer_list<std::string>{
+                     "beam-peer-v2\n127.0.0.1:4269\n",
+                     "beam-peer-v2\n127.0.0.1:4269\n127.0.0.1:4269\n" + bob.certificate_pem,
+                     "beam-peer-v2\n127.0.0.1:4269\n100.64.0.2:4269\ngarbage"}) {
+                save(alice_path / "bob.peer", record);
+                rejects([&] { static_cast<void>(store.credentials()); },
+                        "malformed versioned route record authorized a peer");
+            }
             store.unpair("bob");
             require(store.peers().empty(), "corrupt peer could not be removed");
             save(alice_path / "identity.pem", "broken");

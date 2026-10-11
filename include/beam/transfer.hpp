@@ -72,6 +72,13 @@ struct TransferOptions {
     std::function<void(const TransferProgress&)> on_progress{};
     // Optional calling-thread cancellation predicate (e.g. a signal flag).
     std::function<bool()> should_cancel{};
+    // Sender-only. Retry these only for pre-authentication connectivity failures.
+    // No fallback after authentication, an offer, a rejection, or payload bytes.
+    std::vector<Endpoint> fallback_endpoints{};
+    // Zero retains timeout for connection setup. CLI caps attempts at 3 seconds
+    // when multiple routes are available; this never changes payload wait limits.
+    std::chrono::milliseconds connect_timeout{};
+    std::function<void(const Endpoint&)> on_connecting{};
 };
 struct TransferResult {
     std::string filename;

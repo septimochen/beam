@@ -8,13 +8,15 @@ for a first transfer.
 
 Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL development
 headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy.
+Optional Tailscale CLI discovery uses header-only nlohmann_json 3.11+ for bounded
+JSON parsing; it adds no runtime service or shared library.
 The pinned MsQuic build uses its own quictls TLS implementation; Beam uses the
 installed OpenSSL libcrypto for hashing and random transfer IDs.
 
 On macOS, install the build tools with Homebrew:
 
 ```sh
-brew install cmake openssl@3 llvm
+brew install cmake openssl@3 llvm nlohmann-json
 export CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format"
 export CLANG_TIDY="$(brew --prefix llvm)/bin/clang-tidy"
 ```
@@ -23,7 +25,7 @@ Formatting requires LLVM 23; check the installed version before running contribu
 checks. Bonjour is included with macOS.
 
 On Debian/Ubuntu, install `build-essential`, `libssl-dev`, `perl`, `cmake`, `git`,
-`libavahi-compat-libdnssd-dev`, and `avahi-daemon`. Linux discovery requires a
+`libavahi-compat-libdnssd-dev`, `avahi-daemon`, and `nlohmann-json3-dev`. Linux discovery requires a
 running Avahi daemon. Install `clang-format-23` and `clang-tidy-23` from the
 [official LLVM package repository](https://apt.llvm.org/) for your distribution:
 
@@ -63,12 +65,14 @@ ctest --test-dir build --output-on-failure
 
 Discovery defaults to the QUIC setting. To build direct transfers without
 Bonjour/Avahi, use `make build CMAKE_ARGS='-DBEAM_ENABLE_DISCOVERY=OFF'`.
+Tailscale discovery also defaults to QUIC. Disable its CLI/JSON dependency with
+`-DBEAM_ENABLE_TAILSCALE=OFF`; manual numeric Tailscale routes remain available.
 Windows builds only the help/version and filename-validation scaffold by default;
 transfer filesystem handling is currently POSIX-only. To select the scaffold on
-any platform, disable both features explicitly:
+any platform, disable all optional features explicitly:
 
 ```sh
-make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF'
+make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF -DBEAM_ENABLE_TAILSCALE=OFF'
 ```
 
 Installing with `cmake --install build --prefix ./install` requires the
@@ -117,6 +121,12 @@ file contents, or clipboard contents by default. Remote errors should not expose
 local filesystem details.
 
 ## Testing and completion
+
+`make routing-test` checks Tailscale status fixtures and subprocess cleanup,
+CLI output/Ctrl-C, pure route selection, stored-route updates, and safe authenticated
+localhost fallback for files/text/URLs. It verifies that identity failures,
+receiver rejection, cancellation, callback exceptions, and post-payload failures
+cannot cause a replay. It requires no Tailscale daemon or account. See [Tailscale](tailscale.md).
 
 `make content-test` runs bounded UTF-8/HTTP(S) validation, typed protocol parsing,
 and paired localhost text/URL transfers. It covers byte preservation, boundaries,
