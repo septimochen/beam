@@ -34,6 +34,7 @@ on macOS/Linux. Keep future features behind the milestones in [the roadmap](docs
 | Setup, build commands, CLI usage, platform support | [README](README.md) |
 | Component boundaries, transport, resource lifetimes | [Architecture](docs/architecture.md) |
 | Wire format and transfer state transitions | [Protocol](docs/protocol.md) |
+| Typed text/URL validation and receiving behavior | [Content](docs/content.md) |
 | Persistent identity, pairing, trusted peers | [Pairing](docs/pairing.md) |
 | Dedicated-CA certificate provisioning | [TLS setup](docs/tls.md) |
 | LAN discovery, advertisement, daemon dependencies | [Discovery](docs/discovery.md) |

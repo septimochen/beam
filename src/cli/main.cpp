@@ -18,7 +18,7 @@
 namespace {
 void print_help() {
     std::cout
-        << "Beam — direct file transfer over QUIC\n\n"
+        << "Beam — direct file, text and URL transfer over QUIC\n\n"
            "Usage:\n"
            "  beam --help\n"
            "  beam --version\n"
@@ -30,6 +30,10 @@ void print_help() {
            "  beam peer NAME --endpoint IP:PORT [--state-dir DIR]\n"
            "  beam send FILE PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS] "
            "[--no-progress]\n"
+           "  beam text TEXT PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS] "
+           "[--no-progress]\n"
+           "  beam url URL PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS] "
+           "[--no-progress]\n"
            "  beam receive --output DIR [--listen PORT] [--state-dir DIR] [--name NAME] "
            "[--no-discovery]\n"
            "  beam devices [--timeout SECONDS]\n"
@@ -37,7 +41,10 @@ void print_help() {
            "[--timeout SECONDS] [--no-progress] [--name NAME] [--no-discovery]\n"
            "  beam send IP:PORT FILE --cert PEM --key PEM --ca PEM [--server-name NAME] "
            "[--timeout SECONDS] [--no-progress]\n\n"
-           "Receive one file from one authenticated peer, then exit. DIR must exist.\n"
+           "Receive one file, text or URL from one authenticated peer, then exit. DIR must exist.\n"
+           "Text/URLs are saved as text-ID.txt/url-ID.txt; content is never opened or printed.\n"
+           "Text: UTF-8, up to 64 KiB. URLs: HTTP(S), ASCII/percent encoding, up to 8 KiB.\n"
+           "Use -- before positional arguments that start with --.\n"
            "Initialize an identity and explicitly pair certificates with verified fingerprints.\n"
            "Legacy --cert/--key/--ca transfers still require a dedicated private CA.\n"
            "The server certificate must match IP or --server-name. IPv6: [ADDRESS]:PORT.\n"
@@ -192,11 +199,19 @@ int identity_command(int argc, char** argv) {
     return 0;
 }
 int transfer_command(int argc, char** argv, bool receive) {
+    const std::string command = argv[1];
+    const bool typed = command == "text" || command == "url";
+    const auto kind = command == "url" ? beam::ContentKind::url : beam::ContentKind::text;
     std::map<std::string, std::string> options;
     std::vector<std::string> positional;
+    bool positional_only = false;
     for (int index = 2; index < argc; ++index) {
         const std::string argument = argv[index];
-        if (!argument.starts_with("--")) {
+        if (!positional_only && argument == "--") {
+            positional_only = true;
+            continue;
+        }
+        if (positional_only || !argument.starts_with("--")) {
             positional.push_back(argument);
             continue;
         }
@@ -205,6 +220,10 @@ int transfer_command(int argc, char** argv, bool receive) {
                 throw std::invalid_argument("duplicate option: " + argument);
             continue;
         }
+        if (typed && (argument == "--cert" || argument == "--key" || argument == "--ca" ||
+                      argument == "--server-name"))
+            throw std::invalid_argument(
+                "text/URL commands use paired peers; omit manual credentials");
         if (argument != "--cert" && argument != "--key" && argument != "--ca" &&
             argument != "--timeout" && argument != "--state-dir" &&
             !(receive &&
@@ -241,8 +260,11 @@ int transfer_command(int argc, char** argv, bool receive) {
             static_cast<void>(number(options.at("--listen"), 65535, "listen port"));
     } else {
         if (positional.size() != 2)
-            throw std::invalid_argument("send requires IP:PORT and FILE, or FILE and PEER");
-        if (manual || positional[0].find(':') != std::string::npos) {
+            throw std::invalid_argument(typed ? command + " requires CONTENT and PEER"
+                                              : "send requires IP:PORT and FILE, or FILE and PEER");
+        if (typed)
+            beam::validate_content(kind, positional[0]);
+        if (!typed && (manual || positional[0].find(':') != std::string::npos)) {
             if (!manual)
                 static_cast<void>(required("--cert"));
             try {
@@ -359,12 +381,19 @@ int transfer_command(int argc, char** argv, bool receive) {
             std::cout << "Listening for one authenticated peer on UDP port " << port << "..."
                       << std::endl;
         };
-        result = beam::receive_file(port, output, configuration);
+        result = beam::receive_content(port, output, configuration);
         std::cout << "Received and verified ";
     } else {
-        result = beam::send_file(endpoint, filename, server_name, configuration);
+        if (typed)
+            result = kind == beam::ContentKind::text
+                         ? beam::send_text(endpoint, filename, server_name, configuration)
+                         : beam::send_url(endpoint, filename, server_name, configuration);
+        else
+            result = beam::send_file(endpoint, filename, server_name, configuration);
         std::cout << "Sent and verified by peer ";
     }
+    if (result.kind != beam::ContentKind::file)
+        std::cout << beam::content_type(result.kind) << " ";
     std::cout << result.filename << " (" << result.bytes << " bytes, SHA-256)\n";
     return 0;
 }
@@ -397,7 +426,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("LAN discovery is disabled in this build; see README.md");
 #endif
         }
-        if (command == "send" || command == "receive") {
+        if (command == "send" || command == "receive" || command == "text" || command == "url") {
 #ifdef BEAM_HAS_QUIC
             return transfer_command(argc, argv, command == "receive");
 #else

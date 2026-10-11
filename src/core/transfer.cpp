@@ -53,6 +53,63 @@ void progress(const TransferOptions& options, TransferStage stage, const std::st
         options.on_progress({stage, filename, bytes, total});
     transport::check_cancel(options);
 }
+template <typename Read>
+TransferResult send_offer(const Endpoint& endpoint, const std::string& server_name,
+                          const TransferOptions& options, const protocol::Message& offer,
+                          Read read) {
+    const auto filename = offer.kind == ContentKind::file   ? offer.text
+                          : offer.kind == ContentKind::text ? "text"
+                                                            : "url";
+    std::array<std::byte, 65536> buffer{};
+    progress(options, TransferStage::connecting, filename, 0, offer.size);
+    auto connection = transport::connect(endpoint, server_name, options);
+    // Keep streams alive through the catch so the application error reaches the
+    // peer before stream teardown. The connection always outlives both streams.
+    std::unique_ptr<transport::Stream> control, payload;
+    try {
+        control = connection->open(false);
+        protocol::write(*control, offer);
+        progress(options, TransferStage::waiting, filename, 0, offer.size);
+        expect(protocol::read(*control), protocol::Type::accept, offer.id);
+        payload = connection->open(true);
+        payload->send(protocol::encode_id(offer.id));
+        std::uint64_t sent = 0;
+        progress(options, TransferStage::transferring, filename, 0, offer.size);
+        for (;;) {
+            transport::check_cancel(options);
+            const auto count = read(buffer);
+            if (!count)
+                break;
+            if (count > offer.size - sent)
+                throw TransferError(TransferErrorCode::source_changed,
+                                    "input file grew during transfer");
+            payload->send(std::span{buffer}.first(count));
+            sent += count;
+            progress(options, TransferStage::transferring, filename, sent, offer.size);
+        }
+        if (sent != offer.size)
+            throw TransferError(TransferErrorCode::source_changed,
+                                "input file shrank during transfer");
+        payload->finish();
+        progress(options, TransferStage::verifying, filename, sent, offer.size);
+        expect(protocol::read(*control), protocol::Type::complete, offer.id);
+        protocol::write(*control, {protocol::Type::acknowledged, offer.id, 0, {}, {}});
+        control->finish();
+        std::array<std::byte, 1> trailing{};
+        if (control->read(trailing) != 0)
+            throw TransferError(TransferErrorCode::protocol, "unexpected bytes after completion");
+        // Completion is observational: a late stop request cannot undo success.
+        if (options.on_progress)
+            options.on_progress({TransferStage::complete, filename, sent, offer.size});
+        return {filename, sent, offer.kind};
+    } catch (const TransferError& error) {
+        connection->abort(error.code);
+        throw;
+    } catch (...) {
+        connection->abort(TransferErrorCode::io);
+        throw;
+    }
+}
 } // namespace
 TransferResult send_file(const Endpoint& endpoint, const std::filesystem::path& path,
                          const std::string& server_name, const TransferOptions& options) {
@@ -84,57 +141,41 @@ TransferResult send_file(const Endpoint& endpoint, const std::filesystem::path& 
     protocol::Message offer{protocol::Type::offer, transfer::random_id(), source.size,
                             hash.finish(), filename};
     source.rewind();
-    progress(options, TransferStage::connecting, filename, 0, source.size);
-    auto connection = transport::connect(endpoint, server_name, options);
-    // Keep streams alive through the catch so the application error reaches the
-    // peer before stream teardown. The connection always outlives both streams.
-    std::unique_ptr<transport::Stream> control, payload;
-    try {
-        control = connection->open(false);
-        protocol::write(*control, offer);
-        progress(options, TransferStage::waiting, filename, 0, source.size);
-        expect(protocol::read(*control), protocol::Type::accept, offer.id);
-        payload = connection->open(true);
-        payload->send(protocol::encode_id(offer.id));
-        std::uint64_t sent = 0;
-        progress(options, TransferStage::transferring, filename, 0, offer.size);
-        for (;;) {
-            transport::check_cancel(options);
-            const auto count = source.read(buffer);
-            if (!count)
-                break;
-            if (count > offer.size - sent)
-                throw TransferError(TransferErrorCode::source_changed,
-                                    "input file grew during transfer");
-            payload->send(std::span{buffer}.first(count));
-            sent += count;
-            progress(options, TransferStage::transferring, filename, sent, offer.size);
-        }
-        if (sent != offer.size)
-            throw TransferError(TransferErrorCode::source_changed,
-                                "input file shrank during transfer");
-        payload->finish();
-        progress(options, TransferStage::verifying, filename, sent, offer.size);
-        expect(protocol::read(*control), protocol::Type::complete, offer.id);
-        protocol::write(*control, {protocol::Type::acknowledged, offer.id, 0, {}, {}});
-        control->finish();
-        std::array<std::byte, 1> trailing{};
-        if (control->read(trailing) != 0)
-            throw TransferError(TransferErrorCode::protocol, "unexpected bytes after completion");
-        // Completion is observational: a late stop request cannot undo success.
-        if (options.on_progress)
-            options.on_progress({TransferStage::complete, filename, sent, offer.size});
-        return {filename, sent};
-    } catch (const TransferError& error) {
-        connection->abort(error.code);
-        throw;
-    } catch (...) {
-        connection->abort(TransferErrorCode::io);
-        throw;
-    }
+    return send_offer(endpoint, server_name, options, offer,
+                      [&](std::span<std::byte> bytes) { return source.read(bytes); });
 }
-TransferResult receive_file(std::uint16_t port, const std::filesystem::path& directory,
-                            const TransferOptions& options) {
+namespace {
+TransferResult send_memory(const Endpoint& endpoint, std::string_view content, ContentKind kind,
+                           const std::string& server_name, const TransferOptions& options) {
+    validate_content(kind, content);
+    // Snapshot caller storage before invoking callbacks; allocation is bounded.
+    const std::string snapshot(content);
+    validate_options(options);
+    if (endpoint.port == 0 || server_name.empty())
+        throw std::invalid_argument("peer port and TLS server name are required");
+    const auto bytes = std::as_bytes(std::span{snapshot.data(), snapshot.size()});
+    const std::string label = kind == ContentKind::text ? "text" : "url";
+    progress(options, TransferStage::hashing, label, 0, bytes.size());
+    transfer::Hash hash;
+    hash.update(bytes);
+    progress(options, TransferStage::hashing, label, bytes.size(), bytes.size());
+    protocol::Message offer{protocol::Type::offer,
+                            transfer::random_id(),
+                            bytes.size(),
+                            hash.finish(),
+                            {},
+                            TransferErrorCode::none,
+                            kind};
+    std::size_t offset = 0;
+    return send_offer(endpoint, server_name, options, offer, [&](std::span<std::byte> output) {
+        const auto count = std::min(output.size(), bytes.size() - offset);
+        std::copy_n(bytes.begin() + static_cast<std::ptrdiff_t>(offset), count, output.begin());
+        offset += count;
+        return count;
+    });
+}
+TransferResult receive(std::uint16_t port, const std::filesystem::path& directory,
+                       const TransferOptions& options, bool file_only) {
     validate_options(options);
     if (!port)
         throw std::invalid_argument("listen port must be between 1 and 65535");
@@ -149,10 +190,20 @@ TransferResult receive_file(std::uint16_t port, const std::filesystem::path& dir
         offer = protocol::read(*control);
         if (offer.type != protocol::Type::offer)
             throw TransferError(TransferErrorCode::protocol, "expected transfer offer");
-        transfer::Destination destination(output, offer.text);
+        if (file_only && offer.kind != ContentKind::file)
+            throw TransferError(TransferErrorCode::rejected, "receiver accepts only files");
+        const auto filename =
+            offer.kind == ContentKind::file
+                ? offer.text
+                : std::string(offer.kind == ContentKind::text ? "text-" : "url-") +
+                      std::to_string(offer.id) + ".txt";
+        transfer::Destination destination(output, filename);
+        std::string content;
+        if (offer.kind != ContentKind::file)
+            content.reserve(static_cast<std::size_t>(offer.size));
         protocol::write(*control, {protocol::Type::accept, offer.id, 0, {}, {}});
         accepted = true;
-        progress(options, TransferStage::transferring, offer.text, 0, offer.size);
+        progress(options, TransferStage::transferring, filename, 0, offer.size);
         payload = connection->accept(true);
         std::array<std::byte, 8> id{};
         transport::read_exact(*payload, id);
@@ -169,16 +220,26 @@ TransferResult receive_file(std::uint16_t port, const std::filesystem::path& dir
                 throw TransferError(TransferErrorCode::size, "payload exceeds offered size");
             const auto bytes = std::span{buffer}.first(count);
             destination.write(bytes);
+            if (offer.kind != ContentKind::file)
+                content.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             hash.update(bytes);
             received += count;
-            progress(options, TransferStage::transferring, offer.text, received, offer.size);
+            progress(options, TransferStage::transferring, filename, received, offer.size);
         }
         if (received != offer.size)
             throw TransferError(TransferErrorCode::size, "payload smaller than offered size");
-        progress(options, TransferStage::verifying, offer.text, received, offer.size);
+        progress(options, TransferStage::verifying, filename, received, offer.size);
         if (hash.finish() != offer.digest)
             throw TransferError(TransferErrorCode::integrity,
                                 "SHA-256 integrity verification failed");
+        if (offer.kind != ContentKind::file) {
+            try {
+                validate_content(offer.kind, content);
+            } catch (const std::invalid_argument&) {
+                throw TransferError(TransferErrorCode::protocol,
+                                    "invalid received text/URL content");
+            }
+        }
         transport::check_cancel(options);
         destination.commit();
         protocol::write(*control, {protocol::Type::complete, offer.id, 0, {}, {}});
@@ -189,8 +250,8 @@ TransferResult receive_file(std::uint16_t port, const std::filesystem::path& dir
                                 "unexpected bytes after acknowledgement");
         control->finish();
         if (options.on_progress)
-            options.on_progress({TransferStage::complete, offer.text, received, offer.size});
-        return {offer.text, received};
+            options.on_progress({TransferStage::complete, filename, received, offer.size});
+        return {filename, received, offer.kind};
     } catch (const TransferError& error) {
         // Pre-acceptance failures can use the control response. After acceptance,
         // close with the same bounded code so even a blocked payload sender wakes.
@@ -210,5 +271,22 @@ TransferResult receive_file(std::uint16_t port, const std::filesystem::path& dir
         connection->abort(TransferErrorCode::io);
         throw;
     }
+}
+} // namespace
+TransferResult send_text(const Endpoint& endpoint, std::string_view text,
+                         const std::string& server_name, const TransferOptions& options) {
+    return send_memory(endpoint, text, ContentKind::text, server_name, options);
+}
+TransferResult send_url(const Endpoint& endpoint, std::string_view url,
+                        const std::string& server_name, const TransferOptions& options) {
+    return send_memory(endpoint, url, ContentKind::url, server_name, options);
+}
+TransferResult receive_content(std::uint16_t port, const std::filesystem::path& directory,
+                               const TransferOptions& options) {
+    return receive(port, directory, options, false);
+}
+TransferResult receive_file(std::uint16_t port, const std::filesystem::path& directory,
+                            const TransferOptions& options) {
+    return receive(port, directory, options, true);
 }
 } // namespace beam

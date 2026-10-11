@@ -25,7 +25,7 @@
 Keep this order unless the user explicitly changes priorities. Phase 1 now includes
 the metadata, IDs, checksums, and errors required for a reliable transfer; Phase 2
 refines that implementation rather than creating a replacement. Both peers now use
-protocol v2; see [protocol](protocol.md) for compatibility and cancellation semantics.
+protocol v3; see [protocol](protocol.md) for compatibility and cancellation semantics.
 
 | Phase | Scope |
 | --- | --- |
@@ -76,6 +76,22 @@ before the direct transfer path is reliable on macOS and Linux.
   and live Bonjour discovery checks.
 - [x] Verify Phase 4 on Linux CI ([run 38064001209](https://github.com/septimochen/beam/actions/runs/38064001209)),
   including formatting, static analysis, paired transfers, and live Avahi discovery.
+
+## Phase 5 implementation
+
+- [x] Explicit file, UTF-8 text/plain, and single HTTP(S) text/uri-list content kinds.
+- [x] Paired `beam text TEXT PEER` / `beam url URL PEER` and reusable core APIs.
+- [x] Bound text/URL sizes and validate UTF-8, controls, URL syntax, and metadata.
+- [x] Reuse authenticated QUIC, SHA-256, progress, cancellation, and acknowledgement.
+- [x] Validate received content before safe publication under locally generated names.
+- [x] Preserve file-only API rejection and existing paired/dedicated-CA file workflows.
+- [x] Test Unicode/empty/boundary/fragmented payloads, malformed input, identity routing,
+  integrity/size errors, collisions, cancellation, callbacks, and late-completion output.
+- [x] Upgrade ALPN/control/discovery to v3; retain identity and pairing storage.
+- [x] Verify macOS Debug/Release, ASan/UBSan, direct-only, discovery-only, scaffold,
+  and live Bonjour discovery/transfer checks.
+- [ ] Verify Phase 5 on Linux CI, including formatting, static analysis, transfers,
+  and live Avahi discovery.
 
 ## Product scope
 

@@ -1,10 +1,10 @@
 # Beam
 
-Send a file directly between macOS and Linux devices from the command line.
+Send a file, text, or URL directly between macOS and Linux devices from the command line.
 Beam discovers receivers on your LAN, encrypts transfers with QUIC, and verifies
-each file before reporting success. No account or cloud service is required.
+each payload before reporting success. No account or cloud service is required.
 
-Beam currently transfers one file at a time between explicitly paired devices.
+Beam currently transfers one payload at a time between explicitly paired devices.
 See the [roadmap](docs/ROADMAP.md) for upcoming features.
 
 ## Quick start
@@ -63,7 +63,8 @@ mkdir -p received
 ```
 
 Allow UDP port 4269 through its firewall. The receiver advertises itself on the
-LAN, accepts one file from a paired device, and exits. Run it again for another file.
+LAN, accepts one file, text, or URL from a paired device, and exits. Run it again
+for another transfer.
 
 ### 4. Send a file
 
@@ -83,11 +84,26 @@ find or update its address:
 
 Use an endpoint from discovery. A changed address does not require re-pairing.
 
+### 5. Send text or a URL
+
+With the same receiver running, send to its paired name:
+
+```sh
+./build/beam text "hello" laptop
+./build/beam url "https://example.com/page" laptop
+```
+
+Text (up to 64 KiB of UTF-8) and HTTP(S) URLs (up to 8 KiB) are saved as
+`text-TRANSFER_ID.txt` or `url-TRANSFER_ID.txt` in `received`. Beam never opens
+links, executes text, or copies content to the clipboard. See [content transfers](docs/content.md)
+for validation rules and options. Both devices must use this release's `beam/3`
+protocol; existing pairing records continue to work.
+
 ## Useful options and tips
 
 - Use `beam peers` to list trusted devices and `beam unpair NAME` to remove one.
   Restart a running receiver after removal to apply the change.
-- Add `--endpoint IP:PORT` to `send` to use an address for just that transfer.
+- Add `--endpoint IP:PORT` to `send`, `text`, or `url` to use an address for just that transfer.
   Discovery supplies addresses; pairing verifies identity.
 - Use `[IPv6]:4269` for an IPv6 endpoint.
 - Add `--no-discovery` to `receive` to keep it unadvertised; omit `--name` in that case.
@@ -116,6 +132,7 @@ make format          # apply clang-format 23
 make check           # check formatting, build, and run tests
 make lint            # run clang-tidy and static analysis
 make discovery-test  # test live LAN discovery; requires Bonjour/Avahi
+make content-test    # test typed text/URL validation and paired transfers
 ```
 
 See [build setup](docs/development.md#build-setup) for formatter and lint tool setup,

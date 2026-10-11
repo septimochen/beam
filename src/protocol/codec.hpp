@@ -23,6 +23,7 @@ struct Message {
     Digest digest{};
     std::string text;
     TransferErrorCode error{TransferErrorCode::none};
+    ContentKind kind{ContentKind::file};
 };
 std::vector<std::byte> encode(const Message& message);
 Message decode(std::span<const std::byte> bytes);

@@ -1,13 +1,13 @@
-# Beam protocol v2 (Phase 2)
+# Beam protocol v3 (Phase 5)
 
-ALPN: `beam/2`. QUIC/TLS authenticates both peers before any application stream.
-Both peers must use Phase 2 builds; v1 is intentionally incompatible and fails ALPN
-negotiation rather than interpreting a new failure frame as an old one.
+ALPN: `beam/3`. QUIC/TLS authenticates both peers before any application stream.
+Both peers must use Phase 5 builds. Protocol v1/v2 peers fail ALPN negotiation
+before interpreting the new typed offer layout. Identity/pairing storage is unchanged.
 One connection carries exactly one bidirectional control stream opened by the sender,
 and one unidirectional payload stream opened after acceptance. All integers are unsigned
 and big-endian. No HTTP/3 or bulk data multiplexing is used.
 
-Control frames have a 6-byte header: version (u8, always 2), type (u8), payload length
+Control frames have a 6-byte header: version (u8, always 3), type (u8), payload length
 (u32, at most 1024). A decoder rejects unsupported versions/types, truncated fields,
 invalid lengths/text/error codes, zero IDs, and trailing bytes. Reads handle arbitrary
 stream fragmentation; invalid headers and type-specific lengths fail before allocating
@@ -15,7 +15,7 @@ or waiting for their payload.
 
 | Type | Value | Payload |
 | --- | --- | --- |
-| OFFER | 1 | id u64, file size u64, SHA-256 32 bytes, filename length u16, filename bytes |
+| OFFER | 1 | id u64, content kind u8, size u64, SHA-256 32 bytes, filename length u16, filename bytes |
 | ACCEPT | 2 | id u64 |
 | REJECT | 3 | id u64, error code u16, reason length u16, printable ASCII reason bytes (1–256) |
 | COMPLETE | 4 | id u64 |
@@ -54,6 +54,21 @@ id u64 followed by exactly the offered bytes and a QUIC FIN. The receiver reject
 extra/missing bytes, wrong IDs, and incorrect hashes. A filename must pass Beam's
 portable basename validator; it cannot supply a path.
 
+Content kinds are file=1 (`application/octet-stream`), text=2 (`text/plain`),
+and URL=3 (`text/uri-list`). Unknown kinds fail closed. File offers require a safe
+filename (1–255 bytes). Text/URL offers require a zero filename length and are
+bounded to 65,536/8,192 payload bytes respectively; URL size cannot be zero.
+Typed payloads stay on the independent payload stream, never in control metadata.
+OFFER payload length is 51–306 bytes (51 for text/URL; 52–306 for files).
+
+The receiver validates text/URL content after checking exact size, EOF and SHA-256.
+Strict UTF-8 text permits tabs, CR and LF but excludes NUL, other C0/C1 controls
+and DEL. URLs use the supported single absolute HTTP(S) ASCII/percent-encoded
+syntax without credentials; see [content](content.md). Invalid content fails with
+protocol error 7 before publication. Typed output names are generated locally as
+`text-ID.txt` or `url-ID.txt`. Core file-only receivers reject typed offers with
+code 2 before accepting payload bytes.
+
 | Local state | Allowed next event |
 | --- | --- |
 | Sender waiting for acceptance | ACCEPT, REJECT, FAILED, or connection failure/cancellation |
@@ -66,8 +81,9 @@ portable basename validator; it cannot supply a path.
 Unexpected messages, IDs, stream directions, or trailing control bytes fail the
 transfer. The receiver writes into a private, exclusively created temporary file
 relative to a held output-directory descriptor. Only after valid size, digest, EOF,
-and a cancellation check does it flush and link the temporary file to its final name
-with no replacement. It then sends COMPLETE. The sender sends ACKNOWLEDGED and
+content validation for text/URLs, and a cancellation check does it flush and link
+the temporary file to its final name with no replacement. It then sends COMPLETE.
+The sender sends ACKNOWLEDGED and
 finishes the control send direction; the receiver finishes its direction after reading
 the acknowledgement. The sender drains that final EOF before reporting success.
 
@@ -83,5 +99,5 @@ reset their deadline.
 Cancellation/failure before publication removes the temporary file. A lost or cancelled
 completion exchange can leave a fully verified file with a failed sender result; retries
 never overwrite it. Cancellation after publication does not delete that file. No resume,
-concurrency, MIME metadata, Unicode filenames, discovery, or persistent connection reuse
-is part of v2. This is an evolving protocol, not a promised stable ABI.
+concurrency, arbitrary MIME types, Unicode filenames, or persistent connection reuse
+is part of v3. This is an evolving protocol, not a promised stable ABI.

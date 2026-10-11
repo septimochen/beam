@@ -2,7 +2,8 @@
 
 Dependency flow is `CLI -> beam-core -> protocol/transfer -> transport -> MsQuic`.
 The CLI parses arguments and reports outcomes; application code sees no MsQuic handles.
-The core exposes `send_file`/`receive_file`, credentials, endpoints, and transfer results.
+The core exposes file/text/URL sending, `receive_content`, file-only `receive_file`,
+credentials, endpoints, and typed transfer results.
 Typed transfer errors carry a category and peer/local origin across the CLI boundary; C callbacks catch exceptions locally.
 
 `src/transport/transport.hpp` is the internal QUIC boundary. Its connection and stream
@@ -32,6 +33,13 @@ uses OpenSSL EVP SHA-256 and RAND for established cryptographic primitives, plus
 file operations isolated from protocol/transport. Directory-relative exclusive creation
 and no-replace publication protect the selected destination from symlinks, races, and
 collisions; incomplete files never occupy their final name.
+
+File and bounded in-memory text/URL sources use the same sending state machine.
+`src/transfer/content.cpp` validates UTF-8 and supported HTTP(S) URL syntax without
+new dependencies. Typed offers include a content kind; bounded text/URL payloads
+are revalidated after integrity checks and saved under locally generated basenames.
+The core exposes the kind independently of storage names and never opens content.
+See [content](content.md) for bounds and API semantics.
 
 The transfer implementation targets macOS/Linux. Windows still builds the portable filename/core scaffold;
 Windows exclusive storage and credential provisioning remain future work. MsQuic v2.6.2

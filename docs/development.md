@@ -118,6 +118,12 @@ local filesystem details.
 
 ## Testing and completion
 
+`make content-test` runs bounded UTF-8/HTTP(S) validation, typed protocol parsing,
+and paired localhost text/URL transfers. It covers byte preservation, boundaries,
+malformed input, integrity failures, collisions, file-only receiver rejection,
+cancellation, callback errors, and publication. These tests are also in `make check`
+and CI; they require no discovery daemon. See [content](content.md).
+
 `make pairing-test` runs the identity/store checks and authenticated paired
 localhost transfers. These cover fingerprint approval, restart/concurrent
 initialization, unsafe state files, address changes, exact leaf pinning, and

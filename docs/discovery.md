@@ -34,7 +34,7 @@ See [pairing](pairing.md) for setup.
 ## Records and bounds
 
 - Service type: `_beam._udp`, domain: `local.`; SRV port is the bound QUIC UDP port.
-- TXT: `v=2`, indicating support for the existing `beam/2` transfer protocol. Unknown
+- TXT: `v=3`, indicating support for the existing `beam/3` transfer protocol. Unknown
   TXT keys are ignored; missing, duplicate, unsupported, or malformed versions are
   rejected. TXT data is limited to 512 bytes.
 - No file names, paths, certificates, fingerprints, secrets, or transfer contents

@@ -1,12 +1,14 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace beam {
@@ -22,6 +24,14 @@ struct Endpoint {
     std::string host;
     std::uint16_t port;
 };
+enum class ContentKind : std::uint8_t { file = 1, text = 2, url = 3 };
+inline constexpr std::size_t max_text_size = 65536;
+inline constexpr std::size_t max_url_size = 8192;
+[[nodiscard]] std::string_view content_type(ContentKind kind) noexcept;
+// Throws invalid_argument for invalid UTF-8 text or an unsupported HTTP(S) URL.
+// Text allows tabs/newlines, but no NUL or other C0/C1 controls. URLs are ASCII,
+// with percent-encoded non-ASCII characters and no embedded credentials.
+void validate_content(ContentKind kind, std::string_view content);
 [[nodiscard]] Endpoint parse_endpoint(const std::string& endpoint);
 enum class TransferErrorCode : std::uint16_t {
     none = 0,
@@ -66,12 +76,22 @@ struct TransferOptions {
 struct TransferResult {
     std::string filename;
     std::uint64_t bytes;
+    ContentKind kind{ContentKind::file};
 };
-// One authenticated peer and one file per invocation. TransferError derives from
+// One authenticated peer and one typed payload per invocation. TransferError derives from
 // std::runtime_error. Cancellation before publication removes the partial file;
 // cancellation during the final exchange can leave a fully verified file.
 TransferResult send_file(const Endpoint& endpoint, const std::filesystem::path& file,
                          const std::string& server_name, const TransferOptions& options);
+TransferResult send_text(const Endpoint& endpoint, std::string_view text,
+                         const std::string& server_name, const TransferOptions& options);
+TransferResult send_url(const Endpoint& endpoint, std::string_view url,
+                        const std::string& server_name, const TransferOptions& options);
+// Receives any supported kind. Text/URLs use locally generated text-ID.txt or
+// url-ID.txt basenames and are validated before publication. No content is opened.
+TransferResult receive_content(std::uint16_t port, const std::filesystem::path& directory,
+                               const TransferOptions& options);
+// File-only API: rejects text/URL offers before accepting payload bytes.
 TransferResult receive_file(std::uint16_t port, const std::filesystem::path& directory,
                             const TransferOptions& options);
 } // namespace beam

@@ -71,7 +71,7 @@ On the sender:
 ```
 
 The default receive port is 4269; use `--listen PORT` to change it. Each invocation
-accepts one authenticated connection and one file, then exits. A sender trusts
+accepts one authenticated connection and one file, text, or URL, then exits. A sender trusts
 only the selected peer; a receiver accepts any currently paired peer. Empty trust
 sets fail before opening a listener. The receiver still verifies size/SHA-256 and
 never overwrites an existing file.
@@ -131,7 +131,7 @@ then run `identity init` and re-pair with a newly verified fingerprint.
 
 ## Compatibility
 
-Paired transfers retain the `beam/2` wire protocol and all transfer cancellation,
+Paired transfers retain the `beam/3` wire protocol and all transfer cancellation,
 progress, and cleanup behavior. Both peers need Phase 4 identity support for this
 pairing workflow. Existing dedicated-CA transfers remain available with explicit
 `--cert`, `--key`, and `--ca` flags; see [legacy TLS setup](tls.md#dedicated-ca-transfers).
