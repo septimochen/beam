@@ -12,7 +12,7 @@
 #include <ctime>
 #include <dirent.h>
 #include <fcntl.h>
-#include <sys/file.h>
+#include <sys/file.h> // NOLINT(misc-include-cleaner): declares flock on macOS and Linux.
 #include <sys/stat.h>
 #include <unistd.h>
 

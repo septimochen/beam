@@ -1,6 +1,8 @@
 #include "beam/beam.hpp"
 
 #include <array>
+#include <cstddef>
+#include <string_view>
 
 namespace beam {
 

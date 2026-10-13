@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <unistd.h>
 
 namespace {
 class Fragmented final : public beam::transport::Stream {

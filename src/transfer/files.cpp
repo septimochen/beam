@@ -5,7 +5,6 @@
 #include <fcntl.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
-#include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
 

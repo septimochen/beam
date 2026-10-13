@@ -13,7 +13,6 @@
 #include <deque>
 #include <mutex>
 #include <sstream>
-#include <stdexcept>
 #include <unistd.h>
 #include <vector>
 

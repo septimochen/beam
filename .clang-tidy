@@ -15,5 +15,8 @@ Checks: >-
   bugprone-use-after-move,
   performance-move-const-arg
 WarningsAsErrors: '*'
+CheckOptions:
+  misc-include-cleaner.MissingIncludes: 'false'
+  misc-include-cleaner.UnusedIncludes: 'true'
 HeaderFilterRegex: '(^|/)(include/beam/|src/|tests/)'
 SystemHeaders: false

@@ -166,7 +166,7 @@ Documentation-only changes need link/content checks rather than new executable t
 The automatic CI status check runs formatting, `make lint`, and tests only on pushes
 to `main`. `make check` runs the same categories locally. `make lint` uses LLVM 23
 and the root `.clang-tidy` configuration, with warnings treated as errors. It runs
-Clang Static Analyzer plus focused checks for unused or missing direct includes,
+Clang Static Analyzer plus focused checks for unused direct includes,
 assertion side effects, duplicated branches, dangling views, use after move, unused
 RAII temporaries, unguarded condition-variable waits, unchecked optional access, and
 suspicious expressions.

@@ -1,7 +1,6 @@
 #include "beam/identity.hpp"
 #include "protocol/codec.hpp"
 #include "transfer/files.hpp"
-#include <algorithm>
 #include <array>
 #include <iostream>
 #include <thread>

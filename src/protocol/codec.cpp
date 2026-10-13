@@ -1,7 +1,6 @@
 #include "codec.hpp"
 #include "beam/beam.hpp"
 #include <algorithm>
-#include <stdexcept>
 
 namespace beam::protocol {
 namespace {
