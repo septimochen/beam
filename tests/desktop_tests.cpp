@@ -1,4 +1,5 @@
 #include "beam/discovery.hpp"
+#include "beam/identity.hpp"
 #include "desktop/service.hpp"
 #include <algorithm>
 #include <fstream>

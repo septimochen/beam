@@ -1,6 +1,7 @@
 #include "service.hpp"
 #include "beam/beam.hpp"
 #include "beam/discovery.hpp"
+#include "beam/identity.hpp"
 #include "beam/routing.hpp"
 #include <algorithm>
 #include <condition_variable>

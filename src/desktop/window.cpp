@@ -1,4 +1,5 @@
 #include "window.hpp"
+#include "beam/identity.hpp"
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>

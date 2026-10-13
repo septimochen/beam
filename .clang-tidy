@@ -2,6 +2,7 @@ Checks: >-
   -*,
   clang-analyzer-*,
   -clang-analyzer-optin.*,
+  misc-include-cleaner,
   bugprone-assert-side-effect,
   bugprone-branch-clone,
   bugprone-dangling-handle,

@@ -1,4 +1,5 @@
 #include "beam/beam.hpp"
+#include "beam/identity.hpp"
 #include "window.hpp"
 #include <QApplication>
 #include <QCommandLineParser>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "beam/identity.hpp"
+#include "beam/transfer.hpp"
 #include <atomic>
 #include <deque>
 #include <mutex>
