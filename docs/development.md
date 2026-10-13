@@ -7,7 +7,7 @@ for a first transfer.
 ## Build setup
 
 Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL development
-headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy.
+headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy 23.
 Optional Tailscale CLI discovery uses header-only nlohmann_json 3.11+ for bounded
 JSON parsing; it adds no runtime service or shared library.
 The pinned MsQuic build uses its own quictls TLS implementation; Beam uses the
@@ -21,8 +21,8 @@ export CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format"
 export CLANG_TIDY="$(brew --prefix llvm)/bin/clang-tidy"
 ```
 
-Formatting requires LLVM 23; check the installed version before running contributor
-checks. Bonjour is included with macOS.
+Formatting and linting require LLVM 23; check the installed versions before running
+contributor checks. Bonjour is included with macOS.
 
 On Debian/Ubuntu, install `build-essential`, `libssl-dev`, `perl`, `cmake`, `git`,
 `libavahi-compat-libdnssd-dev`, `avahi-daemon`, and `nlohmann-json3-dev`. Linux discovery requires a
@@ -38,7 +38,7 @@ From the repository root:
 
 ```sh
 make deps   # explicit network download/build of MsQuic v2.6.2
-make check  # formatting, build, unit tests, and localhost QUIC integration
+make check  # formatting, clang-tidy/static analysis, build, and tests
 ```
 
 `make deps` checks commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`, initializes only
@@ -164,11 +164,27 @@ cleans up resources, avoids data loss, produces useful errors, preserves archite
 boundaries, and has appropriate tests. Record platform validation limits honestly.
 Documentation-only changes need link/content checks rather than new executable tests.
 The automatic CI status check runs formatting, `make lint`, and tests only on pushes
-to `main`. `make lint` uses Clang Static Analyzer and focused clang-tidy checks for
-assertion side effects, duplicated branches, infinite loops, incorrect `sizeof`,
-and suspicious expressions/calls, with warnings treated as errors. Install clang-tidy
-before running it locally. Opt-in analyzer checks are excluded because the enum-range
-check misdiagnoses MsQuic bitmask flags. Override `CLANG_TIDY_CHECKS` to explore other checks.
+to `main`. `make check` runs the same categories locally. `make lint` uses LLVM 23
+and the root `.clang-tidy` configuration, with warnings treated as errors. It runs
+Clang Static Analyzer plus focused checks for assertion side effects, duplicated
+branches, dangling views, use after move, unused RAII temporaries, unguarded
+condition-variable waits, unchecked optional access, and suspicious expressions.
+Opt-in analyzer checks are excluded because the enum-range check misdiagnoses
+MsQuic bitmask flags. Override `CLANG_TIDY_CHECKS` to explore other checks.
+
+Lint selects source files from the configured `compile_commands.json`, so disabled
+QUIC, discovery, Tailscale, or desktop components are not analyzed using unrelated
+compiler flags. Use a Makefiles or Ninja generator. For the full desktop build:
+
+```sh
+make check BUILD_DIR=build-desktop CMAKE_ARGS='-DBEAM_ENABLE_DESKTOP=ON'
+```
+
+On macOS, the lint runner locates the SDK through `xcrun` and passes it to
+clang-tidy; an explicit SDK in the compilation flags takes precedence. Editor
+clang-tidy integrations should use the same configuration and compilation database.
+Static analysis complements the focused integration/UI tests: it cannot prove
+correct callback lifetimes, deadlock freedom, or platform clipboard/drop policy.
 The full three-platform build/test matrix can be triggered manually in GitHub Actions.
 Commit completed work with a descriptive message and push when a remote is configured;
 leave unrelated changes unstaged.

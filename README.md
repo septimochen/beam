@@ -158,8 +158,8 @@ Keep changes focused and include tests for behavior changes.
 
 ```sh
 make format          # apply clang-format 23
-make check           # check formatting, build, and run tests
-make lint            # run clang-tidy and static analysis
+make check           # check formatting, clang-tidy/static analysis, build, and tests
+make lint            # run clang-tidy/static analysis for the configured build
 make discovery-test  # test live LAN discovery; requires Bonjour/Avahi
 make content-test    # test typed text/URL validation and paired transfers
 make routing-test    # test Tailscale fixtures and safe endpoint fallback

@@ -4,10 +4,8 @@ CMAKE ?= cmake
 CTEST ?= ctest
 CLANG_FORMAT ?= clang-format
 CLANG_TIDY ?= clang-tidy
-CLANG_TIDY_CHECKS ?= -*,clang-analyzer-*,-clang-analyzer-optin.*,bugprone-assert-side-effect,bugprone-branch-clone,bugprone-infinite-loop,bugprone-sizeof-expression,bugprone-suspicious-*
+CLANG_TIDY_CHECKS ?=
 CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp")
-DESKTOP_TRANSLATION_UNITS := $(filter src/desktop/%.cpp tests/desktop%.cpp,$(CXX_SOURCES))
-CXX_TRANSLATION_UNITS := $(filter-out $(DESKTOP_TRANSLATION_UNITS),$(filter %.cpp,$(CXX_SOURCES)))
 CMAKE_ARGS ?=
 
 .PHONY: all deps configure build test check desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
@@ -25,7 +23,7 @@ build: configure
 test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure
 
-check: format-check test
+check: format-check lint test
 
 desktop:
 	$(MAKE) build BUILD_DIR="$(BUILD_DIR)-desktop" CMAKE_ARGS='$(CMAKE_ARGS) -DBEAM_ENABLE_DESKTOP=ON'
@@ -51,14 +49,9 @@ discovery-test: configure
 	$(CMAKE) --build "$(BUILD_DIR)" --target discovery-test --config $(BUILD_TYPE)
 
 lint: configure
-	@set -e; sources='$(CXX_TRANSLATION_UNITS)'; \
-	if grep -q '^BEAM_ENABLE_DESKTOP:BOOL=ON$$' "$(BUILD_DIR)/CMakeCache.txt"; then \
-		sources="$$sources $(DESKTOP_TRANSLATION_UNITS)"; \
-	fi; \
-	for source in $$sources; do \
-		$(CLANG_TIDY) -p "$(BUILD_DIR)" --checks='$(CLANG_TIDY_CHECKS)' \
-			--header-filter='^$(CURDIR)/(include|src|tests)/' --warnings-as-errors='*' "$$source"; \
-	done
+	$(CMAKE) -DBEAM_SOURCE_DIR="$(CURDIR)" -DBEAM_BUILD_DIR="$(abspath $(BUILD_DIR))" \
+		-DBEAM_CLANG_TIDY="$(CLANG_TIDY)" -DBEAM_CLANG_TIDY_CHECKS="$(CLANG_TIDY_CHECKS)" \
+		-P cmake/RunClangTidy.cmake
 
 format-version:
 	@formatter_version="$$($(CLANG_FORMAT) --version)"; \
@@ -77,9 +70,9 @@ clean:
 	$(CMAKE) --build "$(BUILD_DIR)" --target clean --config $(BUILD_TYPE)
 
 help:
-	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format and tests"
+	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format, lint, and tests"
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"
-	@echo "lint: configure and run clang-tidy lint and static analysis (requires clang-tidy)"
+	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"
 	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"
 	@echo "content-test: typed text/URL validation and paired localhost transfers (requires QUIC build)"

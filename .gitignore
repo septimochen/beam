@@ -2,6 +2,7 @@
 *
 !/.gitignore
 !/.clang-format
+!/.clang-tidy
 !/AGENTS.md
 !/README.md
 !/CMakeLists.txt
