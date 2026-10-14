@@ -8,7 +8,11 @@
 #include <sstream>
 #include <stdexcept>
 #include <sys/stat.h>
+#ifdef __APPLE__
 #include <unistd.h>
+#else
+#include <stdlib.h>
+#endif
 
 namespace {
 void require(bool condition, const char* message) {

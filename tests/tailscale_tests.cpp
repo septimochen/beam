@@ -5,7 +5,11 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#ifdef __APPLE__
 #include <unistd.h>
+#else
+#include <stdlib.h>
+#endif
 
 namespace {
 void require(bool condition, const char* label) {
