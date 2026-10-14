@@ -1,6 +1,6 @@
 #pragma once
 
-#include "service.hpp"
+#include "desktop/service.hpp"
 #include <QWidget>
 
 class QComboBox;

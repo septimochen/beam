@@ -1,4 +1,4 @@
-#include "desktop/window.hpp"
+#include "desktop/qt/window.hpp"
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>

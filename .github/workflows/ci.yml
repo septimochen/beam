@@ -63,7 +63,7 @@ jobs:
           clang-format-23 --version
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'
-        run: brew install openssl@3 nlohmann-json qtbase
+        run: brew install openssl@3 nlohmann-json ninja
       - name: Build pinned MsQuic
         if: runner.os != 'Windows'
         run: cmake -DBEAM_DEPS_DIR="$PWD/build/deps" -P cmake/BootstrapMsQuic.cmake
@@ -71,7 +71,14 @@ jobs:
         if: runner.os == 'Linux'
         run: make format-check CLANG_FORMAT=clang-format-23
       - name: Configure
+        if: runner.os != 'macOS'
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DBEAM_ENABLE_DESKTOP=${{ env.BEAM_DESKTOP }}
+      - name: Check Swift formatting
+        if: runner.os == 'macOS'
+        run: xcrun swift-format lint --strict --recursive src/desktop/macos tests/desktop/macos
+      - name: Configure native macOS desktop
+        if: runner.os == 'macOS'
+        run: cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DBEAM_ENABLE_DESKTOP=ON
       - name: Build
         run: cmake --build build --config Release --parallel
       - name: Test

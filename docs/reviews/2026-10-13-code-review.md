@@ -38,7 +38,7 @@ See the [upstream shutdown contract](https://github.com/microsoft/msquic/blob/v2
 
 ### 2. P1 — Acknowledging move drops can delete the original file
 
-Location: [`src/desktop/window.cpp:384–389`](../../src/desktop/window.cpp#L384).
+Location: [`src/desktop/qt/window.cpp:384–389`](../../src/desktop/qt/window.cpp#L384).
 
 The drop handler stores only the original path, then calls
 `acceptProposedAction()`. It also accepts `Qt::MoveAction`, although no file bytes
@@ -57,7 +57,7 @@ The existing UI test covers only `CopyAction`.
 
 ### 3. P2 — The text editor bypasses file-drop validation
 
-Location: [`src/desktop/window.cpp:125–131`](../../src/desktop/window.cpp#L125).
+Location: [`src/desktop/qt/window.cpp:125–131`](../../src/desktop/qt/window.cpp#L125).
 
 The stock `QPlainTextEdit` handles drops on its viewport before the parent window
 can apply `dropped_file()`. In Text mode, dropping one regular file onto the
@@ -75,7 +75,7 @@ were accepted. Existing tests dispatch valid drops only to the parent window.
 
 ### 4. P2 — The editor implicitly uses X11 PRIMARY selection
 
-Location: [`src/desktop/window.cpp:125–131`](../../src/desktop/window.cpp#L125).
+Location: [`src/desktop/qt/window.cpp:125–131`](../../src/desktop/qt/window.cpp#L125).
 
 On Linux/X11, the default Qt text editor publishes selected text to PRIMARY and
 reads PRIMARY on middle-click. Beam does not override those interactions.

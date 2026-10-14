@@ -5,7 +5,16 @@ CTEST ?= ctest
 CLANG_FORMAT ?= clang-format
 CLANG_TIDY ?= clang-tidy
 CLANG_TIDY_CHECKS ?=
-CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp")
+CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp" -o -name "*.mm" -o -name "*.h")
+SWIFT_SOURCES := $(shell find src tests -name "*.swift")
+SWIFT_FORMAT ?= xcrun swift-format
+ifeq ($(shell uname -s),Darwin)
+DESKTOP_BUILD_DIR ?= $(BUILD_DIR)-desktop-native
+DESKTOP_GENERATOR ?= -G Ninja
+else
+DESKTOP_BUILD_DIR ?= $(BUILD_DIR)-desktop
+DESKTOP_GENERATOR ?=
+endif
 CMAKE_ARGS ?=
 
 .PHONY: all deps configure build test check desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
@@ -26,14 +35,14 @@ test: build
 check: format-check lint test
 
 desktop:
-	$(MAKE) build BUILD_DIR="$(BUILD_DIR)-desktop" CMAKE_ARGS='$(CMAKE_ARGS) -DBEAM_ENABLE_DESKTOP=ON'
+	$(MAKE) build BUILD_DIR="$(DESKTOP_BUILD_DIR)" CMAKE_ARGS='$(DESKTOP_GENERATOR) $(CMAKE_ARGS) -DBEAM_ENABLE_DESKTOP=ON'
 
 desktop-test:
-	$(MAKE) build BUILD_DIR="$(BUILD_DIR)-desktop" CMAKE_ARGS='$(CMAKE_ARGS) -DBEAM_ENABLE_DESKTOP=ON'
-	$(CTEST) --test-dir "$(BUILD_DIR)-desktop" --build-config $(BUILD_TYPE) --output-on-failure -R '^desktop'
+	$(MAKE) desktop
+	$(CTEST) --test-dir "$(DESKTOP_BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^desktop'
 
 desktop-live-test: desktop
-	$(CMAKE) --build "$(BUILD_DIR)-desktop" --target desktop-live-test --config $(BUILD_TYPE)
+	$(CMAKE) --build "$(DESKTOP_BUILD_DIR)" --target desktop-live-test --config $(BUILD_TYPE)
 
 pairing-test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^(identity|pairing-localhost)$$'
@@ -62,9 +71,11 @@ format-version:
 
 format: format-version
 	$(CLANG_FORMAT) -i $(CXX_SOURCES)
+	@if [ "$$(uname -s)" = Darwin ]; then $(SWIFT_FORMAT) format --in-place $(SWIFT_SOURCES); fi
 
 format-check: format-version
 	$(CLANG_FORMAT) --dry-run --Werror $(CXX_SOURCES)
+	@if [ "$$(uname -s)" = Darwin ]; then $(SWIFT_FORMAT) lint --strict $(SWIFT_SOURCES); fi
 
 clean:
 	$(CMAKE) --build "$(BUILD_DIR)" --target clean --config $(BUILD_TYPE)
@@ -77,5 +88,5 @@ help:
 	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"
 	@echo "content-test: typed text/URL validation and paired localhost transfers (requires QUIC build)"
 	@echo "routing-test: Tailscale discovery fixtures, route selection and safe localhost fallback"
-	@echo "desktop: build optional Qt 6 tray app in BUILD_DIR-desktop; desktop-test: worker and offscreen UI checks"
+	@echo "desktop: native Swift macOS (BUILD_DIR-desktop-native) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"

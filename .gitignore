@@ -25,6 +25,12 @@
 !/.github/workflows/*.yml
 
 !/src/**/*.hpp
+!/src/**/*.h
+!/src/**/*.mm
+!/src/**/*.swift
+!/src/**/*.plist.in
+!/src/**/CMakeLists.txt
 !/tests/**/*.sh
+!/tests/**/*.swift
 !/cmake/
 !/cmake/**/*.cmake

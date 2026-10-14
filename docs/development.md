@@ -79,11 +79,16 @@ Installing with `cmake --install build --prefix ./install` requires the
 MsQuic/OpenSSL shared libraries to remain available to the runtime loader.
 Beam does not yet bundle an installer.
 
-The optional desktop app requires Qt 6.4+ Widgets and the QUIC core. Install
-`qtbase` with Homebrew or `qt6-base-dev` and `qt6-qpa-plugins` on Debian/Ubuntu,
-then use `make desktop` / `make desktop-test`. A normal CLI build has no Qt
-dependency. Main-branch Linux CI and manual macOS/Linux builds enable
-`BEAM_ENABLE_DESKTOP`; desktop UI tests use Qt's offscreen platform. See
+The optional desktop app requires the QUIC core. macOS 13+ uses Swift 6 from
+Xcode Command Line Tools and Ninja (`brew install ninja`); Qt is not required.
+Linux uses Qt 6.4+ Widgets (`qt6-base-dev` and `qt6-qpa-plugins` on Debian/Ubuntu).
+Use `make desktop` / `make desktop-test`. Native macOS builds use Ninja and a
+separate `build-desktop-native` directory, keeping existing Qt build caches separate.
+A normal CLI build has no Swift or Qt dependency. Main-branch Linux CI and manual
+macOS/Linux builds enable `BEAM_ENABLE_DESKTOP`; Linux UI tests use Qt's offscreen
+platform, while macOS tests exercise the Swift model and Objective-C++ bridge.
+`make format` / `make format-check` also use Apple's bundled `xcrun swift-format`
+on macOS; `make lint` includes configured Objective-C++ translation units. See
 [desktop](desktop.md) for launch paths, clipboard privacy, and native checks.
 
 ## Implementation style

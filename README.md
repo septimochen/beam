@@ -102,9 +102,10 @@ protocol; existing pairing records continue to work.
 
 ## Desktop sharing
 
-Install Qt 6 Widgets (`brew install qtbase` on macOS or `qt6-base-dev` and
-`qt6-qpa-plugins` on Debian/Ubuntu), then run `make desktop`. Launch
-`build-desktop/beam-desktop` on Linux or `open build-desktop/beam-desktop.app`
+macOS 13+ uses a native SwiftUI/AppKit app; install Xcode Command Line Tools and
+Ninja (`brew install ninja`). Linux uses Qt 6 Widgets (`qt6-base-dev` and
+`qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
+`build-desktop/beam-desktop` on Linux or `open build-desktop-native/beam-desktop.app`
 on macOS. Use the same CLI pairing setup, choose a device, drop or select one
 file, then click **Send**. Choose a folder and click **Start receiving** to
 receive repeated transfers.

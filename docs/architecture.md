@@ -55,7 +55,13 @@ share sheets, and GUI logic outside the reusable core. Native applications call 
 rather than copying transfer logic; Android should eventually use Kotlin through JNI.
 Add platform directories only when implementing their functionality.
 
-The optional Qt 6 desktop app lives in `src/desktop`. A GUI-independent service
+The optional desktop app lives in `src/desktop`: shared worker ownership is in
+`service.hpp/.cpp`, Linux Qt UI is in `qt/`, and native macOS UI is in `macos/`.
+SwiftUI owns macOS controls; AppKit owns the menu bar, window lifecycle, file
+dialogs, drops, and explicit clipboard access. A small Objective-C++ bridge
+translates C++ exceptions to NSError and drains value snapshots on the main
+thread. C++ objects and callbacks never cross into Swift. Both frontends use one
+GUI-independent service that
 owns one send `std::jthread` and one receive `std::jthread`, with stop-token
 cancellation and joining teardown. It calls the existing paired core APIs,
 reloads receiver credentials between transfers, and owns advertisements only

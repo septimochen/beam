@@ -116,14 +116,16 @@ See [Tailscale](tailscale.md) for configuration and safety boundaries.
 
 ## Phase 7 implementation
 
-- [x] Optional macOS/Linux Qt 6 Widgets tray app, isolated from the reusable core.
+- [x] Optional native SwiftUI/AppKit macOS app and Qt 6 Widgets Linux tray app,
+  isolated from the reusable core through one shared desktop service.
 - [x] Paired device selection, local single-file drop/selection, and explicit Send.
 - [x] GUI-thread clipboard snapshot/review and typed text/URL sharing with byte bounds.
 - [x] Explicit receive folder/start/stop, repeated verified transfers, and fresh trust snapshots.
 - [x] Progress, send cancellation, bounded worker events, and joined shutdown.
 - [x] Tray open/quit and verified completion/error notifications with visible window results.
 - [x] Keep received content saved; never open, execute, or replace the clipboard automatically.
-- [x] Authenticated controller tests and offscreen drop/clipboard/UI privacy tests.
+- [x] Authenticated controller tests, Swift model/bridge tests on macOS, and
+  offscreen drop/clipboard/UI privacy tests on Linux.
 - [x] Optional build/Make commands, macOS app bundle, Linux executable, and CI coverage.
 - [x] Verify macOS Debug/Release, ASan/UBSan, default CLI, direct-only desktop,
   scaffold, local static analysis, and live Bonjour desktop advertisement/transfers.
@@ -131,9 +133,11 @@ See [Tailscale](tailscale.md) for configuration and safety boundaries.
   including formatting, LLVM 23 static analysis, authenticated desktop worker
   transfers, offscreen UI privacy checks, and live Avahi advertisement/withdrawal.
 
-The native macOS window/accessibility and close-to-tray smoke checks passed.
-Tray menu gestures, clipboard permissions, and OS notification delivery still
-require a desktop session check; deterministic/offscreen tests cannot confirm them.
+The SwiftUI macOS frontend reuses the same C++ service through an Objective-C++
+bridge. Automated native tests cover paired file/text/URL transfers, exact clipboard
+snapshots, local drop validation, close-to-menu-bar policy, and worker shutdown.
+Interactive window/accessibility inspection, menu bar gestures, and OS notification
+delivery still require a desktop session check; automated tests cannot confirm them.
 
 Beam 0.7.0 retains protocol v3 and existing identity/route records. See
 [desktop](desktop.md) for build and launch instructions, the explicit clipboard
