@@ -65,6 +65,15 @@ class BridgeTest {
     val alias = "fixture-${UUID.randomUUID().toString().take(8)}"
     try {
       assertTrue(connected.await(10, TimeUnit.SECONDS))
+      var emptyTrust = false
+      instrumentation.runOnMainSync {
+        emptyTrust = checkNotNull(core).call(Command.PEERS).isEmpty()
+        if (emptyTrust) checkNotNull(core).startReceiving()
+      }
+      if (emptyTrust)
+        waitForService {
+          !checkNotNull(core).receiving && checkNotNull(core).status.contains("no trusted peers")
+        }
       NativeSession(File(root, "desktop").path).use { desktop ->
         lateinit var identity: List<String>
         instrumentation.runOnMainSync { identity = checkNotNull(core).call(Command.IDENTITY) }
@@ -96,6 +105,8 @@ class BridgeTest {
           Thread.sleep(20)
         }
         assertFalse(busy)
+        desktop.call(Command.STOP)
+        idle(desktop)
         instrumentation.runOnMainSync {
           assertTrue(File(context.filesDir, "outbox").listFiles()?.isEmpty() != false)
           checkNotNull(core).startReceiving()

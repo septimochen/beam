@@ -260,7 +260,8 @@ class TransferService : Service() {
                     "Verified ${if (event[0] == "0") "sent" else "received"}: ${event[3]} (${event[4]} bytes)"
                   "3",
                   "4" -> event[2]
-                  else -> "Receiver stopped"
+                  "5" -> if (status == "Stopping receiver…") "Receiver stopped" else status
+                  else -> status
                 }
             }
             val wasReceiving = receiving
