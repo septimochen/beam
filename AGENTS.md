@@ -40,6 +40,7 @@ on macOS/Linux. Keep future features behind the milestones in [the roadmap](docs
 | LAN discovery, advertisement, daemon dependencies | [Discovery](docs/discovery.md) |
 | Optional Tailscale discovery, routes, and safe fallback | [Tailscale](docs/tailscale.md) |
 | Desktop tray, file drops, notifications, explicit clipboard privacy | [Desktop](docs/desktop.md) |
+| Android share target, JNI, pairing, foreground transfers, APK build | [Android](docs/android.md) |
 | Input, filesystem, credentials, content safety | [Security](docs/security.md) |
 | C++ style, concurrency, errors, testing, completion criteria | [Development](docs/development.md) |
 | Current status, product scope, future phases | [Roadmap](docs/ROADMAP.md) |

@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider android:name="org.beam.android.FixtureProvider"
+            android:authorities="org.beam.android.test.fixture" android:exported="true" />
+    </application>
+</manifest>

@@ -1,0 +1,5 @@
+<resources>
+    <item name="kind_file" type="id" />
+    <item name="kind_text" type="id" />
+    <item name="kind_url" type="id" />
+</resources>

@@ -143,6 +143,31 @@ Beam 0.7.0 retains protocol v3 and existing identity/route records. See
 [desktop](desktop.md) for build and launch instructions, the explicit clipboard
 privacy design, and native desktop verification limits.
 
+## Phase 8 implementation
+
+- [x] Android Kotlin app and bounded JNI value bridge reusing paired C++ core/workers.
+- [x] Single-item share target and system file picker with separate review and Send.
+- [x] Paired-device picker, public certificate import/export, reciprocal fingerprint
+  approval, address updates, and explicit revocation.
+- [x] Private streamed URI staging, actual byte bounds, progress/cancellation,
+  and cleanup after verified completion or failure.
+- [x] Explicit repeated reception in a foreground service with Stop controls;
+  safe private publication and explicit document-picker export.
+- [x] Preserve pinning, SHA-256, acknowledgement, and protocol v3 interoperability;
+  Android sandbox storage uses no-replace rename and private trust snapshots.
+- [x] Pinned ARM64/x86-64 native builds, checksum-verified Gradle wrapper, SDK 37
+  local-network permission flow, backup exclusion, Make commands, and Android CI.
+- [x] Native session/input tests, provider/JVM tests, and actual Android 15/17
+  emulator JNI file/text/URL, foreground/provider, and share-review tests.
+- [x] macOS Debug `make check`, Release core/desktop suite, ASan/UBSan,
+  scaffold-only build, Android Kotlin formatting/lint/unit tests, and both-ABI APK.
+
+Beam 0.8.0 retains wire protocol v3 and existing identity/route records. Android
+uses saved numeric endpoints; LAN discovery/advertisement and Tailscale CLI
+integration remain desktop/CLI features. Physical-device LAN/tailnet behavior,
+OEM background policy, and third-party provider compatibility remain unverified.
+See [Android](android.md) for build, install, pairing, and validation details.
+
 ## Product scope
 
 Beam is an ad-hoc sharing tool for files, images, music, clipboard text, URLs, and

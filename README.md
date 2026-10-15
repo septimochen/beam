@@ -1,11 +1,11 @@
 # Beam
 
-Send a file, text, or URL directly between macOS and Linux devices from the command line.
+Send a file, text, or URL directly between macOS, Linux, and Android devices.
 Beam discovers receivers on your LAN, encrypts transfers with QUIC, and verifies
 each payload before reporting success. No account or cloud service is required.
 
 Beam transfers one payload at a time between explicitly paired devices, with an
-optional macOS/Linux desktop tray app.
+macOS/Linux CLI and desktop apps and an Android Kotlin/JNI app.
 See the [roadmap](docs/ROADMAP.md) for upcoming features.
 
 ## Quick start
@@ -114,6 +114,18 @@ receive repeated transfers.
 separate **Send** click. Tray notifications report verified transfers, and
 **Quit Beam** stops workers. See [desktop setup and privacy](docs/desktop.md).
 
+## Android sharing
+
+Build an APK with `make android` after the [Android build setup](docs/android.md#build).
+Install it, open **Manage devices and identity**, exchange public certificates,
+verify full fingerprints, and pair on both devices. Choose a paired device and
+one file, text, or URL, then tap **Send**. Other apps' **Share → Beam** opens the
+same review screen. Tap **Start receiving** to accept verified transfers; use
+**Save a received file…** to export from private storage.
+
+See [Android setup, pairing, and tests](docs/android.md) for numeric addresses,
+foreground controls, APK paths, and platform verification.
+
 ## Useful options and tips
 
 For devices on an existing tailnet, discover an address and save it alongside the
@@ -164,7 +176,8 @@ make lint            # run clang-tidy/static analysis for the configured build
 make discovery-test  # test live LAN discovery; requires Bonjour/Avahi
 make content-test    # test typed text/URL validation and paired transfers
 make routing-test    # test Tailscale fixtures and safe endpoint fallback
-make desktop-test    # build Qt app, test worker transfers and offscreen UI
+make desktop-test    # build desktop app, test worker transfers and UI
+make android-check   # Android formatting, lint, unit tests, and debug APK
 ```
 
 See [build setup](docs/development.md#build-setup) for formatter and lint tool setup,

@@ -93,6 +93,13 @@ on macOS; `make lint` includes configured Objective-C++ translation units. See
 
 ## Implementation style
 
+Android build and validation use `make android-deps`, `make android-check`, and
+`make android-connected-test`; see [Android](android.md). The app uses AGP's
+built-in Kotlin, Android platform UI/service/document APIs, and the existing
+C++ core. ktfmt 0.64 is a build-only formatter; AndroidX Test Runner and JUnit 4 are test-only
+dependency. NDK 28's stop-token/jthread support uses `-fexperimental-library`;
+this is enabled only for Android. Default CLI builds require no JDK or SDK.
+
 - Prefer standard-library facilities and descriptive names such as `send_file`,
   `transfer_id`, and `peer_endpoint`. Keep functions focused and classes small.
 - Use `std::span`, `std::string_view`, `std::filesystem`, `std::chrono`, and value types

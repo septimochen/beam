@@ -113,6 +113,23 @@ CertificateVariant altered_certificate(const std::string& pem,
 int main() {
     try {
         Workspace workspace;
+#ifdef __linux__
+        const auto ancestor = workspace.path / "search-only";
+        const auto nested_state = ancestor / "identity";
+        std::filesystem::create_directory(ancestor);
+        std::filesystem::create_directory(nested_state);
+        require(chmod(nested_state.c_str(), 0700) == 0 && chmod(ancestor.c_str(), 0111) == 0,
+                "create search-only ancestor failed");
+        try {
+            beam::IdentityStore store(nested_state, true);
+            require(!store.initialize().fingerprint.empty(),
+                    "identity requires reading search-only ancestors");
+        } catch (...) {
+            chmod(ancestor.c_str(), 0700);
+            throw;
+        }
+        require(chmod(ancestor.c_str(), 0700) == 0, "restore ancestor permissions failed");
+#endif
         const auto alice_path = workspace.path / "alice";
         const auto bob_path = workspace.path / "bob";
         beam::DeviceIdentity alice, bob;

@@ -1,5 +1,6 @@
 #include "beam/identity.hpp"
 #include "beam/routing.hpp"
+#include "transfer/storage.hpp"
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/x509v3.h>
@@ -188,21 +189,39 @@ int open_directory(const std::filesystem::path& path, bool create) {
     if (path.empty())
         throw std::invalid_argument("state directory must not be empty");
     const auto absolute = std::filesystem::absolute(path).lexically_normal();
-    File current(open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+#ifdef __linux__
+    // Android's sandbox permits ancestor traversal but forbids reading their
+    // directory entries. O_PATH still enforces O_NOFOLLOW/O_DIRECTORY without
+    // requiring directory-read access. Reopen only the final private directory.
+    constexpr int directory_access = O_PATH;
+#else
+    constexpr int directory_access = O_RDONLY;
+#endif
+    File current(open("/", directory_access | O_DIRECTORY | O_CLOEXEC));
     int descriptor = dup(current.descriptor);
     checked(descriptor >= 0, "open state directory failed");
     try {
         for (const auto& component : absolute.relative_path()) {
             const auto name = component.string();
-            if (create && mkdirat(descriptor, name.c_str(), 0700) != 0 && errno != EEXIST)
-                throw std::runtime_error("create private state directory failed");
-            const int next =
-                openat(descriptor, name.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            int next = openat(descriptor, name.c_str(),
+                              directory_access | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            if (next < 0 && errno == ENOENT && create) {
+                if (mkdirat(descriptor, name.c_str(), 0700) != 0 && errno != EEXIST)
+                    throw std::runtime_error("create private state directory failed");
+                next = openat(descriptor, name.c_str(),
+                              directory_access | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            }
             checked(next >= 0,
                     "state directory missing or contains a symlink; run beam identity init");
             close(descriptor);
             descriptor = next;
         }
+#ifdef __linux__
+        const auto readable = openat(descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        checked(readable >= 0, "open private state directory failed");
+        close(descriptor);
+        descriptor = readable;
+#endif
         struct stat status{};
         checked(fstat(descriptor, &status) == 0 && status.st_uid == getuid() &&
                     (status.st_mode & 0777) == 0700,
@@ -271,11 +290,9 @@ struct IdentityStore::Impl {
                         "replace peer record failed");
             } else {
                 checked(
-                    linkat(root.descriptor, temporary.c_str(), root.descriptor, name.c_str(), 0) ==
+                    storage::publish_exclusive(root.descriptor, temporary.c_str(), name.c_str()) ==
                         0,
                     "identity or peer already exists; remove peer explicitly before replacing it");
-                checked(unlinkat(root.descriptor, temporary.c_str(), 0) == 0,
-                        "remove state temporary failed");
             }
             checked(fsync(root.descriptor) == 0, "flush identity store directory failed");
         } catch (...) {

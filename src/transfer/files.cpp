@@ -1,5 +1,6 @@
 #include "files.hpp"
 #include "beam/beam.hpp"
+#include "storage.hpp"
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -142,12 +143,10 @@ void Destination::write(std::span<const std::byte> bytes) {
 void Destination::commit() {
     if (fsync(descriptor) != 0)
         file_error("flush receive file");
-    // Both names are relative to the held directory handle. linkat never replaces
-    // an existing file or symlink; the final name appears only after verification.
-    if (linkat(directory, temporary.c_str(), directory, filename.c_str(), 0) != 0)
+    // The final name appears only after verification; existing files/symlinks
+    // cannot be replaced, including on Android where hard links are prohibited.
+    if (storage::publish_exclusive(directory, temporary.c_str(), filename.c_str()) != 0)
         file_error("publish verified file without overwriting");
-    if (unlinkat(directory, temporary.c_str(), 0) != 0)
-        file_error("remove receive temporary file");
     temporary.clear();
     if (fsync(directory) != 0)
         file_error("flush receive directory");

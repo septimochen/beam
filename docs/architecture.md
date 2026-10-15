@@ -41,7 +41,7 @@ are revalidated after integrity checks and saved under locally generated basenam
 The core exposes the kind independently of storage names and never opens content.
 See [content](content.md) for bounds and API semantics.
 
-The transfer implementation targets macOS/Linux. Windows still builds the portable filename/core scaffold;
+The transfer implementation targets macOS/Linux/Android. Windows still builds the portable filename/core scaffold;
 Windows exclusive storage and credential provisioning remain future work. MsQuic v2.6.2
 is pinned by the explicit `make deps` workflow. Regular CMake configuration discovers
 installed dependencies and never downloads code. See [TLS](tls.md) for peer authorization,
@@ -52,7 +52,7 @@ installed dependencies and never downloads code. See [TLS](tls.md) for peer auth
 Keep dependencies flowing downward. Protocol, transfer, discovery, and transport code
 must not depend on CLI or native UI code. Keep platform-specific clipboard, notifications,
 share sheets, and GUI logic outside the reusable core. Native applications call the core
-rather than copying transfer logic; Android should eventually use Kotlin through JNI.
+rather than copying transfer logic; Android uses Kotlin through JNI.
 Add platform directories only when implementing their functionality.
 
 The optional desktop app lives in `src/desktop`: shared worker ownership is in
@@ -70,6 +70,19 @@ drains events without crossing widget/clipboard operations onto worker threads.
 File drops and explicit clipboard reads only select content for a subsequent
 Send action. Success notifications follow the returned verified transfer result.
 See [desktop](desktop.md) for the clipboard privacy design and platform limits.
+
+The Android app in `android/` uses platform Kotlin widgets and a bound/started
+foreground service. `src/android/session` translates bounded value commands into
+IdentityStore and the existing `src/desktop/service` worker owner; both desktop
+and Android link `beam-app-support`. The JNI shim catches C++ exceptions and
+passes UTF-8 byte arrays, including supplementary Unicode, without modified-UTF-8
+conversion. Workers never retain JNI references or call Java. A main-thread poll
+drains the existing bounded mailbox; destroying the native session cancels and joins
+workers. Android document providers are read through a private streamed staging
+file, keeping content URIs and platform APIs out of the transfer core. Android
+builds statically link the pinned MsQuic/quictls into one JNI library and package
+NDK libc++; they disable desktop DNS-SD and local Tailscale subprocess discovery.
+See [Android](android.md) for lifecycle, storage, and build requirements.
 
 QUIC is the primary transport. Prefer MsQuic; consider quiche only when platform support
 requires it, and ngtcp2 only when lower-level control is necessary. Hide backend details

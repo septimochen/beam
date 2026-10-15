@@ -34,3 +34,20 @@
 !/tests/**/*.swift
 !/cmake/
 !/cmake/**/*.cmake
+!/android/
+!/android/**/
+!/android/**/*.kts
+!/android/**/*.kt
+!/android/**/*.java
+!/android/**/*.xml
+!/android/gradle.properties
+!/android/gradlew
+!/android/gradle/wrapper/gradle-wrapper.jar
+!/android/gradle/wrapper/gradle-wrapper.properties
+!/android/native/CMakeLists.txt
+# Never admit generated Gradle/native output or local SDK settings.
+/android/.gradle/
+/android/.idea/
+/android/.kotlin/
+/android/**/build/
+/android/**/.cxx/

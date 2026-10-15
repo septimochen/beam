@@ -2,10 +2,7 @@ if(NOT BEAM_ENABLE_QUIC OR NOT UNIX)
     message(FATAL_ERROR "The desktop app requires the macOS/Linux QUIC core")
 endif()
 
-add_library(beam-desktop-support STATIC service.cpp)
-target_include_directories(beam-desktop-support PUBLIC "${PROJECT_SOURCE_DIR}/src")
-target_link_libraries(beam-desktop-support PUBLIC Beam::Core PRIVATE Threads::Threads)
-beam_enable_warnings(beam-desktop-support)
+add_library(beam-desktop-support ALIAS beam-app-support)
 
 if(APPLE)
     if(NOT CMAKE_GENERATOR MATCHES "Ninja|Xcode")

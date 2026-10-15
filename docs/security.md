@@ -56,3 +56,22 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   See [content](content.md) for supported syntax and limits.
 - Keep private keys and authentication secrets out of logs and source control. Do not
   log clipboard contents by default or full transferred file contents.
+
+## Android boundaries
+
+- Share intents and document-provider names/sizes are untrusted. Accept one
+  `content://` URI or bounded text for review; sending requires a separate action
+  and a paired-device choice. Never accept filesystem/network URIs or derive a
+  filesystem path from a URI. Revalidate the outgoing basename and actual copied bytes.
+- Stage provider files in a unique private directory with bounded buffers and a
+  4 GiB file limit. Cancel provider reads and native work on Stop; remove staged
+  files after the native worker finishes and remove abandoned staging on startup.
+- Keep identity, trust, and received content in app-private storage with backup
+  disabled. Public certificate export must never expose the private identity file.
+  Only an explicit document-picker Save action exports received content.
+- Start reception explicitly and show a foreground notification with a Stop
+  action. Do not restart after process death or boot. Stop active workers before
+  editing/revoking trust. Never open received files/URLs or touch the clipboard.
+- The transfer service is unexported. Share-target input cannot invoke native
+  commands or start transfers. Catch exceptions at every JNI entry point, bound
+  argument/event arrays, and keep native worker ownership behind the value bridge.

@@ -1,10 +1,11 @@
 # Device identity and pairing
 
-Each macOS/Linux device keeps one self-signed certificate and private key. Pairing
+Each macOS/Linux/Android device keeps one self-signed certificate and private key. Pairing
 stores a peer's exact certificate after you verify its full SHA-256 fingerprint
 through an independent channel. Transfers authenticate both devices using the
 existing QUIC/TLS connection. There is no network pairing protocol or trust on
-first use.
+first use. The [Android app](android.md#pair-and-choose-a-device) performs this
+same reciprocal approval through its identity and device-management screens.
 
 Phase 6 adds an optional saved Tailscale endpoint beside the primary endpoint.
 Route updates preserve the approved certificate and use versioned peer records;

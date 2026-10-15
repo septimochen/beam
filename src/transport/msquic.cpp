@@ -61,10 +61,10 @@ void checked(QUIC_STATUS status, const char* operation) {
 // MsQuic loads CA files by path. Keep an immutable per-runtime snapshot rather
 // than a mutable trust bundle shared by processes or future pairing changes.
 struct TrustFile {
-    std::array<char, sizeof("/tmp/beam-trust-XXXXXX")> path =
-        std::to_array("/tmp/beam-trust-XXXXXX");
+    std::string path;
     int descriptor{-1};
-    explicit TrustFile(const std::string& pem) {
+    TrustFile(const std::string& pem, const std::filesystem::path& directory)
+        : path((directory / ".beam-trust-XXXXXX").string()) {
         descriptor = mkstemp(path.data());
         if (descriptor < 0)
             throw TransferError(TransferErrorCode::transport,
@@ -76,7 +76,7 @@ struct TrustFile {
                 continue;
             if (count <= 0) {
                 ::close(descriptor);
-                unlink(path.data());
+                unlink(path.c_str());
                 throw TransferError(TransferErrorCode::transport,
                                     "write paired trust snapshot failed");
             }
@@ -86,7 +86,7 @@ struct TrustFile {
     ~TrustFile() {
         if (descriptor >= 0)
             ::close(descriptor);
-        unlink(path.data());
+        unlink(path.c_str());
     }
 };
 struct Runtime {
@@ -150,8 +150,14 @@ struct Runtime {
                     bundle += pem;
                     bundle += '\n';
                 }
-                paired_trust = std::make_unique<TrustFile>(bundle);
-                ca = paired_trust->path.data();
+                std::filesystem::path trust_directory = "/tmp";
+#ifdef __ANDROID__
+                // Android apps have no writable global /tmp. Credentials live
+                // in the application's owner-only identity store.
+                trust_directory = options.credentials.certificate.parent_path();
+#endif
+                paired_trust = std::make_unique<TrustFile>(bundle, trust_directory);
+                ca = paired_trust->path;
             }
             if (!trust || X509_STORE_load_locations(trust.get(), ca.c_str(), nullptr) != 1)
                 throw TransferError(TransferErrorCode::transport,
