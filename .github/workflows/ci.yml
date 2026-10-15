@@ -12,12 +12,12 @@ jobs:
     name: Android APK and checks
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4.0.4
       - name: Install Android build prerequisites
         run: |
           sudo apt-get update
@@ -41,7 +41,7 @@ jobs:
           arch: x86_64
           target: google_apis
           script: make android-connected-test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: beam-android
@@ -58,7 +58,7 @@ jobs:
       CLANG_TIDY: clang-tidy-23
       CMAKE_ARGS: -DBEAM_ENABLE_DESKTOP=ON
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Install check prerequisites
         run: |
           curl --compressed -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o /tmp/llvm.asc
@@ -92,7 +92,7 @@ jobs:
     env:
       BEAM_DESKTOP: ${{ matrix.os == 'windows-latest' && 'OFF' || 'ON' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Install Linux prerequisites
         if: runner.os == 'Linux'
         run: |
