@@ -27,7 +27,9 @@ AGP 9.2.0 provides built-in Kotlin. `make android-deps` explicitly downloads
 MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9` and its pinned
 quictls submodule. It cross-compiles a static library per ABI and reuses that TLS
 build for Beam's EVP/X.509 operations. Normal CMake configuration downloads no
-native dependencies. All generated output and local SDK configuration stay ignored.
+native dependencies. Android imports the ABI-specific quictls archives directly;
+host OpenSSL/pkg-config metadata cannot add libraries to the Android link.
+All generated output and local SDK configuration stay ignored.
 
 To build one architecture, provision that dependency and run
 `make android ANDROID_GRADLE_ARGS=-PbeamAbis=arm64-v8a`. Debug signing is automatic;
@@ -111,8 +113,14 @@ and [local-network permissions](https://developer.android.com/privacy-and-securi
 make check                    # includes native Android session/paired-transfer tests
 make android-format           # ktfmt for Kotlin and Gradle scripts
 make android-check            # ktfmt check, Android lint, JUnit, both-ABI debug APK
+make android-native-test      # both-ABI link graphs with incompatible host OpenSSL metadata
 make android-connected-test   # requires a running emulator or attached device
 ```
+
+`android-native-test` needs pkgconf (`brew install pkgconf` or your distribution's
+`pkgconf` package). It configures both ABIs with host metadata advertising
+`libjitterentropy` and `zstd`, and rejects either dependency in the generated
+Android link graph. CI runs it before building the APK.
 
 Native session tests cover invalid commands, byte bounds/NULs, unsupported kinds,
 fingerprint rejection, authenticated file/text/URL transfers, exact Unicode bytes,

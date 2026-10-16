@@ -22,7 +22,7 @@ ANDROID_NDK ?= $(ANDROID_HOME)/ndk/28.2.13676358
 ANDROID_DEPS_DIR ?= $(CURDIR)/build/android-deps
 ANDROID_GRADLE_ARGS ?=
 
-.PHONY: all deps configure build test check android android-deps android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps configure build test check android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -45,6 +45,10 @@ android-deps:
 
 android:
 	./android/gradlew -p android assembleDebug $(ANDROID_GRADLE_ARGS)
+
+android-native-test:
+	$(CMAKE) -DBEAM_SOURCE_DIR="$(CURDIR)" -DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" \
+		-DANDROID_NDK="$(ANDROID_NDK)" -P tests/android_dependencies.cmake
 
 android-check:
 	./android/gradlew -p android formatCheck lintDebug testDebugUnitTest assembleDebug $(ANDROID_GRADLE_ARGS)
@@ -115,4 +119,5 @@ help:
 	@echo "desktop: native Swift macOS (BUILD_DIR-desktop-native) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"
 	@echo "android-deps: pinned NDK dependencies (ANDROID_ABI=arm64-v8a or x86_64); android: debug APK"
+	@echo "android-native-test: configure both Android ABIs with incompatible host OpenSSL metadata"
 	@echo "android-check: Kotlin format, Android lint, unit tests and APK; android-connected-test: device/emulator JNI and UI tests"

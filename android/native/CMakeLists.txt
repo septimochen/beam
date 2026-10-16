@@ -4,17 +4,27 @@ if(NOT ANDROID)
     message(FATAL_ERROR "Use the Android NDK toolchain")
 endif()
 set(prefix "${BEAM_ANDROID_DEPS}/${ANDROID_ABI}/install")
-if(NOT EXISTS "${prefix}/lib/libmsquic.a")
-    message(FATAL_ERROR "Run make android-deps ANDROID_ABI=${ANDROID_ABI} first")
-endif()
+foreach(required lib/libmsquic.a lib/libcrypto.a lib/libssl.a include/openssl/ssl.h)
+    if(NOT EXISTS "${prefix}/${required}")
+        message(FATAL_ERROR "Missing ${prefix}/${required}; run make android-deps ANDROID_ABI=${ANDROID_ABI} first")
+    endif()
+endforeach()
 set(MSQUIC_ROOT "${prefix}" CACHE PATH "" FORCE)
 set(MSQUIC_INCLUDE_DIR "${prefix}/include" CACHE PATH "" FORCE)
 set(MSQUIC_LIBRARY "${prefix}/lib/libmsquic.a" CACHE FILEPATH "" FORCE)
-set(OPENSSL_ROOT_DIR "${prefix}" CACHE PATH "" FORCE)
-set(OPENSSL_INCLUDE_DIR "${prefix}/include" CACHE PATH "" FORCE)
-set(OPENSSL_CRYPTO_LIBRARY "${prefix}/lib/libcrypto.a" CACHE FILEPATH "" FORCE)
-set(OPENSSL_SSL_LIBRARY "${prefix}/lib/libssl.a" CACHE FILEPATH "" FORCE)
-set(OPENSSL_USE_STATIC_LIBS ON)
+# These archives come from the same pinned quictls build as MsQuic. Do not use
+# FindOpenSSL here: it can append host pkg-config dependencies even when its
+# include/library paths explicitly name Android archives.
+add_library(OpenSSL::Crypto STATIC IMPORTED GLOBAL)
+set_target_properties(OpenSSL::Crypto PROPERTIES
+    IMPORTED_LOCATION "${prefix}/lib/libcrypto.a"
+    INTERFACE_INCLUDE_DIRECTORIES "${prefix}/include"
+    INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS}")
+add_library(OpenSSL::SSL STATIC IMPORTED GLOBAL)
+set_target_properties(OpenSSL::SSL PROPERTIES
+    IMPORTED_LOCATION "${prefix}/lib/libssl.a"
+    INTERFACE_INCLUDE_DIRECTORIES "${prefix}/include"
+    INTERFACE_LINK_LIBRARIES OpenSSL::Crypto)
 set(BEAM_ENABLE_DISCOVERY OFF CACHE BOOL "" FORCE)
 set(BEAM_ENABLE_TAILSCALE OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -22,4 +32,4 @@ set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 add_compile_options(-fexperimental-library)
 add_link_options(-fexperimental-library)
 add_subdirectory(../.. beam)
-target_link_libraries(beam-android PRIVATE "${prefix}/lib/libssl.a" "${prefix}/lib/libcrypto.a" log android)
+target_link_libraries(beam-android PRIVATE OpenSSL::SSL OpenSSL::Crypto log android)
