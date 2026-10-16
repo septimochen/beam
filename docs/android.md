@@ -60,7 +60,10 @@ make android-install ANDROID_SERIAL=YOUR_DEVICE_SERIAL
 ```
 
 `ADB` overrides the executable; otherwise it uses `$ANDROID_HOME/platform-tools/adb`
-or `adb` on `PATH`. To install an existing APK without rebuilding, use
+or `adb` on `PATH`. The installer also checks `ANDROID_SDK_ROOT` and the
+project-local `build/android-tools/sdk` directory, so this existing local SDK
+does not require shell exports for APK installation. A missing ADB reports setup
+instructions. To install an existing APK without rebuilding, use
 `make android-install-apk`, optionally with `ANDROID_APK=/absolute/path/to/app.apk`.
 Install errors are returned unchanged; the command never uninstalls an app to
 bypass a signing-key mismatch, which would erase its data.

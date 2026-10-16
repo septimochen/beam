@@ -2,7 +2,15 @@ cmake_minimum_required(VERSION 3.25)
 if(NOT EXISTS "${ANDROID_APK}")
     message(FATAL_ERROR "APK not found: ${ANDROID_APK}. Run make android first.")
 endif()
-find_program(adb_executable NAMES "${ADB}" REQUIRED)
+if(NOT ADB)
+    set(ADB adb)
+endif()
+find_program(adb_executable NAMES "${ADB}"
+    HINTS "$ENV{ANDROID_HOME}/platform-tools" "$ENV{ANDROID_SDK_ROOT}/platform-tools"
+    PATHS "${CMAKE_CURRENT_LIST_DIR}/../build/android-tools/sdk/platform-tools")
+if(NOT adb_executable)
+    message(FATAL_ERROR "ADB not found. Install Android SDK platform-tools and set ANDROID_HOME to the SDK directory, or run make android-install-apk ADB=/absolute/path/to/adb.")
+endif()
 execute_process(COMMAND "${adb_executable}" devices
     RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
 if(NOT result EQUAL 0)
