@@ -37,6 +37,7 @@ protocol v3; see [protocol](protocol.md) for compatibility and cancellation sema
 | 6 | Optional Tailscale endpoint configuration/discovery and sensible endpoint preference |
 | 7 | Desktop tray, drag-and-drop, notifications, and explicit clipboard sharing |
 | 8 | Android Kotlin/JNI app with share target, file picker, receiver, and device picker |
+| 9 (proposed) | Easier pairing: phone QR scan, desktop nearby-device approval, and invitation fallback; pending review |
 
 Do not begin discovery, GUI, Android packaging, clipboard integration, or history
 before the direct transfer path is reliable on macOS and Linux.
@@ -167,6 +168,38 @@ uses saved numeric endpoints; LAN discovery/advertisement and Tailscale CLI
 integration remain desktop/CLI features. Physical-device LAN/tailnet behavior,
 OEM background policy, and third-party provider compatibility remain unverified.
 See [Android](android.md) for build, install, pairing, and validation details.
+
+## Phase 9 proposal: easier pairing (pending review)
+
+This is a design proposal for later review and implementation. The suggested
+combination is QR pairing for phones, nearby-device selection for macOS/Linux,
+and a copy/paste invitation fallback. The desktop flow and authentication protocol
+remain open decisions; adding this proposal does not start implementation.
+
+- [ ] Phone QR flow: computer opens **Add device → Show QR code**, Android opens
+  **Add device → Scan QR code**, and the computer approves the phone. Exchange
+  public certificates and save reciprocal trust through the authenticated pairing
+  session, without manual PEM files, fingerprint transcription, or IP entry.
+- [ ] Define a temporary QR invitation containing connection details, the host's
+  certificate fingerprint, and a secret valid for one pairing session. Expire and
+  invalidate invitations after use or cancellation; never advertise secrets in
+  discovery records or expose them in logs.
+- [ ] Proposed desktop flow: open **Add device** on both computers, select the
+  nearby device, compare a short verification code, and confirm on both. Discovery
+  supplies untrusted connection hints and cannot authorize a peer.
+- [ ] Provide copy/paste invitations as a fallback when discovery is unavailable,
+  including a CLI entry point that reuses the shared pairing service.
+- [ ] Review typed pairing codes as an alternative desktop/terminal flow before
+  choosing the final UX. Short codes require an established authenticated pairing
+  protocol and attempt limits; do not invent cryptography.
+- [ ] Review and document the authentication design in [pairing](pairing.md) and
+  [security](security.md) before implementation. Require explicit approval, prove
+  possession of the paired keys, retain exact certificate pinning for transfers,
+  and keep private keys on their original devices. Preserve manual PEM pairing
+  as an advanced option.
+- [ ] Validate expiration, replay, wrong codes, mismatched identities, rejection,
+  interrupted reciprocal approval, and recovery without silently granting trust.
+  Verify Android/macOS/Linux interoperability and clear completion/error states.
 
 ## Product scope
 
