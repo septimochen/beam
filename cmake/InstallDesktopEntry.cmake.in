@@ -1,0 +1,18 @@
+set(executable "${CMAKE_INSTALL_PREFIX}/@CMAKE_INSTALL_BINDIR@/beam-desktop")
+set(entry_directory "@BEAM_DESKTOP_ENTRY_DIR@")
+if(NOT IS_ABSOLUTE "${entry_directory}")
+    set(entry_directory "${CMAKE_INSTALL_PREFIX}/${entry_directory}")
+endif()
+# Exec has an additional quoting layer; literal percent signs must not become
+# desktop-entry field codes. Paths are evaluated at installation, not configure.
+set(quoted_executable "${executable}")
+string(REPLACE "\\" "\\\\\\\\" quoted_executable "${quoted_executable}")
+foreach(character IN ITEMS "\"" "`" "$")
+    string(REPLACE "${character}" "\\\\${character}" quoted_executable "${quoted_executable}")
+endforeach()
+string(REPLACE "%" "%%" quoted_executable "${quoted_executable}")
+string(REPLACE "\n" "\\n" quoted_executable "${quoted_executable}")
+string(REPLACE "\r" "\\r" quoted_executable "${quoted_executable}")
+file(MAKE_DIRECTORY "$ENV{DESTDIR}${entry_directory}")
+file(WRITE "$ENV{DESTDIR}${entry_directory}/beam.desktop"
+    "[Desktop Entry]\nType=Application\nName=Beam\nComment=Share with paired devices\nExec=\"${quoted_executable}\"\nTerminal=false\nCategories=Utility;\nStartupNotify=false\n")

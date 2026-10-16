@@ -35,9 +35,46 @@ directory. Existing macOS Qt build directories remain separate. Manual native
 configuration requires a fresh directory with `-G Ninja` (or the Xcode generator)
 and `-DBEAM_ENABLE_DESKTOP=ON`. The app requires the
 macOS/Linux QUIC core; discovery and Tailscale CLI discovery remain optional.
-`cmake --install` installs the macOS app bundle or the Linux executable. Runtime
-MsQuic/OpenSSL libraries (plus Qt on Linux) must remain installed; no standalone installer or
-library bundling is provided.
+
+## Install for your user
+
+After installing the build prerequisites and running `make deps`, run:
+
+```sh
+make install
+```
+
+This builds the CLI and desktop app in a separate Release `build-install`
+directory. It installs without `sudo`:
+
+| Platform | CLI | Desktop |
+| --- | --- | --- |
+| Linux | `~/.local/bin/beam` | `~/.local/bin/beam-desktop`, launcher at `~/.local/share/applications/beam.desktop` |
+| macOS | `~/.local/bin/beam` | `~/Applications/Beam.app` |
+
+Add `~/.local/bin` to your shell's `PATH` if needed. On Linux, the launcher uses
+`$XDG_DATA_HOME/applications` when `XDG_DATA_HOME` is set. Qt, OpenSSL, and Avahi
+remain system package dependencies; the private MsQuic library is installed in
+`~/.local/lib/beam`. On macOS, the CLI entry is a symlink to its private runtime
+under `~/.local/lib/beam`, and both it and the app include their non-system dylibs
+with local ad-hoc signatures. These are local builds, not notarized distribution
+packages. Installed programs do not depend on the build directory.
+
+Override `INSTALL_PREFIX`, `APPLICATIONS_DIR`, `DESKTOP_ENTRY_DIR`, or
+`INSTALL_BUILD_DIR` for custom locations. For example:
+
+```sh
+make install INSTALL_PREFIX="$HOME/Tools/beam" APPLICATIONS_DIR="$HOME/Applications"
+```
+
+Running the command again updates the installation. It does not start Beam.
+For a prebuilt CMake tree, `cmake --install BUILD --prefix PREFIX` installs the
+CLI and, when enabled, the desktop app; the macOS bundle goes in `PREFIX/Beam.app`.
+Components `cli` and `desktop` allow separate prefixes. The default Linux
+desktop entry follows `PREFIX/share/applications`; set `BEAM_DESKTOP_ENTRY_DIR`
+at configuration to override it.
+
+## Set up paired devices
 
 Initialize identity and reciprocally pair devices with the CLI using independently
 verified full fingerprints; see [pairing](pairing.md). Set a peer's numeric address

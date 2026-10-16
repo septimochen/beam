@@ -18,7 +18,6 @@ export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
 make android-deps ANDROID_ABI=arm64-v8a
 make android-deps ANDROID_ABI=x86_64
 make android
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 The SDK's newer Android CLI can also install these packages; follow its `android
@@ -36,6 +35,43 @@ To build one architecture, provision that dependency and run
 release signing/distribution is outside this milestone. Native libraries use
 16 KiB page alignment, including the NDK's packaged libc++ runtime. No desktop Qt,
 Swift, Bonjour/Avahi daemon, or Tailscale executable is linked into the APK.
+
+## Install on your phone
+
+The usual development route is [ADB](https://developer.android.com/tools/adb),
+included in the SDK's `platform-tools` package:
+
+1. Enable **Developer options → USB debugging** on your phone.
+2. Connect it with a USB data cable, unlock it, and approve the computer's USB
+   debugging prompt.
+3. From the repository root, run:
+
+   ```sh
+   make android-install
+   ```
+
+This builds the debug APK, detects authorized devices with `adb devices`, and
+installs with `adb install -r`, preserving app data. It stops when zero or multiple
+devices are authorized. To choose a phone or emulator explicitly:
+
+```sh
+"$ANDROID_HOME/platform-tools/adb" devices
+make android-install ANDROID_SERIAL=YOUR_DEVICE_SERIAL
+```
+
+`ADB` overrides the executable; otherwise it uses `$ANDROID_HOME/platform-tools/adb`
+or `adb` on `PATH`. To install an existing APK without rebuilding, use
+`make android-install-apk`, optionally with `ANDROID_APK=/absolute/path/to/app.apk`.
+Install errors are returned unchanged; the command never uninstalls an app to
+bypass a signing-key mismatch, which would erase its data.
+
+A cable is optional: Android 11+ supports wireless debugging after ADB pairing
+on the same Wi-Fi network. Follow the [wireless setup](https://developer.android.com/tools/adb#wireless-android11-command-line),
+then use the same Make command. You can also copy
+`android/app/build/outputs/apk/debug/app-debug.apk` to your phone and open it in
+the phone's file manager, approving installation from that source. GitHub CI's
+`beam-android` artifact contains this APK too. Neither ADB nor a computer is
+needed for that manual APK installation.
 
 ## Pair and choose a device
 

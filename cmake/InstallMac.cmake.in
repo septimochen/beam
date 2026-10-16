@@ -1,0 +1,42 @@
+set(CMAKE_INSTALL_NAME_TOOL "@CMAKE_INSTALL_NAME_TOOL@")
+include(BundleUtilities)
+
+function(gp_item_default_embedded_path_override item path)
+    if(beam_install_component STREQUAL "cli")
+        set(${path} "@executable_path/lib" PARENT_SCOPE)
+    else()
+        set(${path} "@executable_path/../Frameworks" PARENT_SCOPE)
+    endif()
+endfunction()
+
+if(beam_install_component STREQUAL "cli")
+    set(bundle "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@CMAKE_INSTALL_LIBDIR@/beam")
+    set(executable "${bundle}/beam")
+else()
+    set(bundle "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/Beam.app")
+    set(executable "${bundle}")
+endif()
+
+get_filename_component(msquic_directory "@MSQUIC_LIBRARY@" DIRECTORY)
+fixup_bundle("${executable}" "" "${msquic_directory}")
+# install_name_tool invalidates existing signatures. Sign dependencies before
+# their executable/container; this is a local ad-hoc signature, not notarization.
+file(GLOB_RECURSE libraries "${bundle}/*.dylib")
+foreach(library IN LISTS libraries)
+    if(NOT IS_SYMLINK "${library}")
+        execute_process(COMMAND /usr/bin/codesign --force --sign - --timestamp=none "${library}"
+            COMMAND_ERROR_IS_FATAL ANY)
+    endif()
+endforeach()
+execute_process(COMMAND /usr/bin/codesign --force --sign - --timestamp=none "${executable}"
+    COMMAND_ERROR_IS_FATAL ANY)
+
+if(beam_install_component STREQUAL "cli")
+    set(bin "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@CMAKE_INSTALL_BINDIR@")
+    file(MAKE_DIRECTORY "${bin}")
+    if(IS_DIRECTORY "${bin}/beam" AND NOT IS_SYMLINK "${bin}/beam")
+        message(FATAL_ERROR "Cannot replace directory ${bin}/beam")
+    endif()
+    file(RELATIVE_PATH link_target "${bin}" "${executable}")
+    file(CREATE_LINK "${link_target}" "${bin}/beam" SYMBOLIC)
+endif()

@@ -8,6 +8,7 @@
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setApplicationName("beam-desktop");
+    QApplication::setDesktopFileName("beam");
     QApplication::setApplicationVersion(QString::fromStdString(std::string(beam::version())));
     QApplication::setQuitOnLastWindowClosed(true);
     QCommandLineParser parser;

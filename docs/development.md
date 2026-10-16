@@ -75,9 +75,11 @@ any platform, disable all optional features explicitly:
 make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF -DBEAM_ENABLE_TAILSCALE=OFF'
 ```
 
-Installing with `cmake --install build --prefix ./install` requires the
-MsQuic/OpenSSL shared libraries to remain available to the runtime loader.
-Beam does not yet bundle an installer.
+Use `make install` for a user-local Release CLI and desktop installation. It
+includes the private MsQuic runtime; macOS also bundles non-system dylibs. Linux
+still uses system OpenSSL/Qt/Avahi packages. See [installation](desktop.md#install-for-your-user)
+for destinations, prefix overrides, and CMake install components. CTest's
+`install` check stages and relocates the installation before running its binaries.
 
 The optional desktop app requires the QUIC core. macOS 13+ uses Swift 6 from
 Xcode Command Line Tools and Ninja (`brew install ninja`); Qt is not required.

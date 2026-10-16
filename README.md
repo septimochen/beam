@@ -102,6 +102,11 @@ protocol; existing pairing records continue to work.
 
 ## Desktop sharing
 
+Run `make install` to build Release binaries and install the CLI in `~/.local/bin`
+and the desktop app. Linux gets an application-menu entry; macOS gets
+`~/Applications/Beam.app`. Add `~/.local/bin` to your `PATH` if needed. No `sudo`
+is required. See [installation options](docs/desktop.md#install-for-your-user).
+
 macOS 13+ uses a native SwiftUI/AppKit app; install Xcode Command Line Tools and
 Ninja (`brew install ninja`). Linux uses Qt 6 Widgets (`qt6-base-dev` and
 `qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
@@ -117,6 +122,8 @@ separate **Send** click. Tray notifications report verified transfers, and
 ## Android sharing
 
 Build an APK with `make android` after the [Android build setup](docs/android.md#build).
+With USB debugging enabled and your phone connected/authorized, run
+`make android-install`; see [phone installation](docs/android.md#install-on-your-phone).
 Install it, open **Manage devices and identity**, exchange public certificates,
 verify full fingerprints, and pair on both devices. Choose a paired device and
 one file, text, or URL, then tap **Send**. Other apps' **Share → Beam** opens the

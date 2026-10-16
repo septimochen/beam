@@ -110,6 +110,18 @@ if(BEAM_ENABLE_DESKTOP)
 endif()
 
 if(BUILD_TESTING)
+    if(UNIX)
+        add_test(NAME android-installer COMMAND "${CMAKE_COMMAND}"
+            "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/android-installer-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/android_install_tests.cmake")
+        add_test(NAME install COMMAND "${CMAKE_COMMAND}"
+            "-DBEAM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+            "-DBEAM_HAS_DESKTOP=${BEAM_ENABLE_DESKTOP}"
+            "-DBEAM_HAS_QUIC=${BEAM_ENABLE_QUIC}"
+            "-DBEAM_CONFIG=$<CONFIG>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/install_tests.cmake")
+    endif()
     add_executable(beam-core-tests tests/core_tests.cpp)
     target_link_libraries(beam-core-tests PRIVATE Beam::Core)
     beam_enable_warnings(beam-core-tests)
@@ -208,8 +220,4 @@ if(BUILD_TESTING)
     endif()
 endif()
 
-include(GNUInstallDirs)
-install(TARGETS beam RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-if(BEAM_ENABLE_DESKTOP)
-    install(TARGETS beam-desktop BUNDLE DESTINATION . RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-endif()
+include(cmake/Install.cmake)

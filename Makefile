@@ -21,8 +21,15 @@ ANDROID_ABI ?= arm64-v8a
 ANDROID_NDK ?= $(ANDROID_HOME)/ndk/28.2.13676358
 ANDROID_DEPS_DIR ?= $(CURDIR)/build/android-deps
 ANDROID_GRADLE_ARGS ?=
+INSTALL_BUILD_DIR ?= build-install
+INSTALL_PREFIX ?= $(HOME)/.local
+APPLICATIONS_DIR ?= $(HOME)/Applications
+DESKTOP_ENTRY_DIR ?= $(if $(XDG_DATA_HOME),$(XDG_DATA_HOME),$(HOME)/.local/share)/applications
+ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
+ANDROID_SERIAL ?=
+ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps configure build test check android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps configure build test check install android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -38,6 +45,27 @@ test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure
 
 check: format-check lint test
+
+install:
+	$(CMAKE) -S . -B "$(INSTALL_BUILD_DIR)" $(DESKTOP_GENERATOR) $(CMAKE_ARGS) \
+		-DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBEAM_ENABLE_DESKTOP=ON \
+		-DCMAKE_INSTALL_PREFIX="$(INSTALL_PREFIX)" -DCMAKE_INSTALL_LIBDIR=lib \
+		-DBEAM_DESKTOP_ENTRY_DIR="$(DESKTOP_ENTRY_DIR)"
+	$(CMAKE) --build "$(INSTALL_BUILD_DIR)" --parallel --config Release
+	$(CMAKE) --install "$(INSTALL_BUILD_DIR)" --config Release --prefix "$(INSTALL_PREFIX)" --component cli
+ifeq ($(shell uname -s),Darwin)
+	$(CMAKE) --install "$(INSTALL_BUILD_DIR)" --config Release --prefix "$(APPLICATIONS_DIR)" --component desktop
+else
+	$(CMAKE) --install "$(INSTALL_BUILD_DIR)" --config Release --prefix "$(INSTALL_PREFIX)" --component desktop
+endif
+	@echo 'Installed Beam. Add $(INSTALL_PREFIX)/bin to PATH if needed.'
+
+android-install: android
+	$(MAKE) android-install-apk
+
+android-install-apk:
+	$(CMAKE) -DADB="$(ADB)" -DANDROID_SERIAL="$(ANDROID_SERIAL)" \
+		-DANDROID_APK="$(ANDROID_APK)" -P cmake/InstallAndroid.cmake
 
 android-deps:
 	$(CMAKE) -DANDROID_NDK="$(ANDROID_NDK)" -DANDROID_ABI="$(ANDROID_ABI)" \
@@ -109,6 +137,8 @@ clean:
 	$(CMAKE) --build "$(BUILD_DIR)" --target clean --config $(BUILD_TYPE)
 
 help:
+	@echo "install: Release CLI to ~/.local/bin, plus Linux launcher or macOS ~/Applications/Beam.app (no sudo)"
+	@echo "android-install: build and install debug APK with ADB; android-install-apk: install existing APK; ANDROID_SERIAL selects a device"
 	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format, lint, and tests"
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"
 	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
