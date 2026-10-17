@@ -5,8 +5,9 @@ Checked 2026-10-17 following rejection of the first three Beam concepts.
 Implementation update: the [shared vector sources and platform resources](../../assets/icons/README.md)
 now implement the revised approach. At the user's request, desktop deployment
 now follows the selected current macOS SDK; the earlier macOS 13 compatibility
-goal below is historical. Native catalog compilation is enabled with full Xcode
-and has a dedicated CI check; local Command Line Tools builds use the `.icns`.
+goal below is historical. Native catalog compilation is mandatory for macOS
+desktop builds, requires full Xcode, and has a dedicated CI check. The earlier
+Command Line Tools fallback has been removed.
 
 ## Correction to the first exploration
 

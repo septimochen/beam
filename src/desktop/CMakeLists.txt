@@ -56,39 +56,35 @@ if(APPLE)
     set(icon_resources
         "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/Beam.icns"
         "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/BeamTemplate.pdf")
-    option(BEAM_REQUIRE_NATIVE_ICON "Require Xcode to compile native macOS icon appearances" OFF)
-    execute_process(COMMAND xcrun --find actool OUTPUT_VARIABLE detected_actool
-        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
     if(NOT BEAM_ACTOOL)
+        execute_process(COMMAND xcrun --find actool OUTPUT_VARIABLE detected_actool
+            OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
         set(BEAM_ACTOOL "${detected_actool}" CACHE FILEPATH "Apple asset catalog compiler" FORCE)
     endif()
-    set(BEAM_HAS_NATIVE_ICON OFF PARENT_SCOPE)
-    if(EXISTS "${BEAM_ACTOOL}")
-        set(native_icon_dir "${CMAKE_CURRENT_BINARY_DIR}/icon")
-        set(native_icon "${native_icon_dir}/Assets.car")
-        add_custom_command(OUTPUT "${native_icon}"
-            COMMAND "${CMAKE_COMMAND}" "-DBEAM_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-                "-DBEAM_ICON_OUTPUT=${native_icon_dir}" "-DBEAM_ACTOOL=${BEAM_ACTOOL}"
-                "-DBEAM_MACOS_VERSION=${CMAKE_OSX_DEPLOYMENT_TARGET}"
-                -P "${PROJECT_SOURCE_DIR}/cmake/CompileMacIcon.cmake"
-            DEPENDS "${PROJECT_SOURCE_DIR}/cmake/CompileMacIcon.cmake"
-                "${icon_root}/Beam.icon/icon.json"
-                "${icon_root}/Beam.icon/Assets/ray-1.svg"
-                "${icon_root}/Beam.icon/Assets/ray-2.svg"
-                "${icon_root}/Beam.icon/Assets/ray-3.svg"
-            VERBATIM)
-        # Own the generated catalog independently of the Swift bundle's copy
-        # target; otherwise Ninja can make the compiler depend on its copies.
-        add_custom_target(beam-native-icon DEPENDS "${native_icon}")
-        target_sources(beam-desktop PRIVATE "${native_icon}")
-        set_source_files_properties("${native_icon}" PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
-        list(APPEND icon_resources "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/Assets.car")
-        set(BEAM_HAS_NATIVE_ICON ON PARENT_SCOPE)
-    elseif(BEAM_REQUIRE_NATIVE_ICON)
-        message(FATAL_ERROR "BEAM_REQUIRE_NATIVE_ICON needs Xcode's actool; select Xcode or set BEAM_ACTOOL")
-    else()
-        message(STATUS "Xcode actool unavailable: using Beam.icns; native icon appearances require Xcode")
+    if(NOT EXISTS "${BEAM_ACTOOL}")
+        message(FATAL_ERROR "macOS desktop builds require Xcode's actool for native app icons. "
+            "Install full Xcode and select it with "
+            "'sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer'.")
     endif()
+    set(native_icon_dir "${CMAKE_CURRENT_BINARY_DIR}/icon")
+    set(native_icon "${native_icon_dir}/Assets.car")
+    add_custom_command(OUTPUT "${native_icon}"
+        COMMAND "${CMAKE_COMMAND}" "-DBEAM_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DBEAM_ICON_OUTPUT=${native_icon_dir}" "-DBEAM_ACTOOL=${BEAM_ACTOOL}"
+            "-DBEAM_MACOS_VERSION=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CompileMacIcon.cmake"
+        DEPENDS "${PROJECT_SOURCE_DIR}/cmake/CompileMacIcon.cmake"
+            "${icon_root}/Beam.icon/icon.json"
+            "${icon_root}/Beam.icon/Assets/ray-1.svg"
+            "${icon_root}/Beam.icon/Assets/ray-2.svg"
+            "${icon_root}/Beam.icon/Assets/ray-3.svg"
+        VERBATIM)
+    # Own the generated catalog independently of the Swift bundle's copy
+    # target; otherwise Ninja can make the compiler depend on its copies.
+    add_custom_target(beam-native-icon DEPENDS "${native_icon}")
+    target_sources(beam-desktop PRIVATE "${native_icon}")
+    set_source_files_properties("${native_icon}" PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
+    list(APPEND icon_resources "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/Assets.car")
     # Ninja's combined Swift compile/link rule does not follow the generated
     # object-order resource dependency. Make the bundle copies explicit.
     if(CMAKE_GENERATOR MATCHES "Ninja")

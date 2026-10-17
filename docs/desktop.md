@@ -9,15 +9,16 @@ independent of the desktop toolkit.
 
 The app uses Beam's shared three-ray icon. The macOS Dock icon, monochrome
 menu-bar template, Linux window/tray resource, and installed launcher all use the
-same identity. Full Xcode compiles the layered native macOS appearances during
-the desktop build; Command Line Tools builds use the bundled `.icns` icon.
+same identity. Every macOS desktop build compiles the layered native appearances
+with Xcode's asset compiler; full Xcode is required.
 See [icon sources and regeneration](../assets/icons/README.md).
 
 ## Build and run
 
-On macOS, install Xcode Command Line Tools with Swift 6 and Ninja (`brew install
-ninja`), alongside the normal Beam dependencies. The app uses system SwiftUI,
-AppKit, and UserNotifications frameworks; no Qt runtime is needed. Desktop
+On macOS, install and select full Xcode with Swift 6, then install Ninja
+(`brew install ninja`) alongside the normal Beam dependencies. See
+[Xcode setup](../assets/icons/README.md#native-macos-appearances). The app uses
+system SwiftUI, AppKit, and UserNotifications frameworks; no Qt runtime is needed. Desktop
 configuration sets the deployment target to the selected macOS SDK version
 (`xcrun --sdk macosx --show-sdk-version`, currently 27.0 on the development Mac),
 including existing build trees that cached the old 13.0 target. Use a matching

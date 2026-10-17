@@ -107,9 +107,9 @@ and the desktop app. Linux gets an application-menu entry; macOS gets
 `~/Applications/Beam.app`. Add `~/.local/bin` to your `PATH` if needed. No `sudo`
 is required. See [installation options](docs/desktop.md#install-for-your-user).
 
-macOS uses a native SwiftUI/AppKit app; install current Xcode Command Line Tools
-and Ninja (`brew install ninja`). Desktop builds target the selected macOS SDK
-version. Full Xcode additionally builds native icon appearance variants.
+macOS uses a native SwiftUI/AppKit app; install and select full Xcode and install
+Ninja (`brew install ninja`). Desktop builds target the selected macOS SDK
+version and always compile native icon appearances. See [Xcode setup](assets/icons/README.md#native-macos-appearances).
 Linux uses Qt 6 Widgets (`qt6-base-dev` and
 `qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
 `build-desktop/beam-desktop` on Linux or `open build-desktop-native/beam-desktop.app`
