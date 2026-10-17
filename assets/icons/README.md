@@ -36,6 +36,21 @@ Set `DEVELOPER_DIR` to a full Xcode developer directory, or configure with
 `-DBEAM_ACTOOL=/path/to/actool`. Use `-DBEAM_REQUIRE_NATIVE_ICON=ON` to require the
 native compiler rather than allowing the `.icns` build.
 
+If Xcode is installed but `xcode-select -p` still reports
+`/Library/Developer/CommandLineTools`, select it for the current shell and use a
+separate build directory for its compiler/SDK cache:
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcrun --find actool
+make desktop DESKTOP_BUILD_DIR=build-desktop-xcode \
+  CMAKE_ARGS='-DBEAM_REQUIRE_NATIVE_ICON=ON'
+```
+
+`DEVELOPER_DIR` does not change the system-wide developer directory. To make
+Xcode the system default instead, run
+`sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`.
+
 `make icons-native` compiles just the native catalog into `build/icons/native`.
 The focused native-icons GitHub workflow performs that compilation and verifies
 the light, dark, and tintable icon stacks, then uploads the catalog as a build

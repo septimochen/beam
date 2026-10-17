@@ -77,6 +77,9 @@ if(APPLE)
                 "${icon_root}/Beam.icon/Assets/ray-2.svg"
                 "${icon_root}/Beam.icon/Assets/ray-3.svg"
             VERBATIM)
+        # Own the generated catalog independently of the Swift bundle's copy
+        # target; otherwise Ninja can make the compiler depend on its copies.
+        add_custom_target(beam-native-icon DEPENDS "${native_icon}")
         target_sources(beam-desktop PRIVATE "${native_icon}")
         set_source_files_properties("${native_icon}" PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
         list(APPEND icon_resources "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/Assets.car")

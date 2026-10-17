@@ -1,5 +1,7 @@
 {
-  "color-space-for-untagged-svg-colors" : "srgb",
+  "fill" : {
+    "solid" : "srgb:0.937,0.953,0.988,1.000"
+  },
   "fill-specializations" : [
     {
       "value" : {
@@ -81,6 +83,8 @@
     }
   ],
   "supported-platforms" : {
-    "squares" : "shared"
+    "squares" : [
+      "macOS"
+    ]
   }
 }

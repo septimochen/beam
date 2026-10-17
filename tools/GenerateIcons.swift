@@ -170,7 +170,7 @@ let layers: [[String: Any]] = rays.indices.map { index in
   ]
 }
 let document: [String: Any] = [
-  "color-space-for-untagged-svg-colors": "srgb",
+  "fill": nativeColor("EFF3FC"),
   "fill-specializations": [
     ["value": nativeColor("EFF3FC")],
     ["appearance": "dark", "value": nativeColor("1B2130")],
@@ -182,7 +182,7 @@ let document: [String: Any] = [
       "translucency": ["enabled": false, "value": 0.3],
     ]
   ],
-  "supported-platforms": ["squares": "shared"],
+  "supported-platforms": ["squares": ["macOS"]],
 ]
 let json = try JSONSerialization.data(
   withJSONObject: document, options: [.prettyPrinted, .sortedKeys])

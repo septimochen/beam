@@ -90,7 +90,9 @@ alone does not establish that author-controlled modern appearance variants exist
    pass. Check system rendering in the installed app, including older-macOS
    fallback behavior, before claiming appearance support.
 
-The current host selects `/Library/Developer/CommandLineTools`; `xcrun --find
-actool` reports that the asset compiler is unavailable. A compatible Apple asset
-toolchain is needed to validate production layered-icon compilation and native
-previews. This research does not claim that those checks have passed.
+The initial research used `/Library/Developer/CommandLineTools` without an asset
+compiler. Xcode 27.1 is now installed at `/Applications/Xcode.app`; selecting it
+with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` enables `actool`.
+The native catalog now compiles and contains Aqua, DarkAqua, and Tintable stacks.
+Default and Dark artwork have also been rendered with Xcode's Icon Composer
+tool. See [toolchain selection](../../assets/icons/README.md#native-macos-appearances).
