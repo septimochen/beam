@@ -104,7 +104,7 @@ struct Runtime {
                                                                QUIC_EXECUTION_PROFILE_LOW_LATENCY};
             checked(api->RegistrationOpen(&registration_config, &registration),
                     "open registration");
-            std::string alpn_text = "beam/3";
+            std::string alpn_text = "beam/4";
             const QUIC_BUFFER alpn{static_cast<std::uint32_t>(alpn_text.size()),
                                    reinterpret_cast<std::uint8_t*>(alpn_text.data())};
             QUIC_SETTINGS settings{};
@@ -620,7 +620,7 @@ std::unique_ptr<Connection> listen(std::uint16_t port, const TransferOptions& op
     QUIC_ADDR address{};
     QuicAddrSetFamily(&address, QUIC_ADDRESS_FAMILY_UNSPEC);
     QuicAddrSetPort(&address, port);
-    std::string alpn_text = "beam/3";
+    std::string alpn_text = "beam/4";
     const QUIC_BUFFER alpn{static_cast<std::uint32_t>(alpn_text.size()),
                            reinterpret_cast<std::uint8_t*>(alpn_text.data())};
     checked(api.ListenerStart(connection->listener, &alpn, 1, &address), "listen");

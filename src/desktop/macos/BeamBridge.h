@@ -3,11 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-typedef NS_ENUM(NSInteger, BeamContentKind) {
-    BeamContentKindFile = 1,
-    BeamContentKindText,
-    BeamContentKindURL NS_SWIFT_NAME(url),
-    };
+typedef NS_ENUM(NSInteger, BeamContentKind) { BeamContentKindFile = 1, BeamContentKindText };
 typedef NS_ENUM(NSInteger, BeamEventKind) {
     BeamEventKindListening,
     BeamEventKindProgress,
@@ -28,12 +24,16 @@ typedef NS_ENUM(NSInteger, BeamTransferStage) {
 // Value snapshots only: no C++ objects, pointers, or worker callbacks enter Swift.
 @interface BeamDesktopEvent : NSObject
 @property(nonatomic, readonly) BOOL sending;
+@property(nonatomic, readonly) BOOL checking;
 @property(nonatomic, readonly) BeamEventKind kind;
+@property(nonatomic, readonly) BeamContentKind contentKind;
 @property(nonatomic, readonly) BeamTransferStage stage;
 @property(nonatomic, readonly, copy) NSString* message;
 @property(nonatomic, readonly, copy) NSString* filename;
 @property(nonatomic, readonly) uint64_t bytes;
 @property(nonatomic, readonly) uint64_t total;
+@property(nonatomic, readonly) double bytesPerSecond;
+@property(nonatomic, readonly, copy) NSString* text;
 @end
 
 // All methods are called on the application's main thread. Workers remain owned
@@ -44,9 +44,16 @@ typedef NS_ENUM(NSInteger, BeamTransferStage) {
                                       advertise:(BOOL)advertise
                                           error:(NSError**)error
     NS_SWIFT_NAME(init(stateDirectory:port:advertise:));
+- (nullable instancetype)initWithStateDirectory:(nullable NSString*)directory
+                                           port:(NSUInteger)port
+                                      advertise:(BOOL)advertise
+                                        timeout:(NSUInteger)timeout
+                                          error:(NSError**)error
+    NS_SWIFT_NAME(init(stateDirectory:port:advertise:timeout:));
 - (instancetype)init NS_UNAVAILABLE;
 @property(nonatomic, readonly) BOOL sending;
 @property(nonatomic, readonly) BOOL receiving;
+@property(nonatomic, readonly) BOOL checking;
 @property(nonatomic, readonly, copy) NSString* version;
 - (nullable NSArray<NSString*>*)peersAndReturnError:(NSError**)error;
 - (BOOL)sendToPeer:(NSString*)peer
@@ -58,6 +65,9 @@ typedef NS_ENUM(NSInteger, BeamTransferStage) {
                             error:(NSError**)error NS_SWIFT_NAME(startReceiving(directory:));
 - (void)cancelSend;
 - (void)stopReceiving;
+- (BOOL)checkPeer:(NSString*)peer error:(NSError**)error;
++ (nullable NSDictionary<NSString*, id>*)configurationAtPath:(nullable NSString*)path
+                                                       error:(NSError**)error;
 - (nullable NSArray<BeamDesktopEvent*>*)eventsAndReturnError:(NSError**)error;
 - (void)shutdown;
 + (nullable NSString*)selectedFileForURLs:(NSArray<NSURL*>*)urls

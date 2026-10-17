@@ -25,6 +25,11 @@ struct BeamView: View {
               }
               Button("Refresh devices", action: model.refreshPeers)
             }
+            HStack {
+              Button("Check connectivity", action: model.checkConnectivity)
+                .disabled(model.peers.isEmpty || model.checking)
+              Text(model.connectivityStatus).textSelection(.enabled)
+            }
             Picker("Content type", selection: $model.kind) {
               ForEach(ContentSelection.allCases) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented)
@@ -38,6 +43,11 @@ struct BeamView: View {
                 .textSelection(.enabled)
                 .accessibilityLabel("Selected file: \(model.file)")
             } else {
+              HStack {
+                Text("Text to send")
+                Spacer()
+                Button("Copy to clipboard") { model.copyText(model.content) }
+              }
               ReviewTextEditor(model: model)
                 .font(.body.monospaced()).frame(height: 100)
                 .accessibilityLabel("Content to send")
@@ -73,6 +83,19 @@ struct BeamView: View {
               model.receiving ? "Stop receiving" : "Start receiving", action: model.toggleReceiving)
             transferProgress(model.receiveProgress, label: "Receive progress")
             Text(model.receiveStatus).textSelection(.enabled)
+            if let text = model.receivedText {
+              VStack(alignment: .leading) {
+                HStack {
+                  Text("Received text").font(.headline)
+                  Spacer()
+                  Button("Copy to clipboard") { model.copyText(text) }
+                }
+                ScrollView {
+                  Text(text).font(.body.monospaced()).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(height: 120).accessibilityLabel("Received text")
+              }
+            }
           }.padding(8).frame(maxWidth: .infinity, alignment: .leading)
         }
         Text(model.lastResult).font(.callout).textSelection(.enabled)

@@ -90,7 +90,7 @@ private func tests() throws {
   try rejects {
     try BeamDesktopBridge.validate(content: String(repeating: "界", count: 22000), kind: .text)
   }
-  try rejects { try BeamDesktopBridge.validate(content: "file:///etc/passwd", kind: .url) }
+  try BeamDesktopBridge.validate(content: "file:///etc/passwd", kind: .text)
   try rejects { try BeamDesktopBridge.validate(content: "text\0hidden", kind: .text) }
   try rejects { _ = try BeamDesktopBridge(stateDirectory: root.path, port: 0, advertise: false) }
   try rejects {
@@ -105,6 +105,13 @@ private func tests() throws {
   let options = try LaunchOptions(arguments: [
     "--state-dir", root.path, "--output", root.path, "--listen", "12345", "--no-discovery",
   ])
+  let configFile = root.appendingPathComponent("config")
+  try Data("listen_port=5678\ntimeout_seconds=12\ndiscovery=false\n".utf8).write(to: configFile)
+  let launchConfig = try BeamDesktopBridge.configuration(atPath: configFile.path)
+  let configured = try LaunchOptions(arguments: ["--listen", "12345"], configuration: launchConfig)
+  try require(
+    configured.port == 12345 && configured.timeout == 12000 && !configured.advertise,
+    "Config defaults or CLI precedence lost")
   try require(
     options.port == 12345 && !options.advertise && options.output == root.path,
     "Launch options lost")
@@ -243,16 +250,16 @@ private func tests() throws {
     return send.lastResult.hasPrefix("Sent and verified")
       && receive.lastResult.hasPrefix("Received and verified")
   }
-  let received = try manager.contentsOfDirectory(at: output, includingPropertiesForKeys: nil).first
-  { $0.lastPathComponent.hasPrefix("text-") }
-  guard let received else { throw NSError(domain: "BeamTests", code: 1) }
-  let payload = try Data(contentsOf: received)
-  try require(payload == Data(send.content.utf8), "Native text transfer changed bytes")
+  try require(receive.receivedText == send.content, "Native text transfer changed bytes")
+  let textOutput = try manager.contentsOfDirectory(atPath: output.path)
+  try require(textOutput.isEmpty, "Text created a file")
+  receive.copyText(receive.receivedText ?? "", to: pasteboard)
+  try require(pasteboard.string(forType: .string) == send.content, "Explicit copy changed text")
   try require(
     notifications.count == 1 && !notifications[0].contains("clipboard"),
     "Notification exposed content or preceded verification")
   // Reuse the active receiver, send a reviewed URL, then a selected file.
-  for (kind, value) in [(ContentSelection.url, "https://example.com/native"), (.file, "")] {
+  for (kind, value) in [(ContentSelection.text, "https://example.com/native"), (.file, "")] {
     try waitUntil {
       receive.poll()
       return receive.receiveStatus.hasPrefix("Listening")
@@ -274,13 +281,7 @@ private func tests() throws {
   }
   let saved = try Data(contentsOf: output.appendingPathComponent("hello.txt"))
   try require(saved == Data("native file\n".utf8), "Native file transfer changed bytes")
-  let urlFile = try manager.contentsOfDirectory(at: output, includingPropertiesForKeys: nil).first {
-    $0.lastPathComponent.hasPrefix("url-")
-  }
-  guard let urlFile else { throw NSError(domain: "BeamTests", code: 1) }
-  let savedURL = try Data(contentsOf: urlFile)
-  try require(
-    savedURL == Data("https://example.com/native".utf8), "Native URL transfer changed bytes")
+  try require(receive.receivedText == "https://example.com/native", "URL text changed bytes")
   receive.stopReceiving()
   try waitUntil {
     receive.poll()
@@ -293,6 +294,12 @@ private func tests() throws {
   try waitUntil {
     receive.poll()
     return receive.receiveStatus.hasPrefix("Listening")
+  }
+  send.checkConnectivity()
+  try waitUntil {
+    send.poll()
+    receive.poll()
+    return send.connectivityStatus.contains("is reachable") && !send.checking
   }
   receive.shutdown()
   try require(!receiver.receiving, "Shutdown left a receiver worker running")

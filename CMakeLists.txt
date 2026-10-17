@@ -14,7 +14,7 @@ if(CMAKE_HOST_APPLE AND BEAM_ENABLE_DESKTOP)
         "Desktop deployment version (follows the selected macOS SDK)" FORCE)
     message(STATUS "Beam desktop targets macOS ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
-project(Beam VERSION 0.8.0 LANGUAGES CXX)
+project(Beam VERSION 0.9.0 LANGUAGES CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "Use an out-of-tree build: cmake -S . -B build")
@@ -26,7 +26,7 @@ if(ANDROID)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
-add_library(beam-core STATIC src/core/beam.cpp)
+add_library(beam-core STATIC src/core/beam.cpp src/core/config.cpp)
 add_library(Beam::Core ALIAS beam-core)
 target_compile_features(beam-core PUBLIC cxx_std_23)
 target_include_directories(beam-core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -122,6 +122,10 @@ if(BEAM_ENABLE_DESKTOP)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(beam-config-tests tests/config_tests.cpp)
+    target_link_libraries(beam-config-tests PRIVATE Beam::Core)
+    beam_enable_warnings(beam-config-tests)
+    add_test(NAME config COMMAND beam-config-tests)
     if(UNIX)
         add_test(NAME android-installer COMMAND "${CMAKE_COMMAND}"
             "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

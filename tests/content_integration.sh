@@ -31,7 +31,7 @@ start_receiver() {
     if [[ -n "${1:-}" ]]; then
         "$helper" "$1" "$root/bob" alice "$endpoint" output >receiver.log 2>&1 &
     else
-        "$beam" receive --state-dir "$root/bob" --listen "$port" --output output --timeout 3 --no-discovery >receiver.log 2>&1 &
+        "$beam" receive --state-dir "$root/bob" --listen "$port" --output output --timeout 3 --no-discovery >received-text 2>receiver.log &
     fi
     receiver_pid=$!
     ready "$receiver_pid" receiver.log '^Listening'
@@ -45,11 +45,8 @@ wait_receiver() {
 send() { "$beam" "$@" --state-dir "$root/alice" --timeout 3 >sender.log 2>&1; }
 helper_send() { "$helper" "$1" "$root/alice" bob "$endpoint" output >sender.log 2>&1; }
 check_output() {
-    local kind=$1
-    shopt -s nullglob
-    local files=(output/*)
-    [[ ${#files[@]} == 1 && "${files[0]}" == output/"$kind"-*.txt ]] || { ls -la output; echo 'incorrect typed output'; exit 1; }
-    cmp expected "${files[0]}"
+    [[ -z "$(ls -A output)" ]] || { ls -la output; echo 'text was saved as a file'; exit 1; }
+    cmp expected received-text
     if grep -Fq 'PRIVATE-CONTENT' receiver.log sender.log; then echo 'content leaked to logs'; exit 1; fi
     if compgen -G 'output/.beam-*' >/dev/null; then echo 'partial file leaked'; exit 1; fi
 }
@@ -58,13 +55,19 @@ reset_output() {
     rm -f output/*
 }
 # UTF-8, newlines, shell-like text and empty payloads preserve exact bytes.
+start_receiver
+if ! send check bob; then cat sender.log receiver.log; exit 1; fi
+[[ -z "$(ls -A output)" ]]
+if ! send text 'after authenticated probe' bob; then cat sender.log receiver.log; exit 1; fi
+wait_receiver
+printf %s 'after authenticated probe' >expected
+check_output text
 for text in 'hello PRIVATE-CONTENT' $'你好 🌍\nline two\tend\r\n' '' 'https://example.com/ is text' '$(touch should-not-exist)'; do
     printf %s "$text" >expected
     start_receiver
     if ! send text "$text" bob; then cat sender.log receiver.log; exit 1; fi
     if ! wait_receiver; then cat receiver.log; exit 1; fi
     check_output text
-    grep -q 'text/plain' receiver.log
     reset_output
 done
 [[ ! -e should-not-exist ]]
@@ -78,15 +81,14 @@ reset_output
 url='https://example.com/%E4%BD%A0?q=PRIVATE-CONTENT#section'
 printf %s "$url" >expected
 start_receiver
-if ! send url "$url" bob --endpoint "[::1]:$port" --no-progress; then cat sender.log receiver.log; exit 1; fi
+if ! send text "$url" bob --endpoint "[::1]:$port" --no-progress; then cat sender.log receiver.log; exit 1; fi
 if ! wait_receiver; then cat receiver.log; exit 1; fi
 check_output url
-grep -q 'text/uri-list' receiver.log
 reset_output
-for mode in max-text max-url snapshot fragmented-text; do
+for mode in max-text url-text snapshot fragmented-text; do
     case "$mode" in
         max-text) printf '%65536s' '' | tr ' ' x >expected; kind=text ;;
-        max-url) { printf 'https://example.com/'; printf '%8172s' '' | tr ' ' x; } >expected; kind=url ;;
+        url-text) { printf 'https://example.com/'; printf '%65516s' '' | tr ' ' x; } >expected; kind=url ;;
         snapshot) printf 'immutable original' >expected; kind=text ;;
         fragmented-text) printf '你好' >expected; kind=text ;;
     esac
@@ -97,22 +99,12 @@ for mode in max-text max-url snapshot fragmented-text; do
     reset_output
 done
 # Invalid metadata/content, digests and sizes never publish.
-for mode in invalid-utf8 nul-text invalid-url unknown-kind oversize-metadata obsolete checksum truncated oversized wrong-id; do
+for mode in invalid-utf8 nul-text unknown-kind oversize-metadata obsolete checksum truncated oversized wrong-id; do
     start_receiver
     if ! helper_send "$mode"; then cat sender.log receiver.log; exit 1; fi
     if wait_receiver; then cat receiver.log; echo 'invalid content accepted'; exit 1; fi
     [[ -z "$(ls -A output)" ]] || { ls -la output; echo 'invalid content published'; exit 1; }
 done
-# Fixed IDs verify collision protection without replacing existing content.
-printf '你好' >expected
-start_receiver
-if ! helper_send fragmented-text; then cat sender.log receiver.log; exit 1; fi
-if ! wait_receiver; then cat receiver.log; exit 1; fi
-start_receiver
-if ! helper_send collision; then cat sender.log receiver.log; exit 1; fi
-if wait_receiver; then echo 'collision accepted'; exit 1; fi
-check_output text
-reset_output
 for mode in file-only cancel-receive cancel-verify callback-error; do
     start_receiver "$mode"
     if send text 'must not publish' bob; then echo 'failed receive reported success'; exit 1; fi
@@ -135,6 +127,5 @@ wait_receiver || status=$?
 [[ "$status" == 130 ]] || { cat receiver.log; echo 'incorrect cancellation exit'; exit 1; }
 if ! wait "$sender_pid"; then cat sender.log; exit 1; fi
 sender_pid=
-printf '你好' >expected
-check_output text
-echo 'Phase 5: typed text/URL, bounds, validation, pairing, integrity, cancellation and safe publication verified'
+[[ -z "$(ls -A output)" && ! -s received-text ]]
+echo 'Text in memory: UTF-8, URL text, bounds, pairing, integrity, cancellation and no disk publication verified'

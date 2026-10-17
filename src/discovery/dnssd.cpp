@@ -73,7 +73,7 @@ bool compatible(std::span<const unsigned char> txt) {
         const std::string_view field(reinterpret_cast<const char*>(txt.data()), length);
         const auto key = field.substr(0, field.find('='));
         if (key == "v" || key == "V") {
-            if (version || field != "v=3")
+            if (version || field != "v=4")
                 return false;
             version = true;
         }
@@ -304,7 +304,7 @@ ReceiverAdvertisement::ReceiverAdvertisement(std::uint16_t port, const std::stri
         throw std::invalid_argument(
             "discovery requires a port and a printable ASCII name of 1-63 bytes");
     check_cancel(options);
-    const unsigned char txt[]{3, 'v', '=', '3'};
+    const unsigned char txt[]{3, 'v', '=', '4'};
     auto& self = *implementation;
     check_dns(DNSServiceRegister(&self.registration.value, 0, 0, name.c_str(), service_type, domain,
                                  nullptr, htons(port), sizeof(txt), txt, Impl::reply, &self));

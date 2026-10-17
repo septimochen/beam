@@ -95,13 +95,13 @@ DNSServiceErrorType DNSSD_API DNSServiceResolve(DNSServiceRef* ref, DNSServiceFl
                                                 void* context) {
     ++resolves;
     return create(ref, [=](DNSServiceRef handle) {
-        std::vector<unsigned char> txt{3, 'v', '=', '3'};
+        std::vector<unsigned char> txt{3, 'v', '=', '4'};
         if (scenario == 1)
             txt[3] = '9';
         if (scenario == 2)
             txt[0] = 10;
         if (scenario == 3)
-            txt.insert(txt.end(), {3, 'v', '=', '3'});
+            txt.insert(txt.end(), {3, 'v', '=', '4'});
         callback(handle, 0, index, 0, "Laptop._beam._udp.local.",
                  scenario == 4 ? "outside.example.com." : "laptop.local.", htons(4269),
                  static_cast<std::uint16_t>(txt.size()), txt.data(), context);
@@ -146,7 +146,7 @@ DNSServiceErrorType DNSSD_API DNSServiceRegister(DNSServiceRef* ref, DNSServiceF
                                                  const char*, std::uint16_t port,
                                                  std::uint16_t length, const void* txt,
                                                  DNSServiceRegisterReply callback, void* context) {
-    require(length == 4 && static_cast<const char*>(txt)[3] == '3', "bad advertised metadata");
+    require(length == 4 && static_cast<const char*>(txt)[3] == '4', "bad advertised metadata");
     advertised_port = ntohs(port);
     return create(ref, [=, calls = 0](DNSServiceRef handle) mutable {
         if (scenario == 11)

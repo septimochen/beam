@@ -5,15 +5,16 @@ internal object Native {
     System.loadLibrary("beam-android")
   }
 
-  external fun create(directory: ByteArray): Long
+  external fun create(directory: ByteArray, port: Int, timeout: Int): Long
 
   external fun destroy(handle: Long)
 
   external fun call(handle: Long, command: Int, arguments: Array<ByteArray>): Array<ByteArray>
 }
 
-internal class NativeSession(directory: String) : AutoCloseable {
-  private var handle = Native.create(directory.toByteArray(Charsets.UTF_8))
+internal class NativeSession(directory: String, port: Int = 4269, timeout: Int = 30000) :
+  AutoCloseable {
+  private var handle = Native.create(directory.toByteArray(Charsets.UTF_8), port, timeout)
 
   fun call(command: Int, vararg arguments: String): List<String> {
     check(handle != 0L) { "Beam session is closed" }
@@ -43,4 +44,5 @@ internal object Command {
   const val STOP = 8
   const val EVENTS = 9
   const val BUSY = 10
+  const val CHECK = 11
 }

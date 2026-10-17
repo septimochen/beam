@@ -1,4 +1,5 @@
 #include "beam/beam.hpp"
+#include "beam/config.hpp"
 #include "beam/identity.hpp"
 #include "window.hpp"
 #include <QApplication>
@@ -18,7 +19,7 @@ int main(int argc, char** argv) {
     parser.addVersionOption();
     parser.addOption({"state-dir", "Existing Beam identity and peer store", "directory"});
     parser.addOption({"output", "Receive folder (overrides the remembered folder)", "directory"});
-    parser.addOption({"listen", "Receive UDP port", "port", "4269"});
+    parser.addOption({"listen", "Receive UDP port", "port"});
     parser.addOption({"no-discovery", "Do not advertise the receiver on the LAN"});
     parser.process(app);
     if (!parser.positionalArguments().isEmpty()) {
@@ -27,7 +28,11 @@ int main(int argc, char** argv) {
     }
     try {
         bool valid = false;
-        const auto port = parser.value("listen").toUInt(&valid);
+        const auto defaults = beam::load_config(beam::default_config_file());
+        const auto port =
+            parser.isSet("listen") ? parser.value("listen").toUInt(&valid) : defaults.listen_port;
+        if (!parser.isSet("listen"))
+            valid = true;
         if (!valid || port == 0 || port > 65535)
             throw std::invalid_argument("listen port must be between 1 and 65535");
         beam::desktop::Config config;
@@ -36,8 +41,12 @@ int main(int argc, char** argv) {
                 ? std::filesystem::path(parser.value("state-dir").toUtf8().toStdString())
                 : beam::default_state_directory();
         config.port = static_cast<std::uint16_t>(port);
-        config.advertise = !parser.isSet("no-discovery");
-        beam::desktop::Window window(config, parser.value("output").toUtf8().toStdString());
+        config.advertise = defaults.discovery && !parser.isSet("no-discovery");
+        config.timeout = defaults.timeout;
+        beam::desktop::Window window(
+            config, parser.isSet("output")
+                        ? std::filesystem::path(parser.value("output").toUtf8().toStdString())
+                        : defaults.receive_folder);
         window.show();
         return app.exec();
     } catch (const std::exception& error) {

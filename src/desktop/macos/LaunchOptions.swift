@@ -7,8 +7,13 @@ struct LaunchOptions {
   var advertise = true
   var help = false
   var version = false
+  var timeout = 30000
 
-  init(arguments: [String]) throws {
+  init(arguments: [String], configuration: [String: Any] = [:]) throws {
+    output = configuration["output"] as? String ?? ""
+    port = configuration["port"] as? Int ?? 4269
+    advertise = configuration["advertise"] as? Bool ?? true
+    timeout = configuration["timeout"] as? Int ?? 30000
     var index = 0
     while index < arguments.count {
       let argument = arguments[index]

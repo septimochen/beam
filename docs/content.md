@@ -1,72 +1,49 @@
-# Text and URL transfers
+# Text transfers
 
-Phase 5 adds explicitly typed content over the same authenticated QUIC connection
-used for files. Initialize and reciprocally pair both devices as described in
-[pairing](pairing.md), then start a receiver for each transfer:
+Beam 0.9 uses protocol v4 (`beam/4`) for files and UTF-8 text. URLs are ordinary
+text: use `beam text "https://example.com/page" laptop`. The separate `beam url`
+command, URL content kind, and `send_url` API have been retired. Update both peers;
+v3 peers fail ALPN negotiation. Existing identities and paired certificates remain
+usable without re-pairing.
+
+Initialize and reciprocally pair devices as described in [pairing](pairing.md).
+Start a receiver, then send text to its paired name:
 
 ```sh
-mkdir -p received
 beam receive --output ./received
+beam text "hello 🌍" laptop
+beam text "https://example.com/page" laptop
 ```
 
-Send UTF-8 text or one HTTP(S) URL to a saved peer alias:
+Text is `text/plain`, at most 65,536 UTF-8 bytes. Empty text, tabs, LF and CR are
+allowed; bytes and line endings are preserved without adding a newline. Invalid
+UTF-8, NUL, other C0 controls, DEL, and C1 controls are rejected. URL-looking text
+uses these same rules; Beam never fetches or opens it or interprets its scheme.
 
-```sh
-beam text "hello" macbook
-beam text "你好 🌍" macbook
-beam url "https://example.com/page?q=hello#section" macbook
-```
+Text is received in bounded memory and returned as `TransferResult.text` after
+size, SHA-256, UTF-8 validation, and acknowledgement. It creates no temporary or
+final text files. Apps show the most recently received text in a selectable text
+area with a **Copy to clipboard** button at the top right. The outgoing text area
+has its own explicit Copy button. New text replaces the previous in-memory view;
+there is no persistent history or automatic clipboard write.
 
-`--state-dir`, `--endpoint IP:PORT`, `--timeout SECONDS`, and `--no-progress` work
-as for paired file sends. These commands require paired credentials. The reusable
-core APIs also support the existing dedicated-CA credentials. Shell-quote content
-to preserve spaces and avoid shell expansion. Use `--` after all options when
-content begins with `--`:
+The CLI writes received text verbatim to stdout, without a newline or metadata.
+Listener/progress diagnostics go to stderr. Redirect stdout only when you want
+to save text yourself. A receiver with no `--output` or configured receive folder
+accepts text and authenticated connectivity probes, and rejects file offers.
+File receives retain safe, exclusive publication in the selected directory.
 
-```sh
-beam text --timeout 60 -- "--literal text" macbook
-```
+`--state-dir`, `--endpoint IP:PORT`, `--route`, `--timeout SECONDS`, and
+`--no-progress` work as for paired file sends. Quote shell arguments, and use `--`
+after options when content begins with `--`. Arguments may appear in shell
+history/process listings; avoid passing secrets this way.
 
-Text is `text/plain`, up to 65,536 UTF-8 bytes. Empty text, tabs, LF and CR are
-allowed. Invalid UTF-8, NUL, other C0 controls, DEL, and C1 controls are rejected.
-Bytes and line endings are preserved; no newline is added. The limit counts bytes,
-not characters.
+`send_text` snapshots caller content before callbacks. `receive_content` accepts
+files, text, and connectivity probes; `receive_file` still rejects text offers.
+A probe result has `connectivity_check=true` and no payload. The CLI continues
+listening after a probe; apps restart their listener quietly. A failed completion
+exchange does not display or emit received text. File publication can already
+have completed when acknowledgement fails, as before.
 
-URLs are `text/uri-list`, with exactly one absolute HTTP or HTTPS URL, up to
-8,192 bytes. Beam accepts ASCII DNS hostnames, IPv4 addresses, bracketed IPv6
-addresses, and optional ports from 1 through 65,535. Encode non-ASCII characters
-and spaces using percent encoding; use an ASCII/punycode hostname for IDNs. Raw
-spaces, controls, backslashes, malformed percent escapes, embedded credentials,
-multiple URLs, and other schemes are rejected. This validates supported syntax;
-it does not fetch the URL or establish that the target exists or is safe.
-
-The receiver stores text as `text-TRANSFER_ID.txt` and a URL as
-`url-TRANSFER_ID.txt` inside the selected directory. The sender does not choose
-these names. The content kind is explicit in the offer and returned by the core;
-it is independent of the storage extension. Existing files and symlinks are never
-overwritten. Size, SHA-256, and content validation must pass before publication;
-completion follows the acknowledgement exchange.
-
-Received content is never executed, opened in a browser, copied to the clipboard,
-or printed to the terminal. Progress and results show the type, generated filename,
-and byte count. Read or open the saved content explicitly. Shell arguments may be
-visible in local shell history/process listings, so avoid passing secrets that way.
-
-Failure or cancellation before publication removes partial output. A failure in
-the final acknowledgement can leave verified output, as with file transfers. A
-retry uses a fresh transfer ID and may create another copy; Beam does not deduplicate
-content or maintain history.
-
-Both peers must use protocol v3 (`beam/3`); update Phase 1–4 peers before sending
-any kind of content. Stored device identities and pairing records remain usable.
-Discovery advertises `v=3` and excludes receivers with incompatible protocol
-metadata. See [protocol](protocol.md) for the wire format.
-
-`send_text`/`send_url` snapshot bounded caller content before invoking callbacks.
-`receive_content` accepts all three kinds and returns `TransferResult.kind` with
-the saved basename and byte count. The existing `receive_file` API stays file-only
-and rejects text/URL offers before acceptance. All APIs retain calling-thread
-progress, stop-token/predicate cancellation, and typed transfer errors.
-
-Run `make content-test` for validation and authenticated localhost transfers.
-These tests are part of `make check` and Linux CI, and need no discovery daemon.
+Run `make content-test` for UTF-8 boundaries, URL-as-text behavior, malformed input,
+integrity, cancellation, authenticated probes, and no text-file publication.

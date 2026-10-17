@@ -20,10 +20,14 @@ class Window : public QWidget {
     Service service;
     QComboBox *peers{}, *kind{};
     QLineEdit *file{}, *output{};
-    QPlainTextEdit* text{};
+    QPlainTextEdit *text{}, *received_text{};
     QLabel *send_status{}, *receive_status{}, *last_result{};
     QProgressBar *send_progress{}, *receive_progress{};
     QPushButton *send_button{}, *receive_button{}, *cancel_button{}, *folder_button{};
+    QPushButton* check_button{};
+    QLabel* connectivity_status{};
+    QLabel *tray_send_status{}, *tray_receive_status{};
+    QProgressBar *tray_send_progress{}, *tray_receive_progress{};
     QSystemTrayIcon* tray{};
     std::optional<std::string> clipboard_snapshot;
     bool receive_on_launch{true};

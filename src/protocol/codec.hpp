@@ -14,7 +14,9 @@ enum class Type : std::uint8_t {
     reject = 3,
     complete = 4,
     failed = 5,
-    acknowledged = 6
+    acknowledged = 6,
+    ping = 7,
+    pong = 8
 };
 struct Message {
     Type type;

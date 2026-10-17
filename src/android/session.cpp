@@ -2,8 +2,9 @@
 #include "beam/identity.hpp"
 
 namespace beam::android {
-Session::Session(const std::filesystem::path& directory, std::uint16_t port)
-    : state(directory), service({directory, port, false}) {
+Session::Session(const std::filesystem::path& directory, std::uint16_t port,
+                 std::chrono::milliseconds timeout)
+    : state(directory), service({directory, port, false, timeout}) {
     IdentityStore store(state, true);
     store.initialize();
 }
@@ -19,6 +20,7 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         break;
     case Command::unpair:
     case Command::receive:
+    case Command::check:
         expected = 1;
         break;
     default:
@@ -43,14 +45,14 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         return result;
     }
     case Command::pair:
-        if (service.is_receiving() || service.is_sending())
+        if (service.is_receiving() || service.is_sending() || service.is_checking())
             throw std::logic_error("Stop transfers before editing paired devices");
         IdentityStore(state).pair(arguments[0], arguments[1], arguments[2], arguments[3]);
         break;
     case Command::unpair:
     case Command::endpoint:
         // Revocation cannot leave a listener using an earlier trust snapshot.
-        if (service.is_receiving() || service.is_sending())
+        if (service.is_receiving() || service.is_sending() || service.is_checking())
             throw std::logic_error("Stop transfers before editing paired devices");
         if (command == Command::unpair)
             IdentityStore(state).unpair(arguments[0]);
@@ -64,7 +66,7 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         else if (arguments[1] == "text")
             kind = ContentKind::text;
         else if (arguments[1] == "url")
-            kind = ContentKind::url;
+            throw std::invalid_argument("URL mode was removed; send URLs as text");
         else
             throw std::invalid_argument("Unsupported Android content kind");
         service.send({arguments[0], kind, arguments[2], arguments[3]});
@@ -75,6 +77,7 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         break;
     case Command::cancel:
         service.cancel_send();
+        service.cancel_check();
         break;
     case Command::stop:
         service.stop_receiving();
@@ -82,18 +85,24 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
     case Command::events: {
         std::vector<std::string> result;
         for (const auto& event : service.take_events()) {
-            result.insert(result.end(),
-                          {std::to_string(static_cast<int>(event.direction)),
-                           std::to_string(static_cast<int>(event.kind)), event.message,
-                           event.result.filename, std::to_string(event.result.bytes),
-                           std::to_string(static_cast<int>(event.progress.stage)),
-                           std::to_string(event.progress.bytes),
-                           std::to_string(event.progress.total)});
+            result.insert(
+                result.end(),
+                {std::to_string(static_cast<int>(event.direction)),
+                 std::to_string(static_cast<int>(event.kind)), event.message, event.result.filename,
+                 std::to_string(event.result.bytes),
+                 std::to_string(static_cast<int>(event.progress.stage)),
+                 std::to_string(event.progress.bytes), std::to_string(event.progress.total),
+                 std::to_string(event.progress.bytes_per_second),
+                 std::to_string(static_cast<unsigned>(event.result.kind)), event.result.text});
         }
         return result;
     }
     case Command::busy:
-        return {service.is_sending() ? "1" : "0", service.is_receiving() ? "1" : "0"};
+        return {service.is_sending() ? "1" : "0", service.is_receiving() ? "1" : "0",
+                service.is_checking() ? "1" : "0"};
+    case Command::check:
+        service.check_peer(arguments[0]);
+        break;
     default:
         throw std::invalid_argument("Unknown Android command");
     }

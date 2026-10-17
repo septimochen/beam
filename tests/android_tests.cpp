@@ -49,11 +49,11 @@ std::vector<std::string> await(Session& session, int direction, int kind) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (std::chrono::steady_clock::now() < deadline) {
         const auto events = session.call(Command::events, {});
-        require(events.size() % 8 == 0, "Malformed Android event rows");
-        for (std::size_t i = 0; i < events.size(); i += 8) {
+        require(events.size() % 11 == 0, "Malformed Android event rows");
+        for (std::size_t i = 0; i < events.size(); i += 11) {
             if (events[i] == std::to_string(direction) && events[i + 1] == std::to_string(kind))
                 return {events.begin() + static_cast<std::ptrdiff_t>(i),
-                        events.begin() + static_cast<std::ptrdiff_t>(i + 8)};
+                        events.begin() + static_cast<std::ptrdiff_t>(i + 11)};
             if (events[i + 1] == "3")
                 throw std::runtime_error(events[i + 2]);
         }
@@ -63,7 +63,7 @@ std::vector<std::string> await(Session& session, int direction, int kind) {
 }
 void idle(Session& session) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (session.call(Command::busy, {}) != std::vector<std::string>{"0", "0"}) {
+    while (session.call(Command::busy, {}) != std::vector<std::string>{"0", "0", "0"}) {
         require(std::chrono::steady_clock::now() < deadline, "Android worker did not stop");
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -96,7 +96,7 @@ void tests() {
     rejects([&] { android.call(Command::send, {"laptop", "url", "", "file:///private"}); });
     const auto output = fixture.root / "received";
     std::filesystem::create_directory(output);
-    for (const auto& kind : {"text", "url", "file"}) {
+    for (const auto& kind : {"text", "file"}) {
         const std::string content =
             kind == std::string("url") ? "https://example.com/a%20b" : "hello 🌍\n世界";
         const auto source = fixture.root / "source.txt";
@@ -109,7 +109,8 @@ void tests() {
                       kind == std::string("file") ? "" : content});
         const auto event = await(android, 1, 2);
         await(desktop, 0, 2);
-        require(read(output / event[3]) == content, "Android received bytes changed");
+        require((kind == std::string("file") ? read(output / event[3]) : event[10]) == content,
+                "Android received bytes changed");
         android.call(Command::stop, {});
         idle(android);
         idle(desktop);

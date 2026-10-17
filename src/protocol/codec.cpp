@@ -33,10 +33,7 @@ void validate(const Message& message) {
                 throw TransferError(TransferErrorCode::protocol, "unsafe offered filename");
             break;
         case ContentKind::text:
-        case ContentKind::url:
-            if (!message.text.empty() ||
-                message.size > (message.kind == ContentKind::text ? max_text_size : max_url_size) ||
-                (message.kind == ContentKind::url && message.size == 0))
+            if (!message.text.empty() || message.size > max_text_size)
                 throw TransferError(TransferErrorCode::protocol, "invalid typed content metadata");
             break;
         default:
@@ -55,6 +52,8 @@ void validate(const Message& message) {
     case Type::accept:
     case Type::complete:
     case Type::acknowledged:
+    case Type::ping:
+    case Type::pong:
         if (!message.text.empty())
             throw TransferError(TransferErrorCode::protocol, "unexpected protocol text");
         break;
@@ -80,13 +79,13 @@ std::vector<std::byte> encode(const Message& message) {
         for (char character : message.text)
             payload.push_back(static_cast<std::byte>(character));
     }
-    std::vector<std::byte> frame{std::byte{3}, static_cast<std::byte>(message.type)};
+    std::vector<std::byte> frame{std::byte{4}, static_cast<std::byte>(message.type)};
     append(frame, payload.size(), 4);
     frame.insert(frame.end(), payload.begin(), payload.end());
     return frame;
 }
 Message decode(std::span<const std::byte> bytes) {
-    if (take(bytes, 1) != 3)
+    if (take(bytes, 1) != 4)
         throw TransferError(TransferErrorCode::protocol, "unsupported protocol version");
     Message message{};
     message.type = static_cast<Type>(take(bytes, 1));
@@ -120,15 +119,15 @@ Message decode(std::span<const std::byte> bytes) {
 Message read(transport::Stream& stream) {
     std::array<std::byte, 6> header{};
     transport::read_exact(stream, header);
-    if (header[0] != std::byte{3})
+    if (header[0] != std::byte{4})
         throw TransferError(TransferErrorCode::protocol, "unsupported protocol version");
     const auto type = std::to_integer<unsigned>(header[1]);
-    if (type < 1 || type > 6)
+    if (type < 1 || type > 8)
         throw TransferError(TransferErrorCode::protocol, "unknown protocol message type");
     std::span<const std::byte> length_bytes{header.data() + 2, 4};
     const auto length = take(length_bytes, 4);
     if (length < 8 || length > max_payload ||
-        ((type == 2 || type == 4 || type == 6) && length != 8) ||
+        ((type == 2 || type == 4 || type == 6 || type == 7 || type == 8) && length != 8) ||
         (type == 1 && (length < 51 || length > 306)) ||
         ((type == 3 || type == 5) && (length < 13 || length > 268)))
         throw TransferError(TransferErrorCode::protocol, "protocol payload exceeds limit");

@@ -129,7 +129,7 @@ void runtime_tests(int argc, char** argv) {
         if (mode == "fallback-text")
             beam::send_text(primary, "routed text", tls_name, options);
         else if (mode == "fallback-url")
-            beam::send_url(primary, "https://example.com/", tls_name, options);
+            beam::send_text(primary, "https://example.com/", tls_name, options);
         else
             beam::send_file(primary, argv[6], tls_name, options);
         require(mode.starts_with("fallback-") && attempts.size() == 2,

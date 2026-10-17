@@ -2,7 +2,7 @@
 
 Dependency flow is `CLI/UI -> beam-core -> protocol/transfer -> transport -> MsQuic`.
 The CLI parses arguments and reports outcomes; application code sees no MsQuic handles.
-The core exposes file/text/URL sending, `receive_content`, file-only `receive_file`,
+The core exposes file/text sending, `receive_content`, file-only `receive_file`,
 credentials, endpoints, and typed transfer results.
 Typed transfer errors carry a category and peer/local origin across the CLI boundary; C callbacks catch exceptions locally.
 
@@ -34,10 +34,10 @@ file operations isolated from protocol/transport. Directory-relative exclusive c
 and no-replace publication protect the selected destination from symlinks, races, and
 collisions; incomplete files never occupy their final name.
 
-File and bounded in-memory text/URL sources use the same sending state machine.
-`src/transfer/content.cpp` validates UTF-8 and supported HTTP(S) URL syntax without
-new dependencies. Typed offers include a content kind; bounded text/URL payloads
-are revalidated after integrity checks and saved under locally generated basenames.
+File and bounded in-memory text sources use the same sending state machine.
+`src/transfer/content.cpp` validates bounded UTF-8 text without
+new dependencies. Typed offers include a content kind; bounded text payloads
+are revalidated after integrity checks and returned in memory after acknowledgement.
 The core exposes the kind independently of storage names and never opens content.
 See [content](content.md) for bounds and API semantics.
 
@@ -62,7 +62,7 @@ dialogs, drops, and explicit clipboard access. A small Objective-C++ bridge
 translates C++ exceptions to NSError and drains value snapshots on the main
 thread. C++ objects and callbacks never cross into Swift. Both frontends use one
 GUI-independent service that
-owns one send `std::jthread` and one receive `std::jthread`, with stop-token
+owns send, receive, and connectivity-check `std::jthread`s, with stop-token
 cancellation and joining teardown. It calls the existing paired core APIs,
 reloads receiver credentials between transfers, and owns advertisements only
 while each listener exists. A bounded mailbox coalesces progress; a GUI timer

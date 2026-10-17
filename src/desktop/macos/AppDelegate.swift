@@ -142,6 +142,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     item.button?.image = image
     item.button?.toolTip = "Beam"
     let menu = NSMenu()
+    let progress = NSMenuItem()
+    let progressView = NSHostingView(rootView: TrayTransferView(model: model))
+    progressView.frame = NSRect(x: 0, y: 0, width: 300, height: 120)
+    progress.view = progressView
+    menu.addItem(progress)
+    menu.addItem(.separator())
     menu.addItem(withTitle: "Open Beam", action: #selector(showWindow), keyEquivalent: "").target =
       self
     menu.addItem(
@@ -210,5 +216,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     completionHandler([.banner])
+  }
+}
+
+struct TrayTransferView: View {
+  @ObservedObject var model: DesktopModel
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Send: \(model.sendStatus)").font(.caption).lineLimit(2)
+      if let value = model.sendProgress {
+        ProgressView(value: value)
+      } else {
+        ProgressView().controlSize(.small)
+      }
+      Text("Receive: \(model.receiveStatus)").font(.caption).lineLimit(2)
+      if let value = model.receiveProgress {
+        ProgressView(value: value)
+      } else {
+        ProgressView().controlSize(.small)
+      }
+    }.padding(12).frame(width: 300, alignment: .leading)
   }
 }

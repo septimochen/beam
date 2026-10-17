@@ -45,56 +45,13 @@ void unit_tests() {
           std::string("\xf4\x90\x80\x80"), std::string("\xf5\x80\x80\x80"), std::string("\xe2\x82"),
           std::string(beam::max_text_size + 1, 'x')})
         rejects([&] { beam::validate_content(ContentKind::text, text); });
-    for (const auto url :
-         {"https://example.com", "HTTP://localhost:80/a?b=c#d", "https://[::1]:443/",
-          "https://example.com./%E4%BD%A0", "https://example.com/a%20b?q=a+b&x=1", "https://x/#"})
-        beam::validate_content(ContentKind::url, url);
-    const std::string url_prefix = "https://example.com/";
-    beam::validate_content(ContentKind::url,
-                           url_prefix + std::string(beam::max_url_size - url_prefix.size(), 'x'));
-    for (const auto url : {"",
-                           "example.com",
-                           "//example.com",
-                           "javascript:alert(1)",
-                           "file:///etc/passwd",
-                           "ftp://example.com/",
-                           "https://",
-                           "https:///path",
-                           "https://a@b/",
-                           "https://a:b@c/",
-                           "https://x:0/",
-                           "https://x:65536/",
-                           "https://x:/",
-                           "https://x:abc/",
-                           "https://x:1:2/",
-                           "https://[bad]/",
-                           "https://[::1",
-                           "https://[::1]extra/",
-                           "https://[::1]:/",
-                           "https://.x/",
-                           "https://x../",
-                           "https://-x/",
-                           "https://x-/",
-                           "https://x_y/",
-                           "https://x/has space",
-                           "https://x/你好",
-                           "https://x/\\path",
-                           "https://x/%",
-                           "https://x/%0",
-                           "https://x/%gg",
-                           "https://x/#a#b",
-                           "https://x/\nhttps://y/"})
-        rejects([&] { beam::validate_content(ContentKind::url, url); });
-    rejects([&] {
-        beam::validate_content(ContentKind::url, url_prefix + std::string(beam::max_url_size, 'x'));
-    });
-    const std::string nul_host = std::string("https://[::1") + '\0' + "hidden]/";
-    rejects([&] { beam::validate_content(ContentKind::url, nul_host); });
+    for (const auto text : {"https://example.com", "file:///etc/passwd", "javascript:alert(1)",
+                            "https://x/你好 has spaces"})
+        beam::validate_content(ContentKind::text, text);
     rejects([&] { beam::validate_content(ContentKind::file, "hello"); });
-    require(beam::content_type(ContentKind::text) == "text/plain" &&
-                beam::content_type(ContentKind::url) == "text/uri-list",
+    require(beam::content_type(ContentKind::text) == "text/plain",
             "incorrect content type mapping");
-    for (const auto kind : {ContentKind::text, ContentKind::url}) {
+    for (const auto kind : {ContentKind::text}) {
         beam::protocol::Message offer{beam::protocol::Type::offer,   42,  8, {}, {},
                                       beam::TransferErrorCode::none, kind};
         const auto frame = beam::protocol::encode(offer);
@@ -106,23 +63,23 @@ void unit_tests() {
             rejects<beam::TransferError>(
                 [&] { beam::protocol::decode(std::span{frame}.first(length)); });
         auto invalid = frame;
+        invalid[14] = std::byte{3};
+        rejects<beam::TransferError>([&] { beam::protocol::decode(invalid); });
+        invalid = frame;
         invalid[14] = std::byte{99};
         rejects<beam::TransferError>([&] { beam::protocol::decode(invalid); });
         invalid = frame;
-        invalid[0] = std::byte{2};
+        invalid[0] = std::byte{3};
         rejects<beam::TransferError>([&] { beam::protocol::decode(invalid); });
         offer.text = "disguised.txt";
         rejects<beam::TransferError>([&] { beam::protocol::encode(offer); });
         offer.text.clear();
-        offer.size = kind == ContentKind::text ? beam::max_text_size : beam::max_url_size;
+        offer.size = beam::max_text_size;
         beam::protocol::encode(offer);
         ++offer.size;
         rejects<beam::TransferError>([&] { beam::protocol::encode(offer); });
         offer.size = 0;
-        if (kind == ContentKind::url)
-            rejects<beam::TransferError>([&] { beam::protocol::encode(offer); });
-        else
-            beam::protocol::encode(offer);
+        beam::protocol::encode(offer);
     }
 }
 void runtime_tests(int argc, char** argv) {
@@ -187,22 +144,21 @@ void runtime_tests(int argc, char** argv) {
         }
         return;
     }
-    if (mode == "max-text" || mode == "max-url" || mode == "snapshot" || mode == "cancel-hash" ||
+    if (mode == "max-text" || mode == "url-text" || mode == "snapshot" || mode == "cancel-hash" ||
         mode == "cancel-send") {
         try {
             const auto result =
                 mode == "snapshot"
                     ? beam::send_text(endpoint, std::string_view(snapshot), server_name, options)
-                : mode == "max-url"
-                    ? beam::send_url(endpoint,
-                                     "https://example.com/" +
-                                         std::string(beam::max_url_size - 20, 'x'),
-                                     server_name, options)
+                : mode == "url-text"
+                    ? beam::send_text(endpoint,
+                                      "https://example.com/" +
+                                          std::string(beam::max_text_size - 20, 'x'),
+                                      server_name, options)
                     : beam::send_text(endpoint, std::string(beam::max_text_size, 'x'), server_name,
                                       options);
             require(!mode.starts_with("cancel-") && complete &&
-                        result.kind ==
-                            (mode == "max-url" ? beam::ContentKind::url : beam::ContentKind::text),
+                        result.kind == beam::ContentKind::text,
                     "incorrect typed success result");
         } catch (const beam::TransferError& error) {
             require(mode.starts_with("cancel-") &&
@@ -214,8 +170,7 @@ void runtime_tests(int argc, char** argv) {
     }
     // Authenticated adversarial sender: bypass public content validation, retaining
     // a correct digest to prove validation is independent of integrity checking.
-    const bool url = mode == "invalid-url";
-    std::string content = url ? "javascript:alert(1)" : "你好";
+    std::string content = "你好";
     if (mode == "invalid-utf8")
         content = "\xed\xa0\x80";
     if (mode == "nul-text")
@@ -229,7 +184,7 @@ void runtime_tests(int argc, char** argv) {
                                   hash.finish(),
                                   {},
                                   beam::TransferErrorCode::none,
-                                  url ? beam::ContentKind::url : beam::ContentKind::text};
+                                  beam::ContentKind::text};
     if (mode == "checksum")
         offer.digest = {};
     if (mode == "truncated")

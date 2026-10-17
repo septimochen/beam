@@ -20,7 +20,7 @@ struct SendRequest {
     std::filesystem::path file;
     std::string content;
 };
-enum class Direction { send, receive };
+enum class Direction { send, receive, check };
 enum class EventKind { listening, progress, completed, failed, warning, stopped };
 struct Event {
     Direction direction;
@@ -36,8 +36,8 @@ class Service {
     std::mutex mutex;
     std::deque<Event> events;
     std::optional<Event> send_progress, receive_progress;
-    std::atomic<bool> sending{false}, receiving{false};
-    std::jthread sender, receiver;
+    std::atomic<bool> sending{false}, receiving{false}, checking{false};
+    std::jthread sender, receiver, checker;
     void publish(Event event);
     void receive_loop(std::stop_token stop, const std::filesystem::path& directory);
 
@@ -48,13 +48,16 @@ class Service {
     Service& operator=(const Service&) = delete;
     void send(SendRequest request);
     void start_receiving(const std::filesystem::path& directory);
+    void check_peer(std::string peer);
+    void cancel_check();
     void cancel_send();
     void stop_receiving();
     [[nodiscard]] bool is_sending() const noexcept;
     [[nodiscard]] bool is_receiving() const noexcept;
+    [[nodiscard]] bool is_checking() const noexcept;
     [[nodiscard]] std::vector<Event> take_events();
 };
 // Validate selection before any worker or network operation. Drops are local,
-// single regular files; text/URL snapshots use the core's existing bounds.
+// single regular files; text snapshots use the core's existing bounds.
 void validate_request(const SendRequest& request);
 } // namespace beam::desktop

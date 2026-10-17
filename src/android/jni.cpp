@@ -37,10 +37,14 @@ Session& session(jlong handle) {
 }
 } // namespace
 extern "C" JNIEXPORT jlong JNICALL Java_org_beam_android_Native_create(JNIEnv* env, jobject,
-                                                                       jbyteArray directory) {
+                                                                       jbyteArray directory,
+                                                                       jint port, jint timeout) {
     try {
-        return static_cast<jlong>(
-            reinterpret_cast<std::uintptr_t>(new Session(bytes(env, directory))));
+        if (port < 1 || port > 65535 || timeout < 1 || timeout > 86400000)
+            throw std::invalid_argument("Invalid Android port or timeout");
+        return static_cast<jlong>(reinterpret_cast<std::uintptr_t>(
+            new Session(bytes(env, directory), static_cast<std::uint16_t>(port),
+                        std::chrono::milliseconds(timeout))));
     } catch (const std::exception& error) {
         fail(env, error.what());
     } catch (...) {

@@ -145,11 +145,23 @@ void tests() {
         auto* receive_status = automatic.findChild<QLabel*>("receiveStatus");
         await([&] { return receive_status->text().startsWith("Listening"); });
         beam::desktop::Service sender({left, port, false});
+        clipboard->setText("unchanged clipboard");
         sender.send({"right", beam::ContentKind::text, {}, "automatic receive"});
         await([&] {
             return automatic.findChild<QLabel*>("lastResult")
                 ->text()
                 .startsWith("Received and verified");
+        });
+        require(std::filesystem::is_empty(output), "received text created a file");
+        require(clipboard->text() == "unchanged clipboard",
+                "receive wrote clipboard automatically");
+        automatic.findChild<QPushButton*>("copyReceived")->click();
+        require(clipboard->text() == "automatic receive", "explicit Copy lost received text");
+        automatic.findChild<QPushButton*>("checkConnectivity")->click();
+        await([&] {
+            return automatic.findChild<QLabel*>("connectivityStatus")
+                ->text()
+                .contains("unavailable");
         });
         automatic.findChild<QPushButton*>("receive")->click();
         await([&] { return receive_status->text() == "Receiver stopped."; });

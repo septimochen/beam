@@ -26,14 +26,19 @@ Service::Service(Config configuration) : config(std::move(configuration)) {
 Service::~Service() {
     cancel_send();
     stop_receiving();
+    cancel_check();
     // Join while the event mailbox and configuration still exist.
     if (sender.joinable())
         sender.join();
     if (receiver.joinable())
         receiver.join();
+    if (checker.joinable())
+        checker.join();
 }
 bool Service::is_sending() const noexcept { return sending.load(); }
 bool Service::is_receiving() const noexcept { return receiving.load(); }
+bool Service::is_checking() const noexcept { return checking.load(); }
+void Service::cancel_check() { checker.request_stop(); }
 void Service::cancel_send() { sender.request_stop(); }
 void Service::stop_receiving() { receiver.request_stop(); }
 void Service::publish(Event event) {
@@ -43,7 +48,8 @@ void Service::publish(Event event) {
         latest = std::move(event);
         return;
     }
-    latest.reset();
+    if (event.direction != Direction::check)
+        latest.reset();
     // The UI drains this every 100 ms. Bound delayed/hidden UI consumption too.
     if (events.size() == 64)
         events.pop_front();
@@ -96,11 +102,8 @@ void Service::send(SendRequest request) {
                 const auto result = request.kind == ContentKind::file
                                         ? send_file(endpoints.front(), request.file,
                                                     peer.identity.tls_name, options)
-                                    : request.kind == ContentKind::text
-                                        ? send_text(endpoints.front(), request.content,
-                                                    peer.identity.tls_name, options)
-                                        : send_url(endpoints.front(), request.content,
-                                                   peer.identity.tls_name, options);
+                                        : send_text(endpoints.front(), request.content,
+                                                    peer.identity.tls_name, options);
                 publish({Direction::send, EventKind::completed, request.peer, result});
             } catch (const std::exception& error) {
                 publish({Direction::send, EventKind::failed, error.what()});
@@ -109,6 +112,45 @@ void Service::send(SendRequest request) {
         });
     } catch (...) {
         sending.store(false);
+        throw;
+    }
+}
+void Service::check_peer(std::string name) {
+    if (!is_peer_name(name))
+        throw std::invalid_argument("Choose a paired device before checking connectivity");
+    if (checking.exchange(true))
+        throw std::logic_error("A connectivity check is already running");
+    try {
+        if (checker.joinable())
+            checker.join();
+        checker = std::jthread([this, name = std::move(name)](std::stop_token stop) {
+            try {
+                TransferOptions options;
+                TrustedPeer peer;
+                {
+                    IdentityStore store(config.state_directory);
+                    peer = store.peer(name);
+                    options.credentials = store.credentials(name);
+                }
+                const auto endpoints = peer_endpoints(peer);
+                if (endpoints.empty())
+                    throw std::invalid_argument("Peer has no saved endpoint; update its address");
+                options.fallback_endpoints.assign(endpoints.begin() + 1, endpoints.end());
+                options.timeout = std::min(config.timeout, std::chrono::milliseconds(5000));
+                options.connect_timeout =
+                    std::min(options.timeout, std::chrono::milliseconds(2000));
+                options.stop_token = stop;
+                check_connectivity(endpoints.front(), peer.identity.tls_name, options);
+                publish({Direction::check, EventKind::completed,
+                         name + " is reachable (authenticated)"});
+            } catch (const std::exception& error) {
+                publish({Direction::check, EventKind::failed,
+                         name + " is unavailable: " + error.what()});
+            }
+            checking.store(false);
+        });
+    } catch (...) {
+        checking.store(false);
         throw;
     }
 }
@@ -178,7 +220,10 @@ void Service::receive_loop(std::stop_token stop, const std::filesystem::path& di
                 publish({Direction::receive, EventKind::progress, {}, {}, progress});
             };
             const auto result = receive_content(config.port, directory, options);
-            publish({Direction::receive, EventKind::completed, {}, result});
+            if (result.connectivity_check)
+                continue;
+            if (!result.connectivity_check)
+                publish({Direction::receive, EventKind::completed, {}, result});
         } catch (const TransferError& error) {
             if (stop.stop_requested())
                 break;

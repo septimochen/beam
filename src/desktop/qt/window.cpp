@@ -22,6 +22,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 
 namespace beam::desktop {
 namespace {
@@ -92,12 +93,28 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     peer_row->addWidget(peers, 1);
     peer_row->addWidget(refresh);
     send_layout->addLayout(peer_row);
+    check_button = new QPushButton("Check connectivity", this);
+    check_button->setObjectName("checkConnectivity");
+    connectivity_status = new QLabel(this);
+    connectivity_status->setObjectName("connectivityStatus");
+    plain(connectivity_status);
+    send_layout->addWidget(check_button);
+    send_layout->addWidget(connectivity_status);
+    connect(check_button, &QPushButton::clicked, this, [this] {
+        try {
+            service.check_peer(bytes(peers->currentText()));
+            connectivity_status->setText("Checking…");
+            check_button->setEnabled(false);
+        } catch (const std::exception& error) {
+            connectivity_status->setText(display(error.what()));
+        }
+    });
     connect(refresh, &QPushButton::clicked, this, [this] { refresh_peers(); });
 
     auto* selection_row = new QHBoxLayout;
     kind = new QComboBox(this);
     kind->setObjectName("kind");
-    kind->addItems({"File", "Text", "URL"});
+    kind->addItems({"File", "Text"});
     kind->setAccessibleName("Content type");
     auto* choose = new QPushButton("Choose file…", this);
     auto* clipboard = new QPushButton("Load clipboard text", this);
@@ -120,6 +137,16 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     text->hide();
     connect(text, &QPlainTextEdit::textChanged, this, [this] { clipboard_snapshot.reset(); });
     send_layout->addWidget(text);
+    auto* copy_text = new QPushButton("Copy to clipboard", this);
+    auto* text_header = new QHBoxLayout;
+    text_header->addStretch();
+    text_header->addWidget(copy_text);
+    send_layout->insertLayout(send_layout->indexOf(text), text_header);
+    copy_text->hide();
+    connect(kind, &QComboBox::currentIndexChanged, this,
+            [copy_text](int index) { copy_text->setVisible(index != 0); });
+    connect(copy_text, &QPushButton::clicked, this,
+            [this] { QApplication::clipboard()->setText(text->toPlainText()); });
     connect(kind, &QComboBox::currentIndexChanged, this, [this](int index) {
         file->setVisible(index == 0);
         text->setVisible(index != 0);
@@ -202,10 +229,24 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     receive_progress->setValue(0);
     receive_progress->setAccessibleName("Receive progress");
     receive_layout->addWidget(receive_progress);
-    receive_status = new QLabel("Stopped. Received text and URLs are saved as files.", this);
+    receive_status = new QLabel("Stopped.", this);
     receive_status->setObjectName("receiveStatus");
     plain(receive_status);
     receive_layout->addWidget(receive_status);
+    auto* received_header = new QHBoxLayout;
+    received_header->addWidget(new QLabel("Received text", this));
+    received_header->addStretch();
+    auto* copy_received = new QPushButton("Copy to clipboard", this);
+    copy_received->setObjectName("copyReceived");
+    received_header->addWidget(copy_received);
+    receive_layout->addLayout(received_header);
+    received_text = new QPlainTextEdit(this);
+    received_text->setObjectName("receivedText");
+    received_text->setReadOnly(true);
+    received_text->setMaximumHeight(120);
+    receive_layout->addWidget(received_text);
+    connect(copy_received, &QPushButton::clicked, this,
+            [this] { QApplication::clipboard()->setText(received_text->toPlainText()); });
     layout->addWidget(receive_group);
     last_result = new QLabel("No completed transfers yet.", this);
     last_result->setObjectName("lastResult");
@@ -219,6 +260,28 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     tray = new QSystemTrayIcon(icon(), this);
     tray->setToolTip("Beam");
     auto* menu = new QMenu(this);
+    auto* tray_content = new QWidget(menu);
+    tray_content->setMinimumWidth(280);
+    tray_content->setMaximumWidth(360);
+    auto* tray_layout = new QVBoxLayout(tray_content);
+    tray_send_status = new QLabel("Send: idle", tray_content);
+    tray_receive_status = new QLabel("Receive: idle", tray_content);
+    plain(tray_send_status);
+    plain(tray_receive_status);
+    tray_send_progress = new QProgressBar(tray_content);
+    tray_receive_progress = new QProgressBar(tray_content);
+    for (auto* progress : {tray_send_progress, tray_receive_progress}) {
+        progress->setRange(0, 100);
+        progress->setValue(0);
+    }
+    tray_layout->addWidget(tray_send_status);
+    tray_layout->addWidget(tray_send_progress);
+    tray_layout->addWidget(tray_receive_status);
+    tray_layout->addWidget(tray_receive_progress);
+    auto* progress_action = new QWidgetAction(menu);
+    progress_action->setDefaultWidget(tray_content);
+    menu->addAction(progress_action);
+    menu->addSeparator();
     connect(menu->addAction("Open Beam"), &QAction::triggered, this, [this] { show_window(); });
     connect(menu->addAction("Load clipboard text…"), &QAction::triggered, this, [this] {
         show_window();
@@ -342,8 +405,20 @@ void Window::poll() {
     cancel_button->setEnabled(service.is_sending());
     receive_button->setText(service.is_receiving() ? "Stop receiving" : "Start receiving");
     folder_button->setEnabled(!service.is_receiving());
+    check_button->setEnabled(peers->count() > 0 && !service.is_checking());
+    tray_send_status->setText("Send: " + send_status->text());
+    tray_receive_status->setText("Receive: " + receive_status->text());
+    for (const auto& pair : {std::pair{send_progress, tray_send_progress},
+                             std::pair{receive_progress, tray_receive_progress}}) {
+        pair.second->setRange(pair.first->minimum(), pair.first->maximum());
+        pair.second->setValue(pair.first->value());
+    }
 }
 void Window::report(const Event& event) {
+    if (event.direction == Direction::check) {
+        connectivity_status->setText(display(event.message));
+        return;
+    }
     auto* status = event.direction == Direction::send ? send_status : receive_status;
     auto* progress = event.direction == Direction::send ? send_progress : receive_progress;
     QString message;
@@ -359,13 +434,20 @@ void Window::report(const Event& event) {
                     ? 0
                     : static_cast<int>(100.0L * static_cast<long double>(update.bytes) /
                                        static_cast<long double>(update.total)));
-        status->setText(stage_name(update.stage));
+        auto label = stage_name(update.stage);
+        if (update.stage == TransferStage::transferring)
+            label += QString(" · %1% · %2 MiB/s")
+                         .arg(progress->value())
+                         .arg(update.bytes_per_second / 1048576, 0, 'f', 1);
+        status->setText(label);
         return;
     }
     case EventKind::listening:
         status->setText(QString("Listening for paired devices on port %1.").arg(config.port));
         return;
     case EventKind::completed:
+        if (event.direction == Direction::receive && event.result.kind == ContentKind::text)
+            received_text->setPlainText(display(event.result.text));
         progress->setRange(0, 100);
         progress->setValue(100);
         message = event.direction == Direction::send

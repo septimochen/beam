@@ -1,7 +1,7 @@
 # Android
 
-Beam's Android app sends and receives the same authenticated `beam/3` file,
-text, and URL transfers as the CLI and desktop apps. It supports Android 10+
+Beam's Android app sends and receives the same authenticated `beam/4` file,
+and text transfers as the CLI and desktop apps. It supports Android 10+
 (API 29), with ARM64 device and x86-64 emulator APK libraries. The app uses Kotlin
 and JNI over the existing C++ identity store and joined transfer workers.
 
@@ -114,9 +114,8 @@ does not change Beam's certificate verification.
 
 Choose a paired device and **Choose file**, edit/review its portable ASCII
 basename if needed, and tap **Send**. A system **Share → Beam** action selects
-one file or text for the same review screen. Text and HTTP(S) URLs have explicit
-choices; their UTF-8 byte limits and validation match the core (64 KiB / 8 KiB).
-No share intent sends automatically. There is no clipboard access.
+one file or text for the same review screen. URLs use the Text choice and the same 64 KiB UTF-8 limit as other text.
+No share intent sends automatically. Clipboard writes require the explicit Copy button; Beam never reads the clipboard.
 
 Provider files are streamed into unique private staging directories with 64 KiB
 buffers and a 4 GiB limit on actual bytes, including providers without reliable
@@ -129,11 +128,14 @@ permissions are granted. On first use, pair a device in **Manage devices and
 identity**; reception starts after pairing without another button press. A share
 intent only opens the review screen and does not start reception. **Stop receiving**
 pauses reception for the current app session, including activity recreation;
-**Start receiving** resumes it or retries after a startup failure. Files, text,
-and URLs are verified before exclusive publication in Beam's private `received`
-directory. Existing files are never replaced. **Save a received file…** explicitly
+**Start receiving** resumes it or retries after a startup failure. Files are
+verified before exclusive publication in Beam's private receive folder. Text
+(including URLs) stays in bounded memory and appears in the app's **Received text**
+area after verification and acknowledgement; no text file is saved. Both outgoing
+and received text have a **Copy to clipboard** button at the top right.
+Existing files are never replaced. **Save a received file…** explicitly
 exports one completed file through the document picker. Beam never opens content
-or installs it into the clipboard. If acknowledgement fails after publication,
+or copies it to the clipboard automatically. If acknowledgement fails after publication,
 a verified file can remain; check received files before retrying.
 
 Transfers/reception run in a `connectedDevice` foreground service started while
@@ -158,6 +160,14 @@ use `INTERNET` for LAN access. See the official
 [document access](https://developer.android.com/training/data-storage/shared/documents-files),
 and [local-network permissions](https://developer.android.com/privacy-and-security/local-network-permission).
 
+The app shows send/receive percentage, progress bars, and average payload MiB/s;
+the foreground notification reflects progress too. Completion still follows
+verification and acknowledgement. **Check connectivity** checks the selected
+peer's authenticated Beam receiver with a bounded probe and no payload/file.
+**Settings** stores a private receive-folder name, listen port, and timeout;
+see [configuration](configuration.md). Stop active workers before editing.
+Beam 0.9 requires protocol v4 on both peers; existing identity/pairing remains usable.
+
 ## Validation
 
 ```sh
@@ -174,7 +184,7 @@ make android-connected-test   # requires a running emulator or attached device
 Android link graph. CI runs it before building the APK.
 
 Native session tests cover invalid commands, byte bounds/NULs, unsupported kinds,
-fingerprint rejection, authenticated file/text/URL transfers, exact Unicode bytes,
+fingerprint rejection, authenticated file/text transfers, exact Unicode bytes,
 trust edits during reception, revocation, and persistent identity. JVM tests
 exercise provider-name/URI validation, UTF-8 limits, bounded streaming, and
 cancellation. AndroidX Test Runner 1.7.0 and JUnit are test-only dependencies.

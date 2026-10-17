@@ -35,6 +35,7 @@ class TransferService : Service() {
   @Volatile private var input: InputStream? = null
   private var generation = 0
   private var foreground = false
+  private var lastNotification = 0L
   private var staged: File? = null
   private var destroyed = false
   internal var listener: (() -> Unit)? = null
@@ -48,8 +49,38 @@ class TransferService : Service() {
   internal var receiving = false
     private set
 
+  internal var checking = false
+    private set
+
+  internal var port = 4269
+    private set
+
+  internal var timeoutSeconds = 30
+    private set
+
+  internal var receiveFolder = "received"
+    private set
+
+  internal var receivedText: String? = null
+    private set
+
+  internal var sendPercent = 0
+    private set
+
+  internal var receivePercent = 0
+    private set
+
+  internal var sendStatus = "Send: idle"
+    private set
+
+  internal var receiveStatus = "Receive: idle"
+    private set
+
+  internal var connectivityStatus = ""
+    private set
+
   internal val inbox: File
-    get() = File(filesDir, "received")
+    get() = File(filesDir, receiveFolder)
 
   override fun onCreate() {
     super.onCreate()
@@ -59,7 +90,13 @@ class TransferService : Service() {
       )
     try {
       // Canonicalize /data/user/0 aliases before the core checks each ancestor.
-      session = NativeSession(File(filesDir.canonicalFile, "identity").path)
+      val settings = getSharedPreferences("settings", MODE_PRIVATE)
+      port = settings.getInt("port", 4269)
+      timeoutSeconds = settings.getInt("timeout", 30)
+      receiveFolder = settings.getString("folder", "received") ?: "received"
+      validateSettings(receiveFolder, port, timeoutSeconds)
+      session =
+        NativeSession(File(filesDir.canonicalFile, "identity").path, port, timeoutSeconds * 1000)
       inbox.mkdirs()
       File(filesDir, "outbox").apply {
         deleteRecursively()
@@ -98,11 +135,11 @@ class TransferService : Service() {
       .setSmallIcon(R.drawable.ic_beam_monochrome)
       .setContentTitle("Beam")
       .setContentText(
-        if (receiving) "Receiving from paired devices on port 4269"
-        else "Sending to a paired device"
+        if (sending) sendStatus else if (receiving) receiveStatus else "Checking peer connectivity"
       )
       .setContentIntent(open)
       .setOngoing(true)
+      .setProgress(100, if (sending) sendPercent else receivePercent, false)
       .addAction(Notification.Action.Builder(null, "Stop", stop).build())
       .build()
   }
@@ -203,6 +240,53 @@ class TransferService : Service() {
     }
   }
 
+  internal fun checkConnectivity(peer: String) {
+    check(!checking) { "A connectivity check is already running" }
+    beginForeground()
+    try {
+      call(Command.CHECK, peer)
+      checking = true
+      connectivityStatus = "Checking $peer…"
+    } catch (error: Exception) {
+      finishIdle()
+      throw error
+    }
+  }
+
+  private fun validateSettings(folder: String, port: Int, timeout: Int) {
+    Selection.filename(folder)
+    require(folder != "identity" && folder != "outbox") { "Choose a separate receive folder" }
+    require(port in 1..65535 && timeout in 1..86400) { "Invalid port or timeout" }
+  }
+
+  internal fun saveSettings(folder: String, port: Int, timeout: Int) {
+    check(!sending && !receiving && !checking) {
+      "Stop transfers and connectivity checks before editing settings"
+    }
+    validateSettings(folder, port, timeout)
+    val destination = File(filesDir, folder)
+    check(destination.isDirectory || destination.mkdir()) { "Cannot create receive folder" }
+    val replacement =
+      NativeSession(File(filesDir.canonicalFile, "identity").path, port, timeout * 1000)
+    if (
+      !getSharedPreferences("settings", MODE_PRIVATE)
+        .edit()
+        .putString("folder", folder)
+        .putInt("port", port)
+        .putInt("timeout", timeout)
+        .commit()
+    ) {
+      replacement.close()
+      error("Cannot save settings")
+    }
+    session?.close()
+    session = replacement
+    receiveFolder = folder
+    this.port = port
+    timeoutSeconds = timeout
+    report("Settings saved. Start receiving to apply them now.")
+  }
+
   internal fun cancelSend() {
     ++generation
     cancellation?.cancel()
@@ -231,7 +315,7 @@ class TransferService : Service() {
   }
 
   private fun finishIdle() {
-    if (!sending && !receiving && foreground) {
+    if (!sending && !receiving && !checking && foreground) {
       stopForeground(STOP_FOREGROUND_REMOVE)
       foreground = false
       stopSelf()
@@ -243,10 +327,14 @@ class TransferService : Service() {
       override fun run() {
         try {
           session?.let { native ->
-            native.call(Command.EVENTS).chunked(8).forEach { event ->
+            native.call(Command.EVENTS).chunked(11).forEach { event ->
+              if (event[0] == "2") {
+                connectivityStatus = event[2]
+                return@forEach
+              }
               status =
                 when (event[1]) {
-                  "0" -> "Receiving from paired devices on port 4269"
+                  "0" -> "Receiving from paired devices on port $port"
                   "1" -> {
                     val stages =
                       listOf(
@@ -257,7 +345,16 @@ class TransferService : Service() {
                         "Verifying",
                         "Complete",
                       )
-                    "${stages[event[5].toInt()]}: ${event[6]} / ${event[7]} bytes"
+                    val percent =
+                      if (event[7].toLong() == 0L) 0
+                      else (100.0 * event[6].toDouble() / event[7].toDouble()).toInt()
+                    if (event[0] == "0") sendPercent = percent else receivePercent = percent
+                    "${stages[event[5].toInt()]}: $percent% · " +
+                      String.format(
+                        java.util.Locale.ROOT,
+                        "%.1f MiB/s",
+                        event[8].toDouble() / 1048576,
+                      )
                   }
                   "2" ->
                     "Verified ${if (event[0] == "0") "sent" else "received"}: ${event[3]} (${event[4]} bytes)"
@@ -266,13 +363,26 @@ class TransferService : Service() {
                   "5" -> if (status == "Stopping receiver…") "Receiver stopped" else status
                   else -> status
                 }
+              if (event[1] == "2") {
+                if (event[0] == "0") sendPercent = 100 else receivePercent = 100
+                if (event[0] == "1" && event[9] == "2") receivedText = event[10]
+              }
+              if (event[0] == "0") sendStatus = status else receiveStatus = status
             }
             val wasReceiving = receiving
             val busy = native.call(Command.BUSY)
             sending = preparation != null || busy[0] == "1"
             receiving = busy[1] == "1"
-            if (foreground && receiving != wasReceiving && (sending || receiving))
+            checking = busy[2] == "1"
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (
+              foreground &&
+                (sending || receiving || checking) &&
+                (receiving != wasReceiving || now - lastNotification >= 250)
+            ) {
               getSystemService(NotificationManager::class.java).notify(1, notification())
+              lastNotification = now
+            }
             if (!sending) cleanupStaged()
           }
           finishIdle()

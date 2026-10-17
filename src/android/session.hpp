@@ -16,14 +16,16 @@ enum class Command {
     cancel,
     stop,
     events,
-    busy
+    busy,
+    check
 };
 class Session {
     std::filesystem::path state;
     desktop::Service service;
 
   public:
-    explicit Session(const std::filesystem::path& directory, std::uint16_t port = 4269);
+    explicit Session(const std::filesystem::path& directory, std::uint16_t port = 4269,
+                     std::chrono::milliseconds timeout = std::chrono::milliseconds(30000));
     std::vector<std::string> call(Command command, const std::vector<std::string>& arguments);
 };
 } // namespace beam::android

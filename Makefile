@@ -151,7 +151,7 @@ help:
 	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"
 	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"
-	@echo "content-test: typed text/URL validation and paired localhost transfers (requires QUIC build)"
+	@echo "content-test: text and connectivity validation and paired localhost transfers (requires QUIC build)"
 	@echo "routing-test: Tailscale discovery fixtures, route selection and safe localhost fallback"
 	@echo "desktop: native Swift macOS (BUILD_DIR-desktop-native) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"

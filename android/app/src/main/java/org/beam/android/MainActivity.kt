@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -15,11 +17,13 @@ import android.os.Bundle
 import android.os.IBinder
 import android.provider.OpenableColumns
 import android.text.InputFilter
+import android.view.Gravity
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
@@ -42,12 +46,20 @@ class MainActivity : Activity() {
   private lateinit var send: Button
   private lateinit var receive: Button
   private lateinit var kinds: RadioGroup
+  private lateinit var sendProgress: ProgressBar
+  private lateinit var receiveProgress: ProgressBar
+  private lateinit var sendProgressLabel: TextView
+  private lateinit var receiveProgressLabel: TextView
+  private lateinit var connectivity: TextView
+  private lateinit var checkConnectivity: Button
+  private lateinit var receivedText: EditText
+  private lateinit var outgoingHeader: LinearLayout
   private var uri: Uri? = null
   private var peerNames = emptyList<String>()
   private var export: ByteArray? = null
   private var exportFile: File? = null
   private val io = Executors.newSingleThreadExecutor()
-  private val kindIds = listOf(R.id.kind_file, R.id.kind_text, R.id.kind_url)
+  private val kindIds = listOf(R.id.kind_file, R.id.kind_text)
   private var pendingNetwork: (() -> Unit)? = null
   private var pendingReceive = false
   private var requestingPermissions = false
@@ -129,11 +141,19 @@ class MainActivity : Activity() {
     label("Paired device")
     devices = Spinner(this).also { column.addView(it) }
     button("Manage devices and identity") { manage() }
+    button("Settings") { settings() }
+    checkConnectivity =
+      button("Check connectivity") {
+        val peer =
+          peerNames.getOrNull(devices.selectedItemPosition) ?: error("Choose a paired device")
+        withNetwork { checkNotNull(service).checkConnectivity(peer) }
+      }
+    connectivity = label("")
     label("Content")
     kinds =
       RadioGroup(this).apply {
         orientation = RadioGroup.HORIZONTAL
-        listOf("File", "Text", "URL").forEachIndexed { index, title ->
+        listOf("File", "Text").forEachIndexed { index, title ->
           addView(
             RadioButton(context).apply {
               id = kindIds[index]
@@ -154,10 +174,26 @@ class MainActivity : Activity() {
         filters = arrayOf(InputFilter.LengthFilter(255))
         column.addView(this)
       }
+    fun copyRow(title: String, content: () -> String): LinearLayout {
+      val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+      row.addView(TextView(this).apply { text = title }, LinearLayout.LayoutParams(0, -2, 1f))
+      row.addView(
+        Button(this).apply {
+          text = "Copy to clipboard"
+          setOnClickListener {
+            getSystemService(ClipboardManager::class.java)
+              .setPrimaryClip(ClipData.newPlainText("Beam text", content()))
+          }
+        }
+      )
+      column.addView(row)
+      return row
+    }
+    outgoingHeader = copyRow("Text to send") { review.text.toString() }
     review =
       EditText(this).apply {
-        hint = "Text or HTTP(S) URL to send"
-        contentDescription = "Review outgoing text or URL"
+        hint = "Text to send (including URLs)"
+        contentDescription = "Review outgoing text"
         minLines = 3
         maxLines = 8
         inputType =
@@ -171,7 +207,7 @@ class MainActivity : Activity() {
         val peer =
           peerNames.getOrNull(devices.selectedItemPosition)
             ?: error("Pair and choose a device first")
-        val kind = listOf("file", "text", "url")[kindIds.indexOf(kinds.checkedRadioButtonId)]
+        val kind = listOf("file", "text")[kindIds.indexOf(kinds.checkedRadioButtonId)]
         val core = checkNotNull(service) { "Beam is starting" }
         val selectedUri = uri
         val selectedName = filename.text.toString()
@@ -183,6 +219,12 @@ class MainActivity : Activity() {
         update()
       }
     button("Cancel send") { service?.cancelSend() }
+    sendProgress =
+      ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).also {
+        it.max = 100
+        column.addView(it)
+      }
+    sendProgressLabel = label("Send: idle")
     label("Receive")
     label(
       "Beam receives from paired devices automatically when opened. Files are saved privately on this device."
@@ -195,6 +237,22 @@ class MainActivity : Activity() {
           core.stopReceiving()
         } else requestReceiving()
         update()
+      }
+    receiveProgress =
+      ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).also {
+        it.max = 100
+        column.addView(it)
+      }
+    receiveProgressLabel = label("Receive: idle")
+    copyRow("Received text") { receivedText.text.toString() }
+    receivedText =
+      EditText(this).apply {
+        contentDescription = "Received text"
+        minLines = 3
+        maxLines = 8
+        keyListener = null
+        setTextIsSelectable(true)
+        column.addView(this)
       }
     button("Save a received file…") { receivedFiles() }
     status = label("Starting Beam…")
@@ -214,7 +272,14 @@ class MainActivity : Activity() {
       export = savedInstanceState.getByteArray("export")
       exportFile =
         savedInstanceState.getString("exportName")?.let { name ->
-          File(File(filesDir, "received"), Selection.filename(name))
+          File(
+            File(
+              filesDir,
+              getSharedPreferences("settings", MODE_PRIVATE).getString("folder", "received")
+                ?: "received",
+            ),
+            Selection.filename(name),
+          )
         }
       selected.text = if (uri == null) "No file selected" else "Selected file: ${filename.text}"
     } else acceptShare(intent)
@@ -380,6 +445,14 @@ class MainActivity : Activity() {
       send.isEnabled = !core.sending && peerNames.isNotEmpty()
       receive.text = if (core.receiving) "Stop receiving" else "Start receiving"
       receive.isEnabled = !pendingReceive && !requestingPermissions
+      checkConnectivity.isEnabled =
+        peerNames.isNotEmpty() && !core.checking && !requestingPermissions
+      connectivity.text = core.connectivityStatus
+      sendProgress.progress = core.sendPercent
+      receiveProgress.progress = core.receivePercent
+      sendProgressLabel.text = core.sendStatus
+      receiveProgressLabel.text = core.receiveStatus
+      core.receivedText?.let { if (receivedText.text.toString() != it) receivedText.setText(it) }
     }
   }
 
@@ -388,6 +461,7 @@ class MainActivity : Activity() {
     filename.visibility = if (file) View.VISIBLE else View.GONE
     selected.visibility = if (file) View.VISIBLE else View.GONE
     review.visibility = if (file) View.GONE else View.VISIBLE
+    outgoingHeader.visibility = if (file) View.GONE else View.VISIBLE
   }
 
   private fun refreshPeers() {
@@ -468,6 +542,50 @@ class MainActivity : Activity() {
         }
       }
       .show()
+  }
+
+  private fun settings() {
+    val core = checkNotNull(service)
+    val form =
+      LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(32, 0, 32, 0)
+      }
+    fun field(label: String, value: String) =
+      EditText(this).apply {
+        hint = label
+        contentDescription = label
+        setSingleLine()
+        setText(value)
+        form.addView(TextView(context).apply { text = label })
+        form.addView(this)
+      }
+    val folder = field("Receive folder (private)", core.receiveFolder)
+    val port = field("Listen port", core.port.toString())
+    val timeout = field("Timeout (seconds)", core.timeoutSeconds.toString())
+    val dialog =
+      AlertDialog.Builder(this)
+        .setTitle("Settings")
+        .setView(form)
+        .setMessage(
+          "Stop reception and active transfers before saving. Files stay private until you choose Save a received file."
+        )
+        .setNegativeButton("Cancel", null)
+        .setPositiveButton("Save", null)
+        .create()
+    dialog.setOnShowListener {
+      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        attempt {
+          core.saveSettings(
+            folder.text.toString(),
+            port.text.toString().toInt(),
+            timeout.text.toString().toInt(),
+          )
+          dialog.dismiss()
+        }
+      }
+    }
+    dialog.show()
   }
 
   private fun identity() {

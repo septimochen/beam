@@ -1,5 +1,6 @@
 #import "BeamBridge.h"
 #include "beam/beam.hpp"
+#include "beam/config.hpp"
 #include "beam/identity.hpp"
 #include "desktop/service.hpp"
 #include <memory>
@@ -25,20 +26,17 @@ beam::ContentKind content_kind(BeamContentKind kind) {
         return beam::ContentKind::file;
     case BeamContentKindText:
         return beam::ContentKind::text;
-    case BeamContentKindURL:
-        return beam::ContentKind::url;
     }
     throw std::invalid_argument("Unsupported content type");
 }
 std::string content_bytes(NSString* content, beam::ContentKind kind) {
     if (kind == beam::ContentKind::file)
         return {};
-    const auto limit = kind == beam::ContentKind::url ? beam::max_url_size : beam::max_text_size;
+    const auto limit = beam::max_text_size;
     // Reject obviously oversized UTF-16 before allocating a second full copy.
     // The core still validates the exact UTF-8 byte length and syntax.
     if (content.length > limit)
-        throw std::invalid_argument(kind == beam::ContentKind::url ? "URL exceeds 8 KiB"
-                                                                   : "Text exceeds 64 KiB");
+        throw std::invalid_argument("Text exceeds 64 KiB");
     return utf8(content);
 }
 void report(NSError** output, const std::exception& error) {
@@ -56,13 +54,17 @@ void report(NSError** output, const std::exception& error) {
     self = [super init];
     if (self) {
         _sending = event.direction == beam::desktop::Direction::send;
+        _checking = event.direction == beam::desktop::Direction::check;
         _kind = static_cast<BeamEventKind>(event.kind);
+        _contentKind = static_cast<BeamContentKind>(event.result.kind);
         _stage = static_cast<BeamTransferStage>(event.progress.stage);
         _message = display(event.message);
         _filename = display(event.result.filename);
         _bytes = event.kind == beam::desktop::EventKind::progress ? event.progress.bytes
                                                                   : event.result.bytes;
         _total = event.progress.total;
+        _bytesPerSecond = event.progress.bytes_per_second;
+        _text = display(event.result.text);
     }
     return self;
 }
@@ -76,6 +78,17 @@ void report(NSError** output, const std::exception& error) {
                                   port:(NSUInteger)port
                              advertise:(BOOL)advertise
                                  error:(NSError**)error {
+    return [self initWithStateDirectory:directory
+                                   port:port
+                              advertise:advertise
+                                timeout:30000
+                                  error:error];
+}
+- (instancetype)initWithStateDirectory:(NSString*)directory
+                                  port:(NSUInteger)port
+                             advertise:(BOOL)advertise
+                               timeout:(NSUInteger)timeout
+                                 error:(NSError**)error {
     self = [super init];
     if (self) {
         try {
@@ -87,6 +100,9 @@ void report(NSError** output, const std::exception& error) {
                 throw std::invalid_argument("Invalid state directory");
             _config.port = static_cast<std::uint16_t>(port);
             _config.advertise = advertise;
+            if (!timeout || timeout > 86400000)
+                throw std::invalid_argument("Invalid transfer timeout");
+            _config.timeout = std::chrono::milliseconds(timeout);
             _service = std::make_unique<beam::desktop::Service>(_config);
         } catch (const std::exception& exception) {
             report(error, exception);
@@ -105,6 +121,33 @@ void report(NSError** output, const std::exception& error) {
 }
 - (BOOL)receiving {
     return _service && _service->is_receiving();
+}
+- (BOOL)checking {
+    return _service && _service->is_checking();
+}
+- (BOOL)checkPeer:(NSString*)peer error:(NSError**)error {
+    try {
+        [self service].check_peer(utf8(peer));
+        return YES;
+    } catch (const std::exception& exception) {
+        report(error, exception);
+        return NO;
+    }
+}
++ (NSDictionary<NSString*, id>*)configurationAtPath:(NSString*)path error:(NSError**)error {
+    try {
+        const auto config = beam::load_config(path ? std::filesystem::path(utf8(path))
+                                                   : beam::default_config_file());
+        return @{
+            @"output" : display(config.receive_folder.string()),
+            @"port" : @(config.listen_port),
+            @"advertise" : @(config.discovery),
+            @"timeout" : @(config.timeout.count())
+        };
+    } catch (const std::exception& exception) {
+        report(error, exception);
+        return nil;
+    }
 }
 - (NSString*)version {
     return display(beam::version());

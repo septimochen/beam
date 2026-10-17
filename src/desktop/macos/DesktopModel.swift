@@ -4,13 +4,11 @@ import Combine
 enum ContentSelection: String, CaseIterable, Identifiable {
   case file = "File"
   case text = "Text"
-  case url = "URL"
   var id: Self { self }
   var bridgeKind: BeamContentKind {
     switch self {
     case .file: return .file
     case .text: return .text
-    case .url: return .url
     }
   }
 }
@@ -26,7 +24,10 @@ final class DesktopModel: ObservableObject {
   @Published var sending = false
   @Published var receiving = false
   @Published var sendStatus = "Choose a paired device and content."
-  @Published var receiveStatus = "Stopped. Received text and URLs are saved as files."
+  @Published var receiveStatus = "Stopped."
+  @Published var receivedText: String?
+  @Published var checking = false
+  @Published var connectivityStatus = ""
   @Published var lastResult = "No completed transfers yet."
   @Published var sendProgress: Double? = 0
   @Published var receiveProgress: Double? = 0
@@ -140,6 +141,19 @@ final class DesktopModel: ObservableObject {
     }
   }
 
+  func checkConnectivity() {
+    do {
+      try bridge.checkPeer(peer)
+      checking = bridge.checking
+      connectivityStatus = "Checking \(peer)…"
+    } catch { connectivityStatus = error.localizedDescription }
+  }
+
+  func copyText(_ text: String, to pasteboard: NSPasteboard = .general) {
+    pasteboard.clearContents()
+    pasteboard.setString(text, forType: .string)
+  }
+
   func toggleReceiving() {
     if receiving {
       stopReceiving()
@@ -153,6 +167,7 @@ final class DesktopModel: ObservableObject {
     do {
       try bridge.startReceiving(directory: output)
       receiving = bridge.receiving
+      checking = bridge.checking
       receiveStatus = "Starting…"
       receiveProgress = 0
     } catch {
@@ -171,12 +186,17 @@ final class DesktopModel: ObservableObject {
       for event in try bridge.events() { report(event) }
       sending = bridge.sending
       receiving = bridge.receiving
+      checking = bridge.checking
     } catch {
       lastResult = error.localizedDescription
     }
   }
 
   private func report(_ event: BeamDesktopEvent) {
+    if event.checking {
+      connectivityStatus = event.message
+      return
+    }
     var status: String
     var progress: Double? = event.sending ? sendProgress : receiveProgress
     switch event.kind {
@@ -193,6 +213,11 @@ final class DesktopModel: ObservableObject {
       let counted = event.stage == .hashing || event.stage == .transferring
       progress =
         counted ? (event.total == 0 ? 0 : min(1, Double(event.bytes) / Double(event.total))) : nil
+      if event.stage == .transferring {
+        let percent = event.total == 0 ? 0 : Int(100 * Double(event.bytes) / Double(event.total))
+        status +=
+          " · \(percent)% · " + String(format: "%.1f MiB/s", event.bytesPerSecond / 1_048_576)
+      }
     case .listening:
       status = "Listening for paired devices on port \(port)."
     case .completed:
@@ -202,6 +227,7 @@ final class DesktopModel: ObservableObject {
       status = "\(description) (\(event.bytes) bytes)"
       progress = 1
       lastResult = status
+      if !event.sending && event.contentKind == .text { receivedText = event.text }
       onNotification?(status)
     case .failed:
       status = "Transfer stopped: \(event.message)"
@@ -229,5 +255,6 @@ final class DesktopModel: ObservableObject {
     bridge.shutdown()
     sending = false
     receiving = false
+    checking = false
   }
 }

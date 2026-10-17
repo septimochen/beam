@@ -4,14 +4,18 @@ import AppKit
 struct BeamApplication {
   @MainActor static func main() {
     do {
-      let options = try LaunchOptions(arguments: Array(CommandLine.arguments.dropFirst()))
+      let arguments = Array(CommandLine.arguments.dropFirst())
+      let configuration =
+        arguments.contains("--help") || arguments.contains("--version")
+        ? [:] : try BeamDesktopBridge.configuration(atPath: nil)
+      let options = try LaunchOptions(arguments: arguments, configuration: configuration)
       if options.help {
         print(LaunchOptions.usage)
         return
       }
       let bridge = try BeamDesktopBridge(
         stateDirectory: options.stateDirectory, port: UInt(options.port),
-        advertise: options.advertise)
+        advertise: options.advertise, timeout: UInt(options.timeout))
       if options.version {
         print("beam-desktop \(bridge.version)")
         bridge.shutdown()

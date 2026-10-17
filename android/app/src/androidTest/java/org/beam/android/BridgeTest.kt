@@ -1,5 +1,7 @@
 package org.beam.android
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -10,6 +12,7 @@ import android.os.IBinder
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
 import android.widget.EditText
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -112,12 +115,39 @@ class BridgeTest {
           }
         }
         waitForService { checkNotNull(core).status.startsWith("Receiving from paired devices") }
+        desktop.call(Command.CHECK, "phone")
+        assertTrue(await(desktop, "2", "2")[2].contains("reachable"))
+        var beforeFiles = emptySet<String>()
+        instrumentation.runOnMainSync {
+          beforeFiles = checkNotNull(core).inbox.listFiles()?.map { it.name }?.toSet() ?: emptySet()
+          checkNotNull(activity)
+            .getSystemService(ClipboardManager::class.java)
+            .setPrimaryClip(ClipData.newPlainText("fixture", "unchanged clipboard"))
+        }
         desktop.call(Command.SEND, "phone", "text", "", "receive on launch 🌍")
         await(desktop, "0", "2")
         waitForService {
-          checkNotNull(core).inbox.listFiles()?.any {
-            it.name.startsWith("text-") && it.readText() == "receive on launch 🌍"
-          } == true
+          checkNotNull(core).receivedText == "receive on launch 🌍"
+        }
+        instrumentation.runOnMainSync {
+          val app = checkNotNull(activity)
+          val clipboard = app.getSystemService(ClipboardManager::class.java)
+          assertEquals("unchanged clipboard", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+          assertEquals(
+            beforeFiles,
+            checkNotNull(core).inbox.listFiles()?.map { it.name }?.toSet() ?: emptySet<String>(),
+          )
+          fun buttons(view: View): List<Button> =
+            when (view) {
+              is Button -> if (view.text == "Copy to clipboard") listOf(view) else emptyList()
+              is ViewGroup -> (0 until view.childCount).flatMap { buttons(view.getChildAt(it)) }
+              else -> emptyList()
+            }
+          buttons(app.window.decorView).last().performClick()
+          assertEquals(
+            "receive on launch 🌍",
+            clipboard.primaryClip?.getItemAt(0)?.text?.toString(),
+          )
         }
         fun recreate() {
           val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, false)
@@ -146,6 +176,25 @@ class BridgeTest {
         assertTrue(connected.await(10, TimeUnit.SECONDS))
         Thread.sleep(300)
         instrumentation.runOnMainSync { assertFalse(checkNotNull(core).receiving) }
+        instrumentation.runOnMainSync {
+          val app = checkNotNull(core)
+          assertThrows(IllegalArgumentException::class.java) {
+            app.saveSettings("../outside", 4269, 30)
+          }
+          assertThrows(IllegalArgumentException::class.java) {
+            app.saveSettings("identity", 4269, 30)
+          }
+          app.saveSettings("incoming", 4270, 12)
+          assertEquals("incoming", app.receiveFolder)
+          app.startReceiving()
+        }
+        waitForService { checkNotNull(core).status.contains("port 4270") }
+        desktop.call(Command.ENDPOINT, "phone", "127.0.0.1:4270")
+        desktop.call(Command.CHECK, "phone")
+        assertTrue(await(desktop, "2", "2")[2].contains("reachable"))
+        instrumentation.runOnMainSync { checkNotNull(core).stopReceiving() }
+        waitForService { !checkNotNull(core).receiving }
+        instrumentation.runOnMainSync { checkNotNull(core).saveSettings("received", 4269, 30) }
       }
     } finally {
       instrumentation.runOnMainSync {
@@ -284,7 +333,7 @@ class BridgeTest {
           )
           desktop.call(Command.PAIR, "phone", phoneCert.path, phoneIdentity[0], "127.0.0.1:4269")
           val output = File(root, "received").apply { mkdirs() }
-          for (kind in listOf("text", "url", "file")) {
+          for (kind in listOf("text", "file")) {
             val content = if (kind == "url") "https://example.com/a%20b" else "Hello 🌍\n世界"
             val source = File(root, "sample.txt").apply { writeText(content) }
             phone.call(Command.RECEIVE, output.path)
@@ -298,7 +347,10 @@ class BridgeTest {
             )
             val result = await(phone, "1", "2")
             await(desktop, "0", "2")
-            assertEquals(content, File(output, result[3]).readText())
+            assertEquals(
+              content,
+              if (kind == "file") File(output, result[3]).readText() else result[10],
+            )
             phone.call(Command.STOP)
             idle(phone)
             idle(desktop)
@@ -345,7 +397,7 @@ class BridgeTest {
   private fun await(session: NativeSession, direction: String, kind: String): List<String> {
     val deadline = System.nanoTime() + 15_000_000_000L
     while (System.nanoTime() < deadline) {
-      val events = session.call(Command.EVENTS).chunked(8)
+      val events = session.call(Command.EVENTS).chunked(11)
       events
         .firstOrNull { it[0] == direction && it[1] == kind }
         ?.let {
@@ -359,7 +411,7 @@ class BridgeTest {
 
   private fun idle(session: NativeSession) {
     val deadline = System.nanoTime() + 5_000_000_000L
-    while (session.call(Command.BUSY) != listOf("0", "0")) {
+    while (session.call(Command.BUSY) != listOf("0", "0", "0")) {
       check(System.nanoTime() < deadline) { "Native workers did not stop" }
       Thread.sleep(10)
     }

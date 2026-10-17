@@ -44,16 +44,17 @@ current certificate authorization model and [protocol](protocol.md) for wire val
 
 - Never execute received content or interpret received shell commands automatically.
   A received command remains plain text; opening a received URL requires user choice.
-- Clipboard sharing needs an explicit privacy design. Represent text and URLs as typed
-  content (`text/plain`, `text/uri-list`), not disguised files.
+- Clipboard sharing needs an explicit privacy design. Treat text and URLs as bounded UTF-8 `text/plain`, not disguised files.
 - Desktop clipboard reads require a Load action; sending requires a separate Send
   action to a paired device. Never watch, automatically send, or replace clipboard
-  contents. Validate single local file drops and keep notifications free of payload
+  contents automatically. Writes require an explicit Copy action. Validate single local file drops and keep notifications free of payload
   text. See [desktop privacy](desktop.md#clipboard-privacy).
-- Validate bounded UTF-8 text and single HTTP(S) URLs before sending and again before
-  receive publication. Use locally generated storage names for typed content; never
-  infer its type from a filename. Do not print payloads in progress or result logs.
-  See [content](content.md) for supported syntax and limits.
+- Validate bounded UTF-8 before sending and again after receive integrity checks.
+  Keep text in bounded memory, expose it only after acknowledgement, and never
+  infer its type from a filename. Do not put payloads in logs or notifications.
+  CLI text stdout is the explicit content output channel. See [content](content.md).
+- Connectivity probes require the same pinned TLS authentication and safe route
+  fallback as transfers. They must not grant trust, write content, or auto-open it.
 - Keep private keys and authentication secrets out of logs and source control. Do not
   log clipboard contents by default or full transferred file contents.
 
@@ -73,7 +74,8 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   network permission; keep share intents limited to content review. Show a foreground
   notification with a Stop action, and honor Stop across activity recreation.
   Do not restart after process death or boot. Stop active workers before
-  editing/revoking trust. Never open received files/URLs or touch the clipboard.
+  editing/revoking trust. Never open received files/URLs or access the clipboard automatically. Android
+  clipboard writes require an explicit Copy action; clipboard reads are forbidden.
 - The transfer service is unexported. Share-target input cannot invoke native
   commands or start transfers. Catch exceptions at every JNI entry point, bound
   argument/event arrays, and keep native worker ownership behind the value bridge.

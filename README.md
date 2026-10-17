@@ -64,7 +64,7 @@ mkdir -p received
 ```
 
 Allow UDP port 4269 through its firewall. The receiver advertises itself on the
-LAN, accepts one file, text, or URL from a paired device, and exits. Run it again
+LAN, accepts one file or text (including URLs) from a paired device, and exits. Run it again
 for another transfer.
 
 ### 4. Send a file
@@ -91,14 +91,18 @@ Restart the receiver for each transfer, then send to its paired name:
 
 ```sh
 ./build/beam text "hello" laptop
-./build/beam url "https://example.com/page" laptop
+./build/beam text "https://example.com/page" laptop
 ```
 
-Text (up to 64 KiB of UTF-8) and HTTP(S) URLs (up to 8 KiB) are saved as
-`text-TRANSFER_ID.txt` or `url-TRANSFER_ID.txt` in `received`. Beam never opens
-links, executes text, or copies content to the clipboard. See [content transfers](docs/content.md)
-for validation rules and options. Both devices must use this release's `beam/3`
-protocol; existing pairing records continue to work.
+Text, including URLs, uses up to 64 KiB of UTF-8. Apps display it in memory with
+explicit **Copy to clipboard** buttons; the CLI writes received text verbatim to
+stdout. No text files are created automatically. See [content transfers](docs/content.md).
+Both devices must use `beam/4` (Beam 0.9); update older peers. Existing pairing
+records continue to work. Check a paired receiver with `./build/beam check laptop`.
+
+Desktop/CLI defaults can be set in `~/.config/beam/config`; see
+[configuration](docs/configuration.md) for the receive folder, port, discovery,
+and timeout. Android has equivalent private folder/port/timeout **Settings**.
 
 ## Desktop sharing
 
@@ -128,7 +132,7 @@ With USB debugging enabled and your phone connected/authorized, run
 `make android-install`; see [phone installation](docs/android.md#install-on-your-phone).
 Install it, open **Manage devices and identity**, exchange public certificates,
 verify full fingerprints, and pair on both devices. Choose a paired device and
-one file, text, or URL, then tap **Send**. Other apps' **Share → Beam** opens the
+one file or text (including URLs), then tap **Send**. Other apps' **Share → Beam** opens the
 same review screen. Opening Beam starts reception after pairing and required
 permissions; **Stop receiving** pauses it. Use
 **Save a received file…** to export from private storage.
@@ -155,7 +159,7 @@ and peer-record compatibility.
 
 - Use `beam peers` to list trusted devices and `beam unpair NAME` to remove one.
   Restart a running receiver after removal to apply the change.
-- Add `--endpoint IP:PORT` to `send`, `text`, or `url` to use an address for just that transfer.
+- Add `--endpoint IP:PORT` to `send`, `text`, or `check` to use an address for just that transfer.
   Discovery supplies addresses; pairing verifies identity.
 - Use `[IPv6]:4269` for an IPv6 endpoint.
 - Add `--no-discovery` to `receive` to keep it unadvertised; omit `--name` in that case.
@@ -184,7 +188,7 @@ make format          # apply clang-format 23
 make check           # check formatting, clang-tidy/static analysis, build, and tests
 make lint            # run clang-tidy/static analysis for the configured build
 make discovery-test  # test live LAN discovery; requires Bonjour/Avahi
-make content-test    # test typed text/URL validation and paired transfers
+make content-test    # test text validation, in-memory reception, and paired probes/transfers
 make routing-test    # test Tailscale fixtures and safe endpoint fallback
 make desktop-test    # build desktop app, test worker transfers and UI
 make android-check   # Android formatting, lint, unit tests, and debug APK

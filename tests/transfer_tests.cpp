@@ -219,9 +219,10 @@ int main(int argc, char** argv) {
     for (std::size_t length = 0; length < encoded.size(); ++length)
         rejects([&] { beam::protocol::decode(std::span{encoded}.first(length)); },
                 "all truncated offer lengths");
-    for (const auto type : {beam::protocol::Type::accept, beam::protocol::Type::complete,
-                            beam::protocol::Type::acknowledged, beam::protocol::Type::reject,
-                            beam::protocol::Type::failed}) {
+    for (const auto type :
+         {beam::protocol::Type::accept, beam::protocol::Type::complete,
+          beam::protocol::Type::acknowledged, beam::protocol::Type::reject,
+          beam::protocol::Type::failed, beam::protocol::Type::ping, beam::protocol::Type::pong}) {
         beam::protocol::Message message{type, 17, 0, {}, {}};
         if (type == beam::protocol::Type::reject || type == beam::protocol::Type::failed) {
             message.text = "refused";

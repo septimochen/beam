@@ -24,8 +24,8 @@
 
 Keep this order unless the user explicitly changes priorities. Phase 1 now includes
 the metadata, IDs, checksums, and errors required for a reliable transfer; Phase 2
-refines that implementation rather than creating a replacement. Both peers now use
-protocol v3; see [protocol](protocol.md) for compatibility and cancellation semantics.
+refines that implementation rather than creating a replacement. Current peers use
+protocol v4; see [protocol](protocol.md) for compatibility and cancellation semantics.
 
 | Phase | Scope |
 | --- | --- |
@@ -201,30 +201,31 @@ remain open decisions; adding this proposal does not start implementation.
   interrupted reciprocal approval, and recovery without silently granting trust.
   Verify Android/macOS/Linux interoperability and clear completion/error states.
 
-## Future usability enhancements (deferred)
+## Future usability enhancements
 
-These desktop (macOS/Linux) and Android enhancements were recorded for later
-design and implementation. Unchecked items remain deferred; this list does not
-change the phase priorities above.
+These desktop (macOS/Linux) and Android enhancements are implemented in Beam 0.9.
+Protocol v4 requires updating both peers; existing identities and pairing records
+remain usable. The separate Phase 9 pairing proposal above is still deferred.
 
 - [x] Receive on launch: desktop apps remember the selected receive folder and
   start after pairing/folder setup; Android starts from the visible app after
   pairing and required permissions, with a foreground notification and Stop
   controls. Share intents remain review-only; Stop survives activity recreation.
-- [ ] Transfer visibility: show file-transfer percentage, speed, and a progress
+- [x] Transfer visibility: show file-transfer percentage, speed, and a progress
   bar for both sending and receiving. Include progress in the desktop tray/menu-bar
   popup as well as the app window.
-- [ ] Connectivity check: add a **Check connectivity** button for the selected
+- [x] Connectivity check: add a **Check connectivity** button for the selected
   peer, with clear reachable/unreachable feedback while preserving peer
   authentication.
-- [ ] Text and URL simplification: retire the separate URL feature across apps,
+- [x] Text and URL simplification: retire the separate URL feature across apps,
   CLI, and core; treat URLs as plain text. Display sent and received text in an
   app text area with a **Copy to clipboard** button at the top right, and stop
-  saving received text as files. Design CLI text presentation and compatibility
-  migration before implementing this change.
-- [ ] Persistent configuration: support desktop configuration at
-  `~/.config/beam/config`, including the default receive folder. Review additional
-  settings, the file format, and Android equivalents during later design.
+  saving received text as files. CLI receivers emit text verbatim on stdout; URL
+  mode is retired and older protocols fail ALPN negotiation.
+- [x] Persistent configuration: support desktop configuration at
+  `~/.config/beam/config` with bounded key/value settings for receive folder, port,
+  discovery, and timeout; Android provides private folder/port/timeout Settings.
+  See [configuration](configuration.md).
 
 ## Product scope
 
@@ -236,7 +237,7 @@ LAN/Tailscale reachability, and minimal dependencies or operational complexity.
 Future everyday commands should select known devices by name, such as
 `beam send photo.jpg pixel` or `beam clipboard laptop`. Ports, routing, stream IDs,
 and certificate details should eventually live below that UX. Paired aliases now
-support file, text, and URL transfers with stored direct/Tailscale routes or an
+support file and text transfers (including URLs) with stored direct/Tailscale routes or an
 explicit endpoint override. Discovery remains an untrusted address hint;
 see [pairing](pairing.md) for identity and trust management.
 

@@ -3,6 +3,7 @@
 #include "transfer/files.hpp"
 #include "transport/transport.hpp"
 #include <array>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <thread>
@@ -28,6 +29,10 @@ int main(int argc, char** argv) {
         options.on_progress = [&](const beam::TransferProgress& update) {
             require(caller == std::this_thread::get_id(), "progress changed threads");
             require(update.bytes <= update.total, "progress exceeds offered size");
+            require(std::isfinite(update.bytes_per_second) && update.bytes_per_second >= 0,
+                    "invalid transfer speed");
+            if (update.stage == beam::TransferStage::transferring && update.bytes > 0)
+                require(update.bytes_per_second > 0, "missing payload speed");
             if (!updates.empty() && updates.back().stage == update.stage) {
                 require(update.bytes >= updates.back().bytes, "progress went backwards");
                 require(update.total == updates.back().total, "progress total changed");

@@ -94,12 +94,12 @@ void tests(bool live_discovery) {
     std::ofstream(root / "sample.txt", std::ios::binary) << "desktop file bytes\n";
     validate_request({"bob", ContentKind::file, root / "sample.txt", {}});
     validate_request({"bob", ContentKind::text, {}, "hello\r\n世界"});
-    validate_request({"bob", ContentKind::url, {}, "https://example.com/a"});
+    validate_request({"bob", ContentKind::text, {}, "https://example.com/a"});
     rejects([&] { validate_request({"", ContentKind::text, {}, "private"}); });
     rejects([&] {
         validate_request({"bob", ContentKind::text, {}, std::string(max_text_size + 1, 'x')});
     });
-    rejects([&] { validate_request({"bob", ContentKind::url, {}, "file:///etc/passwd"}); });
+    validate_request({"bob", ContentKind::text, {}, "file:///etc/passwd"});
     rejects([&] { validate_request({"bob", ContentKind::file, root, {}}); });
     std::filesystem::create_symlink(root / "sample.txt", root / "link.txt");
     rejects([&] { validate_request({"bob", ContentKind::file, root / "link.txt", {}}); });
@@ -158,10 +158,20 @@ void tests(bool live_discovery) {
                              [](const Event& event) { return event.kind == EventKind::failed; }),
                 "idle receiver produced a failure");
     }
+    sender.check_peer("bob");
+    require(sent.await(Direction::check, EventKind::completed).message.find("reachable") !=
+                std::string::npos,
+            "paired connectivity check failed");
+    received.await(Direction::receive, EventKind::listening);
+    require(std::filesystem::is_empty(output), "probe wrote received content");
+    sender.check_peer("missing");
+    require(sent.await(Direction::check, EventKind::failed).message.find("unavailable") !=
+                std::string::npos,
+            "unknown peer was reachable");
     for (const auto& request :
          std::vector<SendRequest>{{"bob", ContentKind::file, root / "sample.txt", {}},
                                   {"bob", ContentKind::text, {}, "hello\r\n世界"},
-                                  {"bob", ContentKind::url, {}, "https://example.com/a"}}) {
+                                  {"bob", ContentKind::text, {}, "https://example.com/a"}}) {
         sender.send(request);
         const auto send_result = sent.await(Direction::send, EventKind::completed);
         const auto receive_result = received.await(Direction::receive, EventKind::completed);
@@ -170,7 +180,8 @@ void tests(bool live_discovery) {
                 "desktop content kind changed");
         const auto expected =
             request.kind == ContentKind::file ? read(request.file) : request.content;
-        require(read(output / receive_result.result.filename) == expected,
+        require((request.kind == ContentKind::file ? read(output / receive_result.result.filename)
+                                                   : receive_result.result.text) == expected,
                 "desktop content bytes changed");
         require(send_result.result.bytes == expected.size(),
                 "desktop completed byte count changed");

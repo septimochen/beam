@@ -39,7 +39,7 @@ start_receiver() {
     if [[ "$receiver" == hold-completion ]]; then
         "$helper" hold-completion "$root/bob" alice "$fallback" "$primary" sample.txt >receiver.log 2>&1 &
     else
-        "$beam" receive --state-dir "$root/$receiver" --listen "$port" --output output --timeout 3 --no-discovery >receiver.log 2>&1 &
+        "$beam" receive --state-dir "$root/$receiver" --listen "$port" --output output --timeout 3 --no-discovery >received-text 2>receiver.log &
     fi
     receiver_pid=$!
     for attempt in {1..500}; do
@@ -65,8 +65,8 @@ for kind in file text url; do
     if ! wait_receiver; then cat receiver.log; exit 1; fi
     case "$kind" in
         file) cmp sample.txt output/sample.txt ;;
-        text) printf 'routed text' >expected; cmp expected output/text-*.txt ;;
-        url) printf 'https://example.com/' >expected; cmp expected output/url-*.txt ;;
+        text) printf 'routed text' >expected; cmp expected received-text ;;
+        url) printf 'https://example.com/' >expected; cmp expected received-text ;;
     esac
     rm -f output/*
 done

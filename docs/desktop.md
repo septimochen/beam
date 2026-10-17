@@ -2,8 +2,8 @@
 
 Beam has an optional native SwiftUI/AppKit app on macOS and Qt 6 Widgets tray
 app on Linux. Both frontends use the same shared C++ desktop service and
-identity store, paired certificates, wire protocol v3, safe direct/Tailscale
-fallback, streamed file transfer, and text/URL validation as the CLI. Each frontend owns
+identity store, paired certificates, wire protocol v4, safe direct/Tailscale
+fallback, streamed file transfer, and text validation as the CLI. Each frontend owns
 only the window, menu bar/tray, clipboard access, and notifications; the core remains
 independent of the desktop toolkit.
 
@@ -135,21 +135,37 @@ Completion notifications follow size/SHA-256 validation and acknowledgement,
 never payload-byte completion. There is no OS-login startup, background daemon,
 transfer history, folder synchronization, or automatic retry of a failed send.
 
+## Progress, connectivity, and settings
+
+The app window and tray/menu-bar popup show send/receive progress bars, payload
+percentage, and average payload MiB/s. Hashing, connecting, and verification remain
+separate stages; 100% payload bytes does not report verified completion.
+
+Select a paired device and click **Check connectivity**. A bounded authenticated
+PING/PONG checks its Beam receiver using the saved routes and exact certificate
+pinning. It creates no payload/file or receive notification, and reception continues.
+Unavailable, timeout, routing, and identity failures remain visible without changing
+trust. Checks are asynchronous and cancelled/joined on Quit.
+
+See [configuration](configuration.md) for `~/.config/beam/config`. CLI overrides
+win over config; config wins over the remembered folder. No config file is written
+by the app. Beam 0.9 requires protocol v4 on both peers; pairing records are retained.
+
 ## Clipboard privacy
 
 Clipboard access is explicit. Click **Load clipboard text** in the window or
 tray menu to capture the system clipboard once. Review the snapshot and selected
-device, then click **Send**. Edit the text if needed, or select **URL** to validate
-and send a single HTTP(S) URL. Text and URLs retain the core's 64 KiB/8 KiB UTF-8
-byte limits. An unchanged clipboard snapshot preserves its original line endings;
+device, then click **Send**. URLs use the same Text selection and 64 KiB UTF-8
+limit as other text. An unchanged clipboard snapshot preserves its original line endings;
 editing uses the text editor's line endings.
 
 The app does not watch clipboard changes, read it at startup, use the X11 primary
-selection, send automatically, or write received data to the clipboard. A later
+selection, send automatically, or write received data to the clipboard automatically. A later
 clipboard change does not change the loaded snapshot. Only text is supported;
-use file selection for images and other binary content. Received text and URLs
-are saved under locally generated names in the receive folder. Nothing is
-executed or opened. Notifications and status show metadata, never payload text.
+use file selection for images and other binary content. Received text stays in
+memory in a selectable text area. **Copy to clipboard** buttons at the top right
+of outgoing/received text areas write only when clicked. No text files or history
+are created. Nothing is executed or opened. Notifications and status show metadata, never payload text.
 Clipboard APIs remain on the GUI thread: macOS uses NSPasteboard and Linux uses
 QClipboard. Native menus include standard text editing shortcuts. The shared
 service handles all network work; neither frontend has a separate transfer engine.
@@ -159,12 +175,12 @@ service handles all network work; neither frontend has a separate transfer engin
 `make desktop-test` builds the app and runs shared worker/controller integration
 plus platform UI tests, including automatic reception, first-run folder setup,
 remembered folders, startup failures, and explicit Stop. The controller tests
-exercise authenticated file/text/URL
+exercise authenticated file/text
 transfers, repeated receiving, idle timeout, rejection recovery, unchanged output,
 changed trust, cancellation, and worker shutdown. UI tests check local drop
 validation, explicit clipboard snapshots, size limits, plain-text status, and
 unpaired sends. Native macOS tests additionally exercise error translation,
-CLI option validation, paired file/text/URL transfers through the bridge,
+CLI option validation, paired file/text transfers through the bridge,
 notification metadata, repeated receiving, and joined shutdown. Linux tests use
 Qt's offscreen platform. They require no tray, discovery daemon, or public network;
 macOS clipboard tests need access to a desktop pasteboard session.

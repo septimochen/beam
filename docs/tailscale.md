@@ -3,7 +3,7 @@
 Phase 6 uses an already installed, connected Tailscale client on macOS/Linux.
 Beam neither creates accounts nor changes VPN configuration. Transfers remain
 Beam QUIC/TLS with explicitly paired certificates, SHA-256 verification, and
-acknowledgement. Both devices still use `beam/3`; this release is Beam 0.6.0.
+acknowledgement. Both devices still use `beam/4`; current releases use Beam 0.9 or later.
 
 ## Discover address hints
 
@@ -64,10 +64,10 @@ tailnet's grants/ACLs. Each receiver handles one transfer and then exits:
 ./build/beam receive --output received --no-discovery
 ./build/beam send photo.jpg macbook
 ./build/beam text "hello" macbook --route tailscale
-./build/beam url "https://example.com/" macbook --route direct
+./build/beam text "https://example.com/" macbook --route direct
 ```
 
-`send`, `text`, and `url` share these choices:
+`send`, `text`, and `check` share these choices:
 
 | Option | Candidate endpoints |
 | --- | --- |
