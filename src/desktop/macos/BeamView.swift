@@ -77,10 +77,7 @@ struct BeamView: View {
                 .accessibilityLabel("Receive folder: \(model.output)")
               Spacer()
               Button("Choose folder…", action: model.chooseFolder)
-                .disabled(model.receiving)
             }
-            Button(
-              model.receiving ? "Stop receiving" : "Start receiving", action: model.toggleReceiving)
             transferProgress(model.receiveProgress, label: "Receive progress")
             Text(model.receiveStatus).textSelection(.enabled)
             if let text = model.receivedText {

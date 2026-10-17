@@ -35,7 +35,8 @@ final class DesktopModel: ObservableObject {
   let bridge: BeamDesktopBridge
   let port: Int
   private let defaults: UserDefaults
-  private var receiveOnLaunch = true
+  private var receiveStartPending = true
+  private var useDefaultDirectory: Bool
 
   init(
     bridge: BeamDesktopBridge, port: Int, output: String = "", defaults: UserDefaults = .standard
@@ -43,7 +44,14 @@ final class DesktopModel: ObservableObject {
     self.bridge = bridge
     self.port = port
     self.defaults = defaults
-    self.output = output.isEmpty ? (defaults.string(forKey: "receiveDirectory") ?? "") : output
+    let remembered = defaults.string(forKey: "receiveDirectory") ?? ""
+    useDefaultDirectory = output.isEmpty && remembered.isEmpty
+    self.output =
+      !output.isEmpty
+      ? output
+      : !remembered.isEmpty
+        ? remembered
+        : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads").path
     refreshPeers()
   }
 
@@ -59,28 +67,35 @@ final class DesktopModel: ObservableObject {
       peer = ""
       sendStatus = "Pairing setup needed: \(error.localizedDescription)"
     }
-    startReceivingWhenReady()
+    restartReceiving()
   }
 
   private func startReceivingWhenReady() {
-    guard receiveOnLaunch, !receiving else { return }
+    guard receiveStartPending, !bridge.receiving else { return }
+    receiveStartPending = false
     guard !peers.isEmpty else {
       receiveStatus = "Set up identity and pair a device with the beam CLI, then refresh devices."
-      return
-    }
-    guard !output.isEmpty else {
-      receiveStatus = "Choose a receive folder once to start receiving automatically."
       return
     }
     startReceiving()
   }
 
   func selectReceiveFolder(_ directory: String) {
-    guard !receiving else { return }
+    guard !directory.isEmpty else { return }
     output = directory
     defaults.set(directory, forKey: "receiveDirectory")
-    receiveOnLaunch = true
-    startReceivingWhenReady()
+    useDefaultDirectory = false
+    restartReceiving()
+  }
+
+  private func restartReceiving() {
+    receiveStartPending = true
+    if bridge.receiving {
+      bridge.stopReceiving()
+      receiveStatus = "Updating receive settings…"
+    } else {
+      startReceivingWhenReady()
+    }
   }
 
   // Called only by an explicit Load action, never during startup or polling.
@@ -121,7 +136,6 @@ final class DesktopModel: ObservableObject {
   }
 
   func chooseFolder() {
-    guard !receiving else { return }
     let panel = NSOpenPanel()
     panel.title = "Receive folder"
     panel.canChooseFiles = false
@@ -154,31 +168,19 @@ final class DesktopModel: ObservableObject {
     pasteboard.setString(text, forType: .string)
   }
 
-  func toggleReceiving() {
-    if receiving {
-      stopReceiving()
-    } else {
-      startReceiving()
-    }
-  }
-
   private func startReceiving() {
-    receiveOnLaunch = false
     do {
+      if useDefaultDirectory {
+        try FileManager.default.createDirectory(atPath: output, withIntermediateDirectories: true)
+      }
       try bridge.startReceiving(directory: output)
       receiving = bridge.receiving
       checking = bridge.checking
       receiveStatus = "Starting…"
       receiveProgress = 0
     } catch {
-      receiveStatus = error.localizedDescription
+      receiveStatus = "Transfer stopped: \(error.localizedDescription)"
     }
-  }
-
-  func stopReceiving() {
-    receiveOnLaunch = false
-    bridge.stopReceiving()
-    if receiving { receiveStatus = "Stopping…" }
   }
 
   func poll() {
@@ -187,6 +189,10 @@ final class DesktopModel: ObservableObject {
       sending = bridge.sending
       receiving = bridge.receiving
       checking = bridge.checking
+      if receiveStartPending {
+        receiveStatus = "Updating receive settings…"
+        startReceivingWhenReady()
+      }
     } catch {
       lastResult = error.localizedDescription
     }
@@ -252,6 +258,7 @@ final class DesktopModel: ObservableObject {
   }
 
   func shutdown() {
+    receiveStartPending = false
     bridge.shutdown()
     sending = false
     receiving = false

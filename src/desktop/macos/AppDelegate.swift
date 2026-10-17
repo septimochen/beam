@@ -153,8 +153,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     menu.addItem(
       withTitle: "Load clipboard text…", action: #selector(loadClipboard), keyEquivalent: ""
     ).target = self
-    menu.addItem(withTitle: "Stop receiving", action: #selector(stopReceiving), keyEquivalent: "")
-      .target = self
     menu.addItem(.separator())
     menu.addItem(
       withTitle: "Quit Beam", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -173,7 +171,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     model.loadClipboard()
   }
 
-  @objc private func stopReceiving() { model.stopReceiving() }
   @objc private func poll() { model.poll() }
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {

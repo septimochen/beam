@@ -93,9 +93,9 @@ with `beam peer NAME --endpoint IP:PORT` or its optional Tailscale route. Click
 The app reports missing identity, peers, or addresses with setup guidance.
 
 Options are `--state-dir DIR`, `--output DIR`, `--listen PORT` (default 4269), and
-`--no-discovery`. Reception starts automatically once a paired identity and a
-receive folder are available. `--output` overrides the remembered folder for that
-launch. Use `--help` for usage.
+`--no-discovery`. Reception starts automatically once a paired identity is
+available. The default receive folder is `~/Downloads`. `--output` overrides
+configuration and the remembered folder for that launch. Use `--help` for usage.
 
 ## Everyday sharing
 
@@ -106,22 +106,25 @@ unsupported filenames are rejected. Native macOS drops negotiate copy only and
 use the same file selection policy even over the text editor. There is one active sender; **Cancel send**
 requests core cancellation, including during blocked network waits.
 
-On first use, choose an existing receive folder; reception starts immediately
-after pairing and folder selection. The app remembers the chosen folder in native
-app preferences and receives automatically on later launches. If identity/pairing
-is missing, complete CLI setup and click **Refresh devices**. Missing or unsafe
-folders and startup failures remain visible; correct the folder or use **Start
-receiving** to retry. **Stop receiving** pauses reception for the current app
-session; refreshing devices does not resume it. This is app-launch behavior,
-not an OS-login startup service.
+Reception stays enabled while the app runs, with no Start/Stop receiving buttons
+in the window or tray menu. With no configured or remembered folder, files go to
+`~/Downloads`, which the app creates if missing. **Choose folder…** selects an
+existing alternative and remembers it in native app preferences. Changing folders
+restarts reception automatically. If identity/pairing is missing, complete CLI
+setup and click **Refresh devices**. Missing or unsafe custom folders and startup
+failures remain visible; choose a valid folder or click **Refresh devices** to retry.
+This is app-launch behavior, not an OS-login startup service.
+macOS may ask for Downloads access when the receiver first opens that folder;
+see [Apple's folder access rules](https://developer.apple.com/documentation/bundleresources/information-property-list/nsdownloadsfolderusagedescription).
 
 Only currently paired devices are accepted. The app receives one item at a time
 and starts a fresh listener after success or a peer failure. Idle timeouts restart
 quietly.
-The trust snapshot is reloaded for each listener; **Stop receiving** and start
-again to apply a revocation immediately. Empty trust, unsafe output, and startup
-failures stop the receiver. LAN advertisement exists only while its bound listener
-exists. Advertisement failures leave direct transfers available.
+The trust snapshot is reloaded for each listener; **Refresh devices** restarts
+reception to apply pairing changes immediately. Changing folders or refreshing
+devices cancels an active incoming transfer before restarting. Empty trust, unsafe
+output, and startup failures stop the receiver. LAN advertisement exists only
+while its bound listener exists. Advertisement failures leave direct transfers available.
 
 Closing the macOS window hides it; use **Open Beam** from the native menu bar or
 the Dock to return. Linux hides to the tray when available, otherwise closing

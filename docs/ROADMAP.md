@@ -207,10 +207,12 @@ These desktop (macOS/Linux) and Android enhancements are implemented in Beam 0.9
 Protocol v4 requires updating both peers; existing identities and pairing records
 remain usable. The separate Phase 9 pairing proposal above is still deferred.
 
-- [x] Receive on launch: desktop apps remember the selected receive folder and
-  start after pairing/folder setup; Android starts from the visible app after
-  pairing and required permissions, with a foreground notification and Stop
-  controls. Share intents remain review-only; Stop survives activity recreation.
+- [x] Receive on launch: desktop apps receive automatically after pairing, with
+  no receive toggle in the window or tray. Use `~/Downloads` when no receive folder
+  is configured or remembered, and restart automatically after folder changes.
+  Android starts from the visible app after pairing and required permissions, with
+  a foreground notification and Stop controls. Share intents remain review-only;
+  Stop survives activity recreation.
 - [x] Transfer visibility: show file-transfer percentage, speed, and a progress
   bar for both sending and receiving. Include progress in the desktop tray/menu-bar
   popup as well as the app window.

@@ -54,7 +54,8 @@ struct LaunchOptions {
     Usage: beam-desktop [--state-dir DIR] [--output DIR] [--listen PORT] [--no-discovery]
     --help, -h       Show this help
     --version, -v    Show version
-    Receives on launch using --output or the remembered receive folder after pairing.
+    Receives on launch after pairing; the default folder is ~/Downloads.
+    --output, configuration, and the remembered folder override that default.
     Closing hides the window. Use Quit Beam to cancel and join workers.
     """
 }

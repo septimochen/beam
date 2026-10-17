@@ -221,8 +221,10 @@ private func tests() throws {
   }
   let receiver = try BeamDesktopBridge(
     stateDirectory: stateRoot + "/right", port: UInt(port), advertise: false)
+  var sendPort = try reservePort()
+  while sendPort == port { sendPort = try reservePort() }
   let sender = try BeamDesktopBridge(
-    stateDirectory: stateRoot + "/left", port: UInt(port), advertise: false)
+    stateDirectory: stateRoot + "/left", port: UInt(sendPort), advertise: false)
   defer {
     sender.shutdown()
     receiver.shutdown()
@@ -230,16 +232,22 @@ private func tests() throws {
   let output = root.appendingPathComponent("received")
   try manager.createDirectory(at: output, withIntermediateDirectories: false)
   let receive = DesktopModel(bridge: receiver, port: port, defaults: defaults)
-  let send = DesktopModel(bridge: sender, port: port, defaults: defaults)
+  let send = DesktopModel(bridge: sender, port: sendPort, output: stateRoot, defaults: defaults)
   try require(send.peers == ["right"] && send.peer == "right", "Trusted peers lost at bridge")
   try require(
-    !receive.receiving && receive.receiveStatus.contains("Choose a receive folder"),
-    "First launch did not request a receive folder")
-  receive.selectReceiveFolder(output.path)
-  try require(receive.receiving, "Choosing the first receive folder did not start reception")
+    receive.output
+      == manager.homeDirectoryForCurrentUser.appendingPathComponent("Downloads").path
+      && receive.receiving,
+    "First launch did not start receiving in Downloads: \(receive.output); \(receive.receiveStatus)"
+  )
   try waitUntil {
     receive.poll()
     return receive.receiveStatus.hasPrefix("Listening")
+  }
+  receive.selectReceiveFolder(output.path)
+  try waitUntil {
+    receive.poll()
+    return receive.receiveStatus.hasPrefix("Listening") && receive.receiving
   }
   var notifications: [String] = []
   send.onNotification = { notifications.append($0) }
@@ -284,18 +292,10 @@ private func tests() throws {
   let saved = try Data(contentsOf: output.appendingPathComponent("hello.txt"))
   try require(saved == Data("native file\n".utf8), "Native file transfer changed bytes")
   try require(receive.receivedText == "https://example.com/native", "URL text changed bytes")
-  receive.stopReceiving()
-  try waitUntil {
-    receive.poll()
-    return !receive.receiving
-  }
   receive.refreshPeers()
-  receive.poll()
-  try require(!receive.receiving, "Refresh undid explicit Stop")
-  receive.toggleReceiving()
   try waitUntil {
     receive.poll()
-    return receive.receiveStatus.hasPrefix("Listening")
+    return receive.receiveStatus.hasPrefix("Listening") && receive.receiving
   }
   send.checkConnectivity()
   try waitUntil {
@@ -338,8 +338,22 @@ private func tests() throws {
     return !invalid.receiving && invalid.receiveStatus.hasPrefix("Transfer stopped:")
   }
   invalid.refreshPeers()
-  try require(!invalid.receiving, "Invalid folder caused an automatic restart")
+  try waitUntil {
+    invalid.poll()
+    return !invalid.receiving && invalid.receiveStatus.hasPrefix("Transfer stopped:")
+  }
   try require(invalid.output.hasSuffix("missing-output"), "Explicit output lost to saved folder")
+  invalid.selectReceiveFolder(output.path)
+  try waitUntil {
+    invalid.poll()
+    return invalid.receiving && invalid.receiveStatus.hasPrefix("Listening")
+  }
+  _ = try runCLI(executable, ["unpair", "left", "--state-dir", stateRoot + "/right"])
+  invalid.refreshPeers()
+  try waitUntil {
+    invalid.poll()
+    return !invalid.receiving && invalid.receiveStatus.contains("pair a device")
+  }
   invalid.shutdown()
 }
 

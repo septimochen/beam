@@ -13,8 +13,9 @@ timeout_seconds = 30
 
 `receive_folder` must be a quoted absolute path or begin with `~/`. It must
 already exist and pass the normal receive-directory safety checks. Config does
-not create it. Omit this setting for the desktop's remembered folder or first-run
-folder choice. CLI receivers without a folder accept text/probes and reject files.
+not create it. Omit this setting to use the desktop's remembered folder, or
+`~/Downloads` when none is remembered. The desktop app creates the default Downloads
+folder if missing. CLI receivers without a folder accept text/probes and reject files.
 
 `listen_port` is 1–65535. `discovery` accepts `true`/`false` and controls receiver
 LAN advertisement; it never affects pairing or TLS. `timeout_seconds` is 1–86400
@@ -22,10 +23,10 @@ and bounds individual transfer waits. Connectivity checks are capped at five
 seconds per wait. Defaults are 4269, true, and 30 respectively.
 
 Explicit command-line options override the corresponding configured value.
-Desktop folder priority is `--output`, config, then the remembered folder. The
-folder picker remembers its selection for launches without a configured override.
-`--no-discovery` always disables advertisement. Restart the app/receiver after
-editing the file. Duplicate/unknown keys, invalid values, unreadable files, NULs,
+Desktop folder priority is `--output`, config, the remembered folder, then
+`~/Downloads`. The folder picker remembers its selection for launches without a
+configured override. `--no-discovery` always disables advertisement. Restart the
+app or CLI receiver after editing the file. Duplicate/unknown keys, invalid values, unreadable files, NULs,
 and files larger than 16 KiB fail with an error. No environment expansion, includes,
 shell commands, keys, certificates, or trust records belong in this file.
 

@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QIcon>
@@ -94,6 +95,9 @@ void tests() {
     auto* send = window.findChild<QPushButton*>("send");
     auto* kind = window.findChild<QComboBox*>("kind");
     require(content && load && send && kind, "missing desktop controls");
+    require(!window.findChild<QPushButton*>("receive"), "receive toggle is still present");
+    require(window.findChild<QLineEdit*>("output")->text() == QDir::home().filePath("Downloads"),
+            "unset receive folder did not default to Downloads");
     require(content->toPlainText().isEmpty(), "startup read the clipboard");
     require(!send->isEnabled(), "unpaired send enabled");
     load->click();
@@ -136,21 +140,32 @@ void tests() {
     beam::IdentityStore(right).pair("left", root / "left.pem", left_identity.fingerprint);
     {
         beam::desktop::Window first({right, port, false});
-        require(
-            first.findChild<QLabel*>("receiveStatus")->text().contains("Choose a receive folder"),
-            "first launch did not explain receive folder setup");
+        await([&] {
+            return first.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
+        });
+        require(first.findChild<QLineEdit*>("output")->text() == QDir::home().filePath("Downloads"),
+                "first launch did not receive in Downloads");
     }
     {
-        beam::desktop::Window automatic({right, port, false}, output);
+        beam::desktop::Window automatic({right, port, false});
         auto* receive_status = automatic.findChild<QLabel*>("receiveStatus");
         await([&] { return receive_status->text().startsWith("Listening"); });
+        automatic.select_receive_directory(output);
+        await([&] { return receive_status->text().startsWith("Listening"); });
         beam::desktop::Service sender({left, port, false});
+        sender.send({"right", beam::ContentKind::file, root / "hello.txt", {}});
+        await([&] {
+            return std::filesystem::exists(output / "hello.txt") && !sender.is_sending() &&
+                   automatic.findChild<QLabel*>("lastResult")->text().contains("hello.txt") &&
+                   receive_status->text().startsWith("Listening");
+        });
+        std::filesystem::remove(output / "hello.txt");
         clipboard->setText("unchanged clipboard");
         sender.send({"right", beam::ContentKind::text, {}, "automatic receive"});
         await([&] {
-            return automatic.findChild<QLabel*>("lastResult")
-                ->text()
-                .startsWith("Received and verified");
+            return automatic.findChild<QPlainTextEdit*>("receivedText")->toPlainText() ==
+                       "automatic receive" &&
+                   !sender.is_sending();
         });
         require(std::filesystem::is_empty(output), "received text created a file");
         require(clipboard->text() == "unchanged clipboard",
@@ -163,11 +178,8 @@ void tests() {
                 ->text()
                 .contains("unavailable");
         });
-        automatic.findChild<QPushButton*>("receive")->click();
-        await([&] { return receive_status->text() == "Receiver stopped."; });
         automatic.findChild<QPushButton*>("refreshPeers")->click();
-        require(automatic.findChild<QPushButton*>("receive")->text() == "Start receiving",
-                "refresh undid explicit Stop");
+        await([&] { return receive_status->text().startsWith("Listening"); });
     }
     QSettings("Beam", "Beam").setValue("receiveDirectory", QString::fromStdString(output.string()));
     {
@@ -189,8 +201,20 @@ void tests() {
         require(invalid.findChild<QLineEdit*>("output")->text().endsWith("missing-output"),
                 "explicit output lost to remembered folder");
         invalid.findChild<QPushButton*>("refreshPeers")->click();
-        require(invalid.findChild<QPushButton*>("receive")->text() == "Start receiving",
-                "invalid folder caused an automatic restart");
+        await([&] {
+            return invalid.findChild<QLabel*>("receiveStatus")
+                ->text()
+                .startsWith("Transfer stopped:");
+        });
+        invalid.select_receive_directory(output);
+        await([&] {
+            return invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
+        });
+        beam::IdentityStore(right).unpair("left");
+        invalid.findChild<QPushButton*>("refreshPeers")->click();
+        await([&] {
+            return invalid.findChild<QLabel*>("receiveStatus")->text().contains("pair a device");
+        });
     }
 }
 } // namespace
