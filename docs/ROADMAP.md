@@ -201,6 +201,30 @@ remain open decisions; adding this proposal does not start implementation.
   interrupted reciprocal approval, and recovery without silently granting trust.
   Verify Android/macOS/Linux interoperability and clear completion/error states.
 
+## Future usability enhancements (deferred)
+
+These desktop (macOS/Linux) and Android enhancements are recorded for future
+design and implementation. All items below remain unimplemented and do not
+change the phase priorities above or the currently documented behavior.
+
+- [ ] Receive on launch: make apps ready to receive without clicking **Start
+  receiving**. Account for first-run setup and Android permissions and
+  foreground-service requirements.
+- [ ] Transfer visibility: show file-transfer percentage, speed, and a progress
+  bar for both sending and receiving. Include progress in the desktop tray/menu-bar
+  popup as well as the app window.
+- [ ] Connectivity check: add a **Check connectivity** button for the selected
+  peer, with clear reachable/unreachable feedback while preserving peer
+  authentication.
+- [ ] Text and URL simplification: retire the separate URL feature across apps,
+  CLI, and core; treat URLs as plain text. Display sent and received text in an
+  app text area with a **Copy to clipboard** button at the top right, and stop
+  saving received text as files. Design CLI text presentation and compatibility
+  migration before implementing this change.
+- [ ] Persistent configuration: support desktop configuration at
+  `~/.config/beam/config`, including the default receive folder. Review additional
+  settings, the file format, and Android equivalents during later design.
+
 ## Product scope
 
 Beam is an ad-hoc sharing tool for files, images, music, clipboard text, URLs, and
