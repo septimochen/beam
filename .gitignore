@@ -20,6 +20,10 @@
 !/docs/
 !/docs/**/
 !/docs/**/*.md
+# Keep only the reviewed app-icon concept boards; other image output stays ignored.
+!/docs/design/icons/a-prism-beam.png
+!/docs/design/icons/b-folded-b.png
+!/docs/design/icons/c-twin-portal.png
 !/.github/
 !/.github/workflows/
 !/.github/workflows/*.yml
