@@ -93,8 +93,9 @@ with `beam peer NAME --endpoint IP:PORT` or its optional Tailscale route. Click
 The app reports missing identity, peers, or addresses with setup guidance.
 
 Options are `--state-dir DIR`, `--output DIR`, `--listen PORT` (default 4269), and
-`--no-discovery`. They select existing state/output directories and do not
-automatically start receiving. Use `--help` for usage.
+`--no-discovery`. Reception starts automatically once a paired identity and a
+receive folder are available. `--output` overrides the remembered folder for that
+launch. Use `--help` for usage.
 
 ## Everyday sharing
 
@@ -105,9 +106,18 @@ unsupported filenames are rejected. Native macOS drops negotiate copy only and
 use the same file selection policy even over the text editor. There is one active sender; **Cancel send**
 requests core cancellation, including during blocked network waits.
 
-Choose an existing receive folder, then click **Start receiving**. Only currently
-paired devices are accepted. The app receives one item at a time and starts a
-fresh listener after success or a peer failure. Idle timeouts restart quietly.
+On first use, choose an existing receive folder; reception starts immediately
+after pairing and folder selection. The app remembers the chosen folder in native
+app preferences and receives automatically on later launches. If identity/pairing
+is missing, complete CLI setup and click **Refresh devices**. Missing or unsafe
+folders and startup failures remain visible; correct the folder or use **Start
+receiving** to retry. **Stop receiving** pauses reception for the current app
+session; refreshing devices does not resume it. This is app-launch behavior,
+not an OS-login startup service.
+
+Only currently paired devices are accepted. The app receives one item at a time
+and starts a fresh listener after success or a peer failure. Idle timeouts restart
+quietly.
 The trust snapshot is reloaded for each listener; **Stop receiving** and start
 again to apply a revocation immediately. Empty trust, unsafe output, and startup
 failures stop the receiver. LAN advertisement exists only while its bound listener
@@ -122,7 +132,7 @@ in-app status available. Linux requests Qt tray notifications where supported.
 Notification availability depends on the desktop and OS settings;
 see [Qt's tray documentation](https://doc.qt.io/qt-6/qsystemtrayicon.html).
 Completion notifications follow size/SHA-256 validation and acknowledgement,
-never payload-byte completion. There is no automatic startup, background daemon,
+never payload-byte completion. There is no OS-login startup, background daemon,
 transfer history, folder synchronization, or automatic retry of a failed send.
 
 ## Clipboard privacy
@@ -147,7 +157,9 @@ service handles all network work; neither frontend has a separate transfer engin
 ## Verification
 
 `make desktop-test` builds the app and runs shared worker/controller integration
-plus platform UI tests. The controller tests exercise authenticated file/text/URL
+plus platform UI tests, including automatic reception, first-run folder setup,
+remembered folders, startup failures, and explicit Stop. The controller tests
+exercise authenticated file/text/URL
 transfers, repeated receiving, idle timeout, rejection recovery, unchanged output,
 changed trust, cancellation, and worker shutdown. UI tests check local drop
 validation, explicit clipboard snapshots, size limits, plain-text status, and

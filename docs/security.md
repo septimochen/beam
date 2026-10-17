@@ -69,8 +69,10 @@ current certificate authorization model and [protocol](protocol.md) for wire val
 - Keep identity, trust, and received content in app-private storage with backup
   disabled. Public certificate export must never expose the private identity file.
   Only an explicit document-picker Save action exports received content.
-- Start reception explicitly and show a foreground notification with a Stop
-  action. Do not restart after process death or boot. Stop active workers before
+- Start reception when the user opens the visible app, after pairing and required
+  network permission; keep share intents limited to content review. Show a foreground
+  notification with a Stop action, and honor Stop across activity recreation.
+  Do not restart after process death or boot. Stop active workers before
   editing/revoking trust. Never open received files/URLs or touch the clipboard.
 - The transfer service is unexported. Share-target input cannot invoke native
   commands or start transfers. Catch exceptions at every JNI entry point, bound

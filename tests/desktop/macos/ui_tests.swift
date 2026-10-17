@@ -68,6 +68,9 @@ private func waitUntil(_ condition: () throws -> Bool) throws {
 @MainActor
 private func tests() throws {
   let manager = FileManager.default
+  let suite = "beam-tests-\(UUID().uuidString)"
+  let defaults = UserDefaults(suiteName: suite)!
+  defer { defaults.removePersistentDomain(forName: suite) }
   let root = manager.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent(
     "beam-native-\(UUID().uuidString)")
   try manager.createDirectory(at: root, withIntermediateDirectories: false)
@@ -108,13 +111,13 @@ private func tests() throws {
 
   let missing = try BeamDesktopBridge(
     stateDirectory: root.appendingPathComponent("missing").path, port: 4269, advertise: false)
-  let empty = DesktopModel(bridge: missing, port: 4269)
+  let empty = DesktopModel(bridge: missing, port: 4269, defaults: defaults)
   let pasteboard = NSPasteboard.withUniqueName()
   defer { pasteboard.releaseGlobally() }
   pasteboard.setString("private snapshot\r\n世界", forType: .string)
   try require(
-    empty.content.isEmpty && empty.peers.isEmpty && !empty.sending,
-    "Startup loaded content or enabled a send")
+    empty.content.isEmpty && empty.peers.isEmpty && !empty.sending && !empty.receiving,
+    "Startup loaded content or started an unpaired transfer")
   empty.loadClipboard(pasteboard)
   try require(
     empty.content == "private snapshot\r\n世界" && empty.kind == .text, "Clipboard bytes changed")
@@ -189,6 +192,14 @@ private func tests() throws {
     try certificate.write(to: root.appendingPathComponent("\(name).pem"))
   }
   let port = try reservePort()
+  let unpairedBridge = try BeamDesktopBridge(
+    stateDirectory: stateRoot + "/right", port: UInt(port), advertise: false)
+  let unpaired = DesktopModel(
+    bridge: unpairedBridge, port: port, output: stateRoot, defaults: defaults)
+  try require(
+    !unpaired.receiving && unpaired.receiveStatus.contains("pair a device"),
+    "Unpaired launch did not explain setup")
+  unpaired.shutdown()
   for (name, peer) in [("left", "right"), ("right", "left")] {
     guard let fingerprint = identities[peer] else { throw NSError(domain: "BeamTests", code: 1) }
     _ = try runCLI(
@@ -209,10 +220,14 @@ private func tests() throws {
   }
   let output = root.appendingPathComponent("received")
   try manager.createDirectory(at: output, withIntermediateDirectories: false)
-  let receive = DesktopModel(bridge: receiver, port: port, output: output.path)
-  let send = DesktopModel(bridge: sender, port: port)
+  let receive = DesktopModel(bridge: receiver, port: port, defaults: defaults)
+  let send = DesktopModel(bridge: sender, port: port, defaults: defaults)
   try require(send.peers == ["right"] && send.peer == "right", "Trusted peers lost at bridge")
-  receive.toggleReceiving()
+  try require(
+    !receive.receiving && receive.receiveStatus.contains("Choose a receive folder"),
+    "First launch did not request a receive folder")
+  receive.selectReceiveFolder(output.path)
+  try require(receive.receiving, "Choosing the first receive folder did not start reception")
   try waitUntil {
     receive.poll()
     return receive.receiveStatus.hasPrefix("Listening")
@@ -271,6 +286,9 @@ private func tests() throws {
     receive.poll()
     return !receive.receiving
   }
+  receive.refreshPeers()
+  receive.poll()
+  try require(!receive.receiving, "Refresh undid explicit Stop")
   receive.toggleReceiving()
   try waitUntil {
     receive.poll()
@@ -278,6 +296,29 @@ private func tests() throws {
   }
   receive.shutdown()
   try require(!receiver.receiving, "Shutdown left a receiver worker running")
+
+  let restoredBridge = try BeamDesktopBridge(
+    stateDirectory: stateRoot + "/right", port: UInt(port), advertise: false)
+  let restored = DesktopModel(bridge: restoredBridge, port: port, defaults: defaults)
+  try require(restored.output == output.path && restored.receiving, "Launch did not reuse folder")
+  try waitUntil {
+    restored.poll()
+    return restored.receiveStatus.hasPrefix("Listening")
+  }
+  restored.shutdown()
+
+  let invalidBridge = try BeamDesktopBridge(
+    stateDirectory: stateRoot + "/right", port: UInt(port), advertise: false)
+  let invalid = DesktopModel(
+    bridge: invalidBridge, port: port, output: stateRoot + "/missing-output", defaults: defaults)
+  try waitUntil {
+    invalid.poll()
+    return !invalid.receiving && invalid.receiveStatus.hasPrefix("Transfer stopped:")
+  }
+  invalid.refreshPeers()
+  try require(!invalid.receiving, "Invalid folder caused an automatic restart")
+  try require(invalid.output.hasSuffix("missing-output"), "Explicit output lost to saved folder")
+  invalid.shutdown()
 }
 
 @main

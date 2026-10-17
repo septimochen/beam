@@ -27,6 +27,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.Executors
 
 @SuppressLint("SetTextI18n") // Status strings include native errors and byte counts.
@@ -48,13 +49,20 @@ class MainActivity : Activity() {
   private val io = Executors.newSingleThreadExecutor()
   private val kindIds = listOf(R.id.kind_file, R.id.kind_text, R.id.kind_url)
   private var pendingNetwork: (() -> Unit)? = null
+  private var pendingReceive = false
+  private var requestingPermissions = false
+  private var resumed = false
+  private var receiveOnLaunchPending = true
 
   private val connection =
     object : ServiceConnection {
       override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
         service = (binder as TransferService.LocalBinder).service
         service?.listener = { update() }
-        attempt { refreshPeers() }
+        attempt {
+          refreshPeers()
+          startPendingReceive()
+        }
         update()
       }
 
@@ -177,19 +185,28 @@ class MainActivity : Activity() {
     button("Cancel send") { service?.cancelSend() }
     label("Receive")
     label(
-      "Files are saved privately in Beam. Start receiving to accept transfers from paired devices on port 4269."
+      "Beam receives from paired devices automatically when opened. Files are saved privately on this device."
     )
     receive =
       button("Start receiving") {
         val core = checkNotNull(service) { "Beam is starting" }
-        if (core.receiving) core.stopReceiving()
-        else withNetwork { checkNotNull(service) { "Beam is starting" }.startReceiving() }
+        if (core.receiving) {
+          receiveOnLaunchPending = false
+          core.stopReceiving()
+        } else requestReceiving()
         update()
       }
     button("Save a received file…") { receivedFiles() }
     status = label("Starting Beam…")
     status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
     if (savedInstanceState != null) {
+      // Keep Stop through activity recreation; a new process gets a fresh
+      // automatic attempt only when the user opens the app again.
+      if (savedInstanceState.getString("processSession") == processSession) {
+        pendingReceive = savedInstanceState.getBoolean("pendingReceive")
+        requestingPermissions = savedInstanceState.getBoolean("requestingPermissions")
+        receiveOnLaunchPending = savedInstanceState.getBoolean("receiveOnLaunchPending", true)
+      }
       uri = savedInstanceState.getString("uri")?.let(Uri::parse)
       filename.setText(savedInstanceState.getString("filename", ""))
       review.setText(savedInstanceState.getString("text", ""))
@@ -202,12 +219,20 @@ class MainActivity : Activity() {
       selected.text = if (uri == null) "No file selected" else "Selected file: ${filename.text}"
     } else acceptShare(intent)
     updateContent()
-    if (
-      Build.VERSION.SDK_INT >= 33 &&
-        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-          PackageManager.PERMISSION_GRANTED
-    )
-      requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 10)
+  }
+
+  override fun onResume() {
+    super.onResume()
+    resumed = true
+    attempt {
+      startPendingReceive()
+      receiveOnLaunch()
+    }
+  }
+
+  override fun onPause() {
+    resumed = false
+    super.onPause()
   }
 
   override fun onStart() {
@@ -236,6 +261,13 @@ class MainActivity : Activity() {
     outState.putInt("kind", kinds.checkedRadioButtonId)
     outState.putByteArray("export", export)
     outState.putString("exportName", exportFile?.name)
+    outState.putBoolean("pendingReceive", pendingReceive)
+    outState.putBoolean("requestingPermissions", requestingPermissions)
+    outState.putString("processSession", processSession)
+    outState.putBoolean(
+      "receiveOnLaunchPending",
+      receiveOnLaunchPending && service?.receiveOnLaunchPending != false,
+    )
     super.onSaveInstanceState(outState)
   }
 
@@ -247,15 +279,68 @@ class MainActivity : Activity() {
     }
   }
 
+  private fun hasLocalNetworkPermission(): Boolean =
+    Build.VERSION.SDK_INT < 37 ||
+      checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) ==
+        PackageManager.PERMISSION_GRANTED
+
   private fun withNetwork(action: () -> Unit) {
+    check(!requestingPermissions) { "Respond to the permission request first" }
+    val permissions = mutableListOf<String>()
+    if (!hasLocalNetworkPermission()) permissions += Manifest.permission.ACCESS_LOCAL_NETWORK
+    val preferences = getSharedPreferences("permissions", MODE_PRIVATE)
     if (
-      Build.VERSION.SDK_INT >= 37 &&
-        checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) !=
+      Build.VERSION.SDK_INT >= 33 &&
+        !preferences.getBoolean("notificationsRequested", false) &&
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
           PackageManager.PERMISSION_GRANTED
     ) {
+      permissions += Manifest.permission.POST_NOTIFICATIONS
+      preferences.edit().putBoolean("notificationsRequested", true).apply()
+    }
+    if (permissions.isNotEmpty()) {
       pendingNetwork = action
-      requestPermissions(arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK), 11)
+      requestingPermissions = true
+      requestPermissions(permissions.toTypedArray(), 11)
     } else action()
+  }
+
+  private fun receiveOnLaunch() {
+    val core = service ?: return
+    // A share intent only selects outgoing content. Automatic reception is a
+    // consequence of opening Beam, never of input supplied by another app.
+    if (
+      !resumed ||
+        intent.action == Intent.ACTION_SEND ||
+        !receiveOnLaunchPending ||
+        !core.receiveOnLaunchPending
+    )
+      return
+    if (core.receiving) {
+      core.receiveOnLaunchPending = false
+      return
+    }
+    if (pendingReceive || requestingPermissions) return
+    if (peerNames.isEmpty()) {
+      report("Pair a device in Manage devices and identity to start receiving automatically")
+      return
+    }
+    requestReceiving()
+  }
+
+  private fun requestReceiving() {
+    pendingReceive = true
+    withNetwork { startPendingReceive() }
+  }
+
+  private fun startPendingReceive() {
+    val core = service ?: return
+    if (!pendingReceive || !resumed || requestingPermissions || !hasLocalNetworkPermission()) return
+    pendingReceive = false
+    receiveOnLaunchPending = false
+    core.receiveOnLaunchPending = false
+    if (!core.receiving) core.startReceiving()
+    update()
   }
 
   override fun onRequestPermissionsResult(
@@ -265,11 +350,22 @@ class MainActivity : Activity() {
   ) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     if (requestCode == 11) {
+      requestingPermissions = false
       val action = pendingNetwork
       pendingNetwork = null
-      if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && action != null)
-        attempt(action)
-      else report("Local network permission is required to reach paired devices")
+      if (hasLocalNetworkPermission()) {
+        attempt {
+          action?.invoke()
+          startPendingReceive()
+        }
+      } else {
+        pendingReceive = false
+        receiveOnLaunchPending = false
+        service?.receiveOnLaunchPending = false
+        report(
+          "Local network permission is required to reach paired devices. Grant it in app settings, then retry receiving."
+        )
+      }
     }
   }
 
@@ -279,9 +375,11 @@ class MainActivity : Activity() {
 
   private fun update() {
     service?.let { core ->
+      if (!core.receiveOnLaunchPending) receiveOnLaunchPending = false
       status.text = core.status
       send.isEnabled = !core.sending && peerNames.isNotEmpty()
       receive.text = if (core.receiving) "Stop receiving" else "Start receiving"
+      receive.isEnabled = !pendingReceive && !requestingPermissions
     }
   }
 
@@ -303,6 +401,7 @@ class MainActivity : Activity() {
       )
     devices.setSelection(peerNames.indexOf(previous).coerceAtLeast(0))
     update()
+    receiveOnLaunch()
   }
 
   @Suppress("DEPRECATION")
@@ -569,6 +668,7 @@ class MainActivity : Activity() {
   }
 
   companion object {
+    private val processSession = UUID.randomUUID().toString()
     private const val PICK_FILE = 1
     private const val IMPORT_CERT = 2
     private const val EXPORT_CERT = 3

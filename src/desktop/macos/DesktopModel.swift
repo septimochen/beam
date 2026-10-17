@@ -33,11 +33,16 @@ final class DesktopModel: ObservableObject {
   var onNotification: ((String) -> Void)?
   let bridge: BeamDesktopBridge
   let port: Int
+  private let defaults: UserDefaults
+  private var receiveOnLaunch = true
 
-  init(bridge: BeamDesktopBridge, port: Int, output: String = "") {
+  init(
+    bridge: BeamDesktopBridge, port: Int, output: String = "", defaults: UserDefaults = .standard
+  ) {
     self.bridge = bridge
     self.port = port
-    self.output = output
+    self.defaults = defaults
+    self.output = output.isEmpty ? (defaults.string(forKey: "receiveDirectory") ?? "") : output
     refreshPeers()
   }
 
@@ -53,6 +58,28 @@ final class DesktopModel: ObservableObject {
       peer = ""
       sendStatus = "Pairing setup needed: \(error.localizedDescription)"
     }
+    startReceivingWhenReady()
+  }
+
+  private func startReceivingWhenReady() {
+    guard receiveOnLaunch, !receiving else { return }
+    guard !peers.isEmpty else {
+      receiveStatus = "Set up identity and pair a device with the beam CLI, then refresh devices."
+      return
+    }
+    guard !output.isEmpty else {
+      receiveStatus = "Choose a receive folder once to start receiving automatically."
+      return
+    }
+    startReceiving()
+  }
+
+  func selectReceiveFolder(_ directory: String) {
+    guard !receiving else { return }
+    output = directory
+    defaults.set(directory, forKey: "receiveDirectory")
+    receiveOnLaunch = true
+    startReceivingWhenReady()
   }
 
   // Called only by an explicit Load action, never during startup or polling.
@@ -99,7 +126,7 @@ final class DesktopModel: ObservableObject {
     panel.canChooseFiles = false
     panel.canChooseDirectories = true
     panel.allowsMultipleSelection = false
-    if panel.runModal() == .OK, let url = panel.url { output = url.path }
+    if panel.runModal() == .OK, let url = panel.url { selectReceiveFolder(url.path) }
   }
 
   func send() {
@@ -117,18 +144,24 @@ final class DesktopModel: ObservableObject {
     if receiving {
       stopReceiving()
     } else {
-      do {
-        try bridge.startReceiving(directory: output)
-        receiving = bridge.receiving
-        receiveStatus = "Starting…"
-        receiveProgress = 0
-      } catch {
-        receiveStatus = error.localizedDescription
-      }
+      startReceiving()
+    }
+  }
+
+  private func startReceiving() {
+    receiveOnLaunch = false
+    do {
+      try bridge.startReceiving(directory: output)
+      receiving = bridge.receiving
+      receiveStatus = "Starting…"
+      receiveProgress = 0
+    } catch {
+      receiveStatus = error.localizedDescription
     }
   }
 
   func stopReceiving() {
+    receiveOnLaunch = false
     bridge.stopReceiving()
     if receiving { receiveStatus = "Stopping…" }
   }

@@ -124,28 +124,36 @@ size metadata. Staging creates a stable snapshot for hashing and transfer. Disk,
 grant, unsupported-name, and cancellation failures are displayed without sending
 partial selections. **Cancel send** interrupts preparation or the native worker.
 
-Tap **Start receiving** to listen on UDP 4269 for paired devices. Files, text,
+Opening Beam starts reception on UDP 4269 once a device is paired and required
+permissions are granted. On first use, pair a device in **Manage devices and
+identity**; reception starts after pairing without another button press. A share
+intent only opens the review screen and does not start reception. **Stop receiving**
+pauses reception for the current app session, including activity recreation;
+**Start receiving** resumes it or retries after a startup failure. Files, text,
 and URLs are verified before exclusive publication in Beam's private `received`
 directory. Existing files are never replaced. **Save a received file…** explicitly
 exports one completed file through the document picker. Beam never opens content
 or installs it into the clipboard. If acknowledgement fails after publication,
 a verified file can remain; check received files before retrying.
 
-Transfers/reception run in a user-started `connectedDevice` foreground service
-with an ongoing **Stop** notification. This keeps active workers alive across
-activity recreation/backgrounding; Stop cancels both directions. Notification
-permission is optional on Android 13+ (the system still manages foreground-service
-visibility when denied). Idle services stop, and reception never restarts after
-process death/reboot. Startup removes abandoned outgoing staging; the core keeps
-partial incoming files hidden. Android may still terminate a process, and OEM
+Transfers/reception run in a `connectedDevice` foreground service started while
+the app is visible, with an ongoing **Stop** notification. This keeps active
+workers alive across activity recreation/backgrounding; Stop cancels both
+directions. Notification permission is optional on Android 13+ (the system still manages foreground-service
+visibility when denied). Idle services stop. After process death/reboot, reception
+waits until the user opens Beam again. Startup removes abandoned outgoing staging;
+the core keeps partial incoming files hidden. Android may still terminate a process, and OEM
 power/network policies can affect background reachability.
 
 The manifest requests network access, the connected-device service permission,
 and `CHANGE_NETWORK_STATE`, an Android prerequisite for this foreground-service
 type. It requests no broad storage/media access. Android 17+ requires explicit
-local-network permission, requested when starting a send/receiver; denial leaves
-the operation stopped with an explanation. Older Android versions use `INTERNET`
-for LAN access. See the official
+local-network permission, requested before automatic reception or an explicit
+send/receive retry; denial leaves the operation stopped with an explanation.
+Grant the permission in app settings if needed, then retry. Optional notification
+permission is requested alongside the first network operation; denying it does
+not block reception when local-network access is allowed. Older Android versions
+use `INTERNET` for LAN access. See the official
 [foreground-service requirements](https://developer.android.com/develop/background-work/services/fgs/service-types#connected-device),
 [document access](https://developer.android.com/training/data-storage/shared/documents-files),
 and [local-network permissions](https://developer.android.com/privacy-and-security/local-network-permission).
@@ -170,9 +178,12 @@ fingerprint rejection, authenticated file/text/URL transfers, exact Unicode byte
 trust edits during reception, revocation, and persistent identity. JVM tests
 exercise provider-name/URI validation, UTF-8 limits, bounded streaming, and
 cancellation. AndroidX Test Runner 1.7.0 and JUnit are test-only dependencies.
-Device tests exercise actual JNI paired transfers, provider staging/foreground
-controls, and share-target review without automatic staging/sending. Linux/Android
-storage uses search-only ancestor handles and atomic no-replace rename, retaining
+Device tests exercise actual JNI paired transfers, automatic reception on launch,
+Stop across activity/service recreation, provider staging/foreground controls,
+and share-target review without automatic staging/sending. The launch test also
+supports Android 17 permission allow/deny cases with optional notifications denied.
+Linux/Android storage uses search-only ancestor handles and atomic no-replace
+rename, retaining
 symlink rejection and collision protection in the app sandbox. Main-branch Android CI builds both
 ABIs, checks Kotlin/lint/JUnit, runs x86-64 emulator tests, and uploads the debug APK.
 

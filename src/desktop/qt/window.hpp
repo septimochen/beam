@@ -26,6 +26,10 @@ class Window : public QWidget {
     QPushButton *send_button{}, *receive_button{}, *cancel_button{}, *folder_button{};
     QSystemTrayIcon* tray{};
     std::optional<std::string> clipboard_snapshot;
+    bool receive_on_launch{true};
+    void start_receiving_when_ready();
+    void start_receiving();
+    void stop_receiving();
     void refresh_peers();
     void load_clipboard();
     void send_selection();

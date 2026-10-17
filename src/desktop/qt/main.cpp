@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addOption({"state-dir", "Existing Beam identity and peer store", "directory"});
-    parser.addOption({"output", "Preselect an existing receive folder", "directory"});
+    parser.addOption({"output", "Receive folder (overrides the remembered folder)", "directory"});
     parser.addOption({"listen", "Receive UDP port", "port", "4269"});
     parser.addOption({"no-discovery", "Do not advertise the receiver on the LAN"});
     parser.process(app);

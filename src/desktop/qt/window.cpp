@@ -17,6 +17,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSettings>
 #include <QSystemTrayIcon>
 #include <QTimer>
 #include <QUrl>
@@ -86,6 +87,7 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     peers->setObjectName("peers");
     peer_label->setBuddy(peers);
     auto* refresh = new QPushButton("Refresh devices", this);
+    refresh->setObjectName("refreshPeers");
     peer_row->addWidget(peer_label);
     peer_row->addWidget(peers, 1);
     peer_row->addWidget(refresh);
@@ -165,7 +167,11 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     auto* receive_group = new QGroupBox("Receive", this);
     auto* receive_layout = new QVBoxLayout(receive_group);
     auto* folder_row = new QHBoxLayout;
-    output = new QLineEdit(display(receive_directory.string()), this);
+    output = new QLineEdit(receive_directory.empty()
+                               ? QSettings("Beam", "Beam").value("receiveDirectory").toString()
+                               : display(receive_directory.string()),
+                           this);
+    output->setObjectName("output");
     output->setReadOnly(true);
     output->setPlaceholderText("Choose where received content is saved");
     output->setAccessibleName("Receive folder");
@@ -175,26 +181,21 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     receive_layout->addLayout(folder_row);
     connect(folder_button, &QPushButton::clicked, this, [this] {
         const auto path = QFileDialog::getExistingDirectory(this, "Receive folder", output->text());
-        if (!path.isEmpty())
+        if (!path.isEmpty()) {
             output->setText(path);
+            QSettings("Beam", "Beam").setValue("receiveDirectory", path);
+            receive_on_launch = true;
+            start_receiving_when_ready();
+        }
     });
     receive_button = new QPushButton("Start receiving", this);
     receive_button->setObjectName("receive");
     receive_layout->addWidget(receive_button);
     connect(receive_button, &QPushButton::clicked, this, [this] {
-        try {
-            if (service.is_receiving()) {
-                service.stop_receiving();
-                receive_status->setText("Stopping…");
-            } else {
-                if (output->text().isEmpty())
-                    throw std::invalid_argument("Choose a receive folder first");
-                service.start_receiving(bytes(output->text()));
-                receive_status->setText("Starting…");
-            }
-        } catch (const std::exception& error) {
-            receive_status->setText(display(error.what()));
-        }
+        if (service.is_receiving())
+            stop_receiving();
+        else
+            start_receiving();
     });
     receive_progress = new QProgressBar(this);
     receive_progress->setRange(0, 100);
@@ -202,6 +203,7 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     receive_progress->setAccessibleName("Receive progress");
     receive_layout->addWidget(receive_progress);
     receive_status = new QLabel("Stopped. Received text and URLs are saved as files.", this);
+    receive_status->setObjectName("receiveStatus");
     plain(receive_status);
     receive_layout->addWidget(receive_status);
     layout->addWidget(receive_group);
@@ -223,7 +225,7 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
         load_clipboard();
     });
     connect(menu->addAction("Stop receiving"), &QAction::triggered, this,
-            [this] { service.stop_receiving(); });
+            [this] { stop_receiving(); });
     menu->addSeparator();
     connect(menu->addAction("Quit Beam"), &QAction::triggered, qApp, &QApplication::quit);
     tray->setContextMenu(menu);
@@ -259,6 +261,39 @@ void Window::refresh_peers() {
         send_status->setText("Pairing setup needed: " + display(error.what()));
     }
     send_button->setEnabled(peers->count() > 0 && !service.is_sending());
+    start_receiving_when_ready();
+}
+void Window::start_receiving_when_ready() {
+    if (!receive_on_launch || service.is_receiving())
+        return;
+    if (peers->count() == 0) {
+        receive_status->setText(
+            "Set up identity and pair a device with the beam CLI, then refresh devices.");
+        return;
+    }
+    if (output->text().isEmpty()) {
+        receive_status->setText("Choose a receive folder once to start receiving automatically.");
+        return;
+    }
+    start_receiving();
+}
+void Window::start_receiving() {
+    receive_on_launch = false;
+    try {
+        if (output->text().isEmpty())
+            throw std::invalid_argument("Choose a receive folder first");
+        service.start_receiving(bytes(output->text()));
+        receive_status->setText("Starting…");
+    } catch (const std::exception& error) {
+        receive_status->setText(display(error.what()));
+    }
+    poll();
+}
+void Window::stop_receiving() {
+    receive_on_launch = false;
+    service.stop_receiving();
+    if (service.is_receiving())
+        receive_status->setText("Stopping…");
 }
 void Window::load_clipboard() {
     try {

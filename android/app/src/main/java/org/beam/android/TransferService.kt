@@ -38,6 +38,7 @@ class TransferService : Service() {
   private var staged: File? = null
   private var destroyed = false
   internal var listener: (() -> Unit)? = null
+  internal var receiveOnLaunchPending = true
   internal var status = "Choose content and a paired device"
     private set
 
@@ -189,6 +190,7 @@ class TransferService : Service() {
 
   internal fun startReceiving() {
     check(!receiving) { "Receiver is already running" }
+    receiveOnLaunchPending = false
     beginForeground()
     try {
       call(Command.RECEIVE, inbox.canonicalPath)
@@ -218,6 +220,7 @@ class TransferService : Service() {
   }
 
   internal fun stopReceiving() {
+    receiveOnLaunchPending = false
     session?.call(Command.STOP)
     status = "Stopping receiver…"
   }

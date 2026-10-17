@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.IBinder
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.EditText
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -26,16 +27,136 @@ class BridgeTest {
   @Before
   fun setUp() {
     val app = instrumentation.targetContext.packageName
-    if (android.os.Build.VERSION.SDK_INT >= 33)
+    val arguments = InstrumentationRegistry.getArguments()
+    if (android.os.Build.VERSION.SDK_INT >= 33 && arguments.getString("notifications") != "denied")
       instrumentation.uiAutomation.grantRuntimePermission(
         app,
         android.Manifest.permission.POST_NOTIFICATIONS,
       )
-    if (android.os.Build.VERSION.SDK_INT >= 37)
+    if (android.os.Build.VERSION.SDK_INT >= 37 && arguments.getString("localNetwork") == null)
       instrumentation.uiAutomation.grantRuntimePermission(
         app,
         android.Manifest.permission.ACCESS_LOCAL_NETWORK,
       )
+  }
+
+  @Test
+  fun testReceiveOnLaunch() {
+    val context = instrumentation.targetContext
+    var connected = CountDownLatch(1)
+    var core: TransferService? = null
+    val connection =
+      object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+          core = (binder as TransferService.LocalBinder).service
+          connected.countDown()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {}
+      }
+    context.bindService(
+      Intent(context, TransferService::class.java),
+      connection,
+      Context.BIND_AUTO_CREATE,
+    )
+    var bound = true
+    val root =
+      File(context.cacheDir.canonicalFile, "launch-${UUID.randomUUID()}").apply { mkdirs() }
+    val alias = "launch-${UUID.randomUUID().toString().take(8)}"
+    var activity: android.app.Activity? = null
+    try {
+      assertTrue(connected.await(10, TimeUnit.SECONDS))
+      NativeSession(File(root, "desktop").path).use { desktop ->
+        val identity = desktop.call(Command.IDENTITY)
+        val certificate = File(root, "desktop.pem").apply { writeText(identity[2]) }
+        lateinit var phone: List<String>
+        instrumentation.runOnMainSync {
+          phone = checkNotNull(core).call(Command.IDENTITY)
+          checkNotNull(core).call(Command.PAIR, alias, certificate.path, identity[0], "")
+          if (InstrumentationRegistry.getArguments().getString("notifications") == "denied") {
+            context
+              .getSharedPreferences("permissions", Context.MODE_PRIVATE)
+              .edit()
+              .putBoolean("notificationsRequested", true)
+              .commit()
+          }
+        }
+        val phoneCertificate = File(root, "phone.pem").apply { writeText(phone[2]) }
+        desktop.call(Command.PAIR, "phone", phoneCertificate.path, phone[0], "127.0.0.1:4269")
+        activity =
+          instrumentation.startActivitySync(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          )
+        val response = InstrumentationRegistry.getArguments().getString("localNetwork")
+        if (android.os.Build.VERSION.SDK_INT >= 37 && response != null) {
+          val button =
+            if (response == "deny") "permission_deny_button" else "permission_allow_button"
+          val deadline = System.nanoTime() + 10_000_000_000L
+          var clicked = false
+          while (!clicked && System.nanoTime() < deadline) {
+            val nodes =
+              instrumentation.uiAutomation.rootInActiveWindow?.findAccessibilityNodeInfosByViewId(
+                "com.android.permissioncontroller:id/$button"
+              )
+            clicked =
+              nodes?.firstOrNull()?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            if (!clicked) Thread.sleep(50)
+          }
+          assertTrue("Local network permission was not requested", clicked)
+          if (response == "deny") {
+            waitForService {
+              checkNotNull(core).status.startsWith("Local network permission is required")
+            }
+            instrumentation.runOnMainSync { assertFalse(checkNotNull(core).receiving) }
+            return
+          }
+        }
+        waitForService { checkNotNull(core).status.startsWith("Receiving from paired devices") }
+        desktop.call(Command.SEND, "phone", "text", "", "receive on launch 🌍")
+        await(desktop, "0", "2")
+        waitForService {
+          checkNotNull(core).inbox.listFiles()?.any {
+            it.name.startsWith("text-") && it.readText() == "receive on launch 🌍"
+          } == true
+        }
+        fun recreate() {
+          val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, false)
+          try {
+            instrumentation.runOnMainSync { checkNotNull(activity).recreate() }
+            activity = checkNotNull(instrumentation.waitForMonitorWithTimeout(monitor, 5000))
+            instrumentation.waitForIdleSync()
+          } finally {
+            instrumentation.removeMonitor(monitor)
+          }
+        }
+        recreate()
+        waitForService { checkNotNull(core).receiving }
+        context.startService(Intent(context, TransferService::class.java).setAction("stop"))
+        waitForService { !checkNotNull(core).receiving }
+        context.unbindService(connection)
+        bound = false
+        recreate()
+        connected = CountDownLatch(1)
+        context.bindService(
+          Intent(context, TransferService::class.java),
+          connection,
+          Context.BIND_AUTO_CREATE,
+        )
+        bound = true
+        assertTrue(connected.await(10, TimeUnit.SECONDS))
+        Thread.sleep(300)
+        instrumentation.runOnMainSync { assertFalse(checkNotNull(core).receiving) }
+      }
+    } finally {
+      instrumentation.runOnMainSync {
+        core?.stopReceiving()
+        activity?.finish()
+      }
+      waitForService { core?.receiving != true }
+      instrumentation.runOnMainSync { core?.call(Command.UNPAIR, alias) }
+      if (bound) context.unbindService(connection)
+      root.deleteRecursively()
+    }
   }
 
   @Test

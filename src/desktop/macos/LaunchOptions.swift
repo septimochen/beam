@@ -49,6 +49,7 @@ struct LaunchOptions {
     Usage: beam-desktop [--state-dir DIR] [--output DIR] [--listen PORT] [--no-discovery]
     --help, -h       Show this help
     --version, -v    Show version
+    Receives on launch using --output or the remembered receive folder after pairing.
     Closing hides the window. Use Quit Beam to cancel and join workers.
     """
 }

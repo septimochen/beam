@@ -203,13 +203,14 @@ remain open decisions; adding this proposal does not start implementation.
 
 ## Future usability enhancements (deferred)
 
-These desktop (macOS/Linux) and Android enhancements are recorded for future
-design and implementation. All items below remain unimplemented and do not
-change the phase priorities above or the currently documented behavior.
+These desktop (macOS/Linux) and Android enhancements were recorded for later
+design and implementation. Unchecked items remain deferred; this list does not
+change the phase priorities above.
 
-- [ ] Receive on launch: make apps ready to receive without clicking **Start
-  receiving**. Account for first-run setup and Android permissions and
-  foreground-service requirements.
+- [x] Receive on launch: desktop apps remember the selected receive folder and
+  start after pairing/folder setup; Android starts from the visible app after
+  pairing and required permissions, with a foreground notification and Stop
+  controls. Share intents remain review-only; Stop survives activity recreation.
 - [ ] Transfer visibility: show file-transfer percentage, speed, and a progress
   bar for both sending and receiving. Include progress in the desktop tray/menu-bar
   popup as well as the app window.

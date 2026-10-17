@@ -114,8 +114,8 @@ Linux uses Qt 6 Widgets (`qt6-base-dev` and
 `qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
 `build-desktop/beam-desktop` on Linux or `open build-desktop-native/beam-desktop.app`
 on macOS. Use the same CLI pairing setup, choose a device, drop or select one
-file, then click **Send**. Choose a folder and click **Start receiving** to
-receive repeated transfers.
+file, then click **Send**. Choose a receive folder once; after pairing, reception
+starts immediately and uses the remembered folder on later launches.
 
 **Load clipboard text** captures a snapshot for review; sharing requires a
 separate **Send** click. Tray notifications report verified transfers, and
@@ -129,7 +129,8 @@ With USB debugging enabled and your phone connected/authorized, run
 Install it, open **Manage devices and identity**, exchange public certificates,
 verify full fingerprints, and pair on both devices. Choose a paired device and
 one file, text, or URL, then tap **Send**. Other apps' **Share → Beam** opens the
-same review screen. Tap **Start receiving** to accept verified transfers; use
+same review screen. Opening Beam starts reception after pairing and required
+permissions; **Stop receiving** pauses it. Use
 **Save a received file…** to export from private storage.
 
 See [Android setup, pairing, and tests](docs/android.md) for numeric addresses,
