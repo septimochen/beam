@@ -5,6 +5,10 @@ text, and URL transfers as the CLI and desktop apps. It supports Android 10+
 (API 29), with ARM64 device and x86-64 emulator APK libraries. The app uses Kotlin
 and JNI over the existing C++ identity store and joined transfer workers.
 
+The launcher uses Beam's adaptive three-ray icon with day/night colors and a
+monochrome layer for themed icons. Transfer notifications use the monochrome
+mark without a launcher background. See [shared icon sources](../assets/icons/README.md).
+
 ## Build
 
 Install JDK 17+, Android command-line tools (or Android Studio), CMake 3.25+,

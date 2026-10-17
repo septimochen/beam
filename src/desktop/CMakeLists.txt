@@ -9,11 +9,11 @@ if(APPLE)
         message(FATAL_ERROR "Native macOS Swift builds require Ninja or Xcode; use make desktop or configure a fresh directory with -G Ninja")
     endif()
     enable_language(OBJCXX Swift)
+    # Every bridge consumer also links the C++ core. CMake otherwise appends
+    # the same implicit runtime once for CXX and once for OBJCXX to swiftc.
+    list(REMOVE_ITEM CMAKE_OBJCXX_IMPLICIT_LINK_LIBRARIES ${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES})
     set(CMAKE_OBJCXX_STANDARD 23)
     set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
-    if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS 13.0)
-        message(FATAL_ERROR "The native desktop app requires macOS 13 or newer")
-    endif()
     add_library(beam-desktop-bridge STATIC macos/BeamBridge.mm)
     target_include_directories(beam-desktop-bridge PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/macos")
     target_link_libraries(beam-desktop-bridge PRIVATE beam-desktop-support PUBLIC "-framework Foundation")
@@ -32,17 +32,66 @@ if(APPLE)
         set(native_arch "${CMAKE_OSX_ARCHITECTURES}")
     endif()
     function(beam_native_target target)
+        # Persist bridging PCHs so debug information never names a deleted
+        # swift-driver TemporaryDirectory when the linker reads the objects.
+        set(bridging_pch_dir "${CMAKE_CURRENT_BINARY_DIR}/${target}-pch")
+        file(MAKE_DIRECTORY "${bridging_pch_dir}")
         target_link_libraries(${target} PRIVATE beam-desktop-bridge "-framework AppKit" "-framework SwiftUI" "-framework UserNotifications")
         set_target_properties(${target} PROPERTIES Swift_LANGUAGE_VERSION 6)
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:Swift>:-parse-as-library>"
             "$<$<COMPILE_LANGUAGE:Swift>:-target>"
             "$<$<COMPILE_LANGUAGE:Swift>:${native_arch}-apple-macosx${CMAKE_OSX_DEPLOYMENT_TARGET}>"
             "$<$<COMPILE_LANGUAGE:Swift>:-warnings-as-errors>"
+            "$<$<COMPILE_LANGUAGE:Swift>:-pch-output-dir>"
+            "$<$<COMPILE_LANGUAGE:Swift>:${bridging_pch_dir}>"
             "$<$<COMPILE_LANGUAGE:Swift>:-import-objc-header>"
             "$<$<COMPILE_LANGUAGE:Swift>:${CMAKE_CURRENT_SOURCE_DIR}/macos/BeamBridge.h>")
     endfunction()
     add_executable(beam-desktop MACOSX_BUNDLE macos/Main.swift ${native_ui_sources})
     beam_native_target(beam-desktop)
+    set(icon_root "${PROJECT_SOURCE_DIR}/assets/icons")
+    target_sources(beam-desktop PRIVATE "${icon_root}/Beam.icns" "${icon_root}/BeamTemplate.pdf")
+    set_source_files_properties("${icon_root}/Beam.icns" "${icon_root}/BeamTemplate.pdf"
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set(icon_resources
+        "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/Beam.icns"
+        "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/BeamTemplate.pdf")
+    option(BEAM_REQUIRE_NATIVE_ICON "Require Xcode to compile native macOS icon appearances" OFF)
+    execute_process(COMMAND xcrun --find actool OUTPUT_VARIABLE detected_actool
+        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT BEAM_ACTOOL)
+        set(BEAM_ACTOOL "${detected_actool}" CACHE FILEPATH "Apple asset catalog compiler" FORCE)
+    endif()
+    set(BEAM_HAS_NATIVE_ICON OFF PARENT_SCOPE)
+    if(EXISTS "${BEAM_ACTOOL}")
+        set(native_icon_dir "${CMAKE_CURRENT_BINARY_DIR}/icon")
+        set(native_icon "${native_icon_dir}/Assets.car")
+        add_custom_command(OUTPUT "${native_icon}"
+            COMMAND "${CMAKE_COMMAND}" "-DBEAM_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DBEAM_ICON_OUTPUT=${native_icon_dir}" "-DBEAM_ACTOOL=${BEAM_ACTOOL}"
+                "-DBEAM_MACOS_VERSION=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                -P "${PROJECT_SOURCE_DIR}/cmake/CompileMacIcon.cmake"
+            DEPENDS "${PROJECT_SOURCE_DIR}/cmake/CompileMacIcon.cmake"
+                "${icon_root}/Beam.icon/icon.json"
+                "${icon_root}/Beam.icon/Assets/ray-1.svg"
+                "${icon_root}/Beam.icon/Assets/ray-2.svg"
+                "${icon_root}/Beam.icon/Assets/ray-3.svg"
+            VERBATIM)
+        target_sources(beam-desktop PRIVATE "${native_icon}")
+        set_source_files_properties("${native_icon}" PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
+        list(APPEND icon_resources "$<TARGET_BUNDLE_CONTENT_DIR:beam-desktop>/Resources/Assets.car")
+        set(BEAM_HAS_NATIVE_ICON ON PARENT_SCOPE)
+    elseif(BEAM_REQUIRE_NATIVE_ICON)
+        message(FATAL_ERROR "BEAM_REQUIRE_NATIVE_ICON needs Xcode's actool; select Xcode or set BEAM_ACTOOL")
+    else()
+        message(STATUS "Xcode actool unavailable: using Beam.icns; native icon appearances require Xcode")
+    endif()
+    # Ninja's combined Swift compile/link rule does not follow the generated
+    # object-order resource dependency. Make the bundle copies explicit.
+    if(CMAKE_GENERATOR MATCHES "Ninja")
+        add_custom_target(beam-desktop-resources DEPENDS ${icon_resources})
+        add_dependencies(beam-desktop beam-desktop-resources)
+    endif()
     set_target_properties(beam-desktop PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.beam.desktop"
         MACOSX_BUNDLE_BUNDLE_NAME "Beam"
@@ -51,6 +100,8 @@ if(APPLE)
 else()
     find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
     add_library(beam-desktop-ui STATIC qt/window.cpp)
+    qt_add_resources(beam-desktop-ui beam-icons PREFIX /beam/icons
+        BASE "${PROJECT_SOURCE_DIR}/assets/icons" FILES "${PROJECT_SOURCE_DIR}/assets/icons/beam.png")
     target_link_libraries(beam-desktop-ui PUBLIC beam-desktop-support Qt6::Widgets)
     beam_enable_warnings(beam-desktop-ui)
     add_executable(beam-desktop qt/main.cpp)

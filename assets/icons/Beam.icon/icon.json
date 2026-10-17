@@ -1,0 +1,86 @@
+{
+  "color-space-for-untagged-svg-colors" : "srgb",
+  "fill-specializations" : [
+    {
+      "value" : {
+        "solid" : "srgb:0.937,0.953,0.988,1.000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "solid" : "srgb:0.106,0.129,0.188,1.000"
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.333,0.557,0.973,1.000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.514,0.694,1.000,1.000"
+              }
+            }
+          ],
+          "image-name" : "ray-1.svg",
+          "name" : "Ray 1"
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.196,0.396,0.910,1.000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.380,0.576,1.000,1.000"
+              }
+            }
+          ],
+          "image-name" : "ray-2.svg",
+          "name" : "Ray 2"
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.431,0.408,0.847,1.000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.643,0.604,1.000,1.000"
+              }
+            }
+          ],
+          "image-name" : "ray-3.svg",
+          "name" : "Ray 3"
+        }
+      ],
+      "name" : "Beam rays",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.25
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.29999999999999999
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}

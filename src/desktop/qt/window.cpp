@@ -9,11 +9,11 @@
 #include <QFileDialog>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMimeData>
-#include <QPainter>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
@@ -28,20 +28,7 @@ QString display(std::string_view value) {
     return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
 }
 std::string bytes(const QString& value) { return value.toUtf8().toStdString(); }
-QIcon icon() {
-    QPixmap picture(64, 64);
-    picture.fill(Qt::transparent);
-    QPainter painter(&picture);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor("#267c6f"));
-    painter.drawRoundedRect(4, 4, 56, 56, 15, 15);
-    painter.setPen(QPen(Qt::white, 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawLine(18, 32, 46, 32);
-    painter.drawLine(34, 20, 46, 32);
-    painter.drawLine(34, 44, 46, 32);
-    return QIcon(picture);
-}
+QIcon icon() { return QIcon(":/beam/icons/beam.png"); }
 QString stage_name(TransferStage stage) {
     switch (stage) {
     case TransferStage::hashing:

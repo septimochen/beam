@@ -133,8 +133,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
   private func installStatusItem() {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    item.button?.image = NSImage(
-      systemSymbolName: "arrow.up.arrow.down.circle", accessibilityDescription: "Beam")
+    let image =
+      NSImage(named: "BeamTemplate")
+      ?? NSImage(systemSymbolName: "arrow.up.arrow.down.circle", accessibilityDescription: "Beam")
+    image?.isTemplate = true
+    image?.size = NSSize(width: 18, height: 18)
+    image?.accessibilityDescription = "Beam"
+    item.button?.image = image
     item.button?.toolTip = "Beam"
     let menu = NSMenu()
     menu.addItem(withTitle: "Open Beam", action: #selector(showWindow), keyEquivalent: "").target =

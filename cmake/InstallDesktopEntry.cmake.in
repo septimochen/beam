@@ -15,4 +15,4 @@ string(REPLACE "\n" "\\n" quoted_executable "${quoted_executable}")
 string(REPLACE "\r" "\\r" quoted_executable "${quoted_executable}")
 file(MAKE_DIRECTORY "$ENV{DESTDIR}${entry_directory}")
 file(WRITE "$ENV{DESTDIR}${entry_directory}/beam.desktop"
-    "[Desktop Entry]\nType=Application\nName=Beam\nComment=Share with paired devices\nExec=\"${quoted_executable}\"\nTerminal=false\nCategories=Utility;\nStartupNotify=false\n")
+    "[Desktop Entry]\nType=Application\nName=Beam\nComment=Share with paired devices\nExec=\"${quoted_executable}\"\nIcon=org.beam.desktop\nTerminal=false\nCategories=Utility;\nStartupNotify=false\n")

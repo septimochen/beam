@@ -94,7 +94,7 @@ class TransferService : Service() {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
       )
     return Notification.Builder(this, "transfers")
-      .setSmallIcon(android.R.drawable.ic_menu_share)
+      .setSmallIcon(R.drawable.ic_beam_monochrome)
       .setContentTitle("Beam")
       .setContentText(
         if (receiving) "Receiving from paired devices on port 4269"

@@ -1,0 +1,6 @@
+<resources>
+    <color name="beam_icon_background">#EFF3FC</color>
+    <color name="beam_icon_ray_1">#558EF8</color>
+    <color name="beam_icon_ray_2">#3265E8</color>
+    <color name="beam_icon_ray_3">#6E68D8</color>
+</resources>

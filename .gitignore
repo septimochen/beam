@@ -20,6 +20,17 @@
 !/docs/
 !/docs/**/
 !/docs/**/*.md
+!/assets/
+!/assets/icons/
+!/assets/icons/**/
+!/assets/icons/**/*.svg
+!/assets/icons/**/*.json
+!/assets/icons/*.png
+!/assets/icons/*.icns
+!/assets/icons/*.pdf
+!/assets/icons/README.md
+!/tools/
+!/tools/*.swift
 # Keep only the reviewed app-icon concept boards; other image output stays ignored.
 !/docs/design/icons/a-prism-beam.png
 !/docs/design/icons/b-folded-b.png

@@ -16,6 +16,29 @@ if(BEAM_HAS_DESKTOP)
     execute_process(COMMAND "${CMAKE_COMMAND}" --install "${BEAM_BUILD_DIR}"
         --config "${BEAM_CONFIG}" --prefix "${desktop_prefix}" --component desktop
         COMMAND_ERROR_IS_FATAL ANY)
+    if(APPLE)
+        set(resources "${applications}/Beam.app/Contents/Resources")
+        foreach(icon IN ITEMS Beam.icns BeamTemplate.pdf)
+            if(NOT EXISTS "${resources}/${icon}")
+                message(FATAL_ERROR "Installed app is missing ${icon}")
+            endif()
+        endforeach()
+        set(plist "${applications}/Beam.app/Contents/Info.plist")
+        execute_process(COMMAND /usr/bin/plutil -extract CFBundleIconFile raw "${plist}"
+            OUTPUT_VARIABLE icon_file OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+        execute_process(COMMAND /usr/bin/plutil -extract LSMinimumSystemVersion raw "${plist}"
+            OUTPUT_VARIABLE minimum_os OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+        if(NOT icon_file STREQUAL "Beam.icns" OR NOT minimum_os VERSION_EQUAL BEAM_MACOS_VERSION)
+            message(FATAL_ERROR "App icon or deployment metadata does not match the configured SDK")
+        endif()
+        if(BEAM_HAS_NATIVE_ICON)
+            execute_process(COMMAND /usr/bin/assetutil --info "${resources}/Assets.car"
+                OUTPUT_VARIABLE icon_catalog COMMAND_ERROR_IS_FATAL ANY)
+            if(NOT icon_catalog MATCHES "IconImageStack" OR NOT icon_catalog MATCHES "NSAppearanceNameDarkAqua")
+                message(FATAL_ERROR "App icon catalog lacks native appearance stacks")
+            endif()
+        endif()
+    endif()
     if(NOT APPLE)
         # CMake's default entry destination follows --prefix. The Make wrapper
         # separately selects the user's XDG application directory.
@@ -23,6 +46,11 @@ if(BEAM_HAS_DESKTOP)
         string(FIND "${entry}" "Exec=\"${prefix}/bin/beam-desktop\"" position)
         if(position LESS 0)
             message(FATAL_ERROR "Desktop entry does not use the installation prefix: ${entry}")
+        endif()
+        if(NOT entry MATCHES "Icon=org.beam.desktop" OR
+           NOT EXISTS "${prefix}/share/icons/hicolor/scalable/apps/org.beam.desktop.svg" OR
+           NOT EXISTS "${prefix}/share/icons/hicolor/512x512/apps/org.beam.desktop.png")
+            message(FATAL_ERROR "Installed launcher is missing Beam's icon resources")
         endif()
         find_program(desktop_validator desktop-file-validate)
         if(desktop_validator)

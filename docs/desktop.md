@@ -7,13 +7,22 @@ fallback, streamed file transfer, and text/URL validation as the CLI. Each front
 only the window, menu bar/tray, clipboard access, and notifications; the core remains
 independent of the desktop toolkit.
 
+The app uses Beam's shared three-ray icon. The macOS Dock icon, monochrome
+menu-bar template, Linux window/tray resource, and installed launcher all use the
+same identity. Full Xcode compiles the layered native macOS appearances during
+the desktop build; Command Line Tools builds use the bundled `.icns` icon.
+See [icon sources and regeneration](../assets/icons/README.md).
+
 ## Build and run
 
 On macOS, install Xcode Command Line Tools with Swift 6 and Ninja (`brew install
-ninja`), alongside the normal Beam dependencies. The native UI requires macOS 13+
-and uses system SwiftUI, AppKit, and UserNotifications frameworks; no Qt runtime
-is needed. The actual minimum OS of installed MsQuic/OpenSSL libraries must also
-match the machine running the app. On Linux, install Qt 6.4+ Widgets
+ninja`), alongside the normal Beam dependencies. The app uses system SwiftUI,
+AppKit, and UserNotifications frameworks; no Qt runtime is needed. Desktop
+configuration sets the deployment target to the selected macOS SDK version
+(`xcrun --sdk macosx --show-sdk-version`, currently 27.0 on the development Mac),
+including existing build trees that cached the old 13.0 target. Use a matching
+current OS and dependencies to run that build. `CMAKE_OSX_SYSROOT` selects an
+alternative SDK; the desktop deployment target follows it. On Linux, install Qt 6.4+ Widgets
 (`qt6-base-dev` and `qt6-qpa-plugins` on Debian/Ubuntu). Ordinary CLI builds do not
 find or link either UI toolkit. Normal configuration never downloads dependencies.
 

@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.net.Uri
 import android.os.IBinder
 import android.view.View
@@ -35,6 +36,18 @@ class BridgeTest {
         app,
         android.Manifest.permission.ACCESS_LOCAL_NETWORK,
       )
+  }
+
+  @Test
+  fun testPackagedLauncherIcon() {
+    val context = instrumentation.targetContext
+    val icon = context.packageManager.getApplicationIcon(context.packageName)
+    assertTrue(icon is AdaptiveIconDrawable)
+    icon as AdaptiveIconDrawable
+    assertNotNull(icon.foreground)
+    assertNotNull(icon.background)
+    if (android.os.Build.VERSION.SDK_INT >= 33) assertNotNull(icon.monochrome)
+    assertNotNull(context.getDrawable(R.drawable.ic_beam_monochrome))
   }
 
   @Test

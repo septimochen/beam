@@ -6,7 +6,7 @@ CLANG_FORMAT ?= clang-format
 CLANG_TIDY ?= clang-tidy
 CLANG_TIDY_CHECKS ?=
 CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp" -o -name "*.mm" -o -name "*.h")
-SWIFT_SOURCES := $(shell find src tests -name "*.swift")
+SWIFT_SOURCES := $(shell find src tests tools -name "*.swift")
 JAVA_SOURCES := $(shell find android/app/src -name "*.java")
 SWIFT_FORMAT ?= xcrun swift-format
 ifeq ($(shell uname -s),Darwin)
@@ -29,7 +29,7 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps configure build test check install android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps configure build test check icons icons-native install android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -45,6 +45,12 @@ test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure
 
 check: format-check lint test
+
+icons:
+	xcrun swift tools/GenerateIcons.swift "$(CURDIR)"
+
+icons-native:
+	$(CMAKE) -DBEAM_SOURCE_DIR="$(CURDIR)" -DBEAM_ICON_OUTPUT="$(abspath build/icons/native)" -P cmake/CompileMacIcon.cmake
 
 install:
 	$(CMAKE) -S . -B "$(INSTALL_BUILD_DIR)" $(DESKTOP_GENERATOR) $(CMAKE_ARGS) \
@@ -137,6 +143,7 @@ clean:
 	$(CMAKE) --build "$(BUILD_DIR)" --target clean --config $(BUILD_TYPE)
 
 help:
+	@echo "icons: regenerate shared icon exports on macOS; icons-native: compile native appearances with Xcode actool"
 	@echo "install: Release CLI to ~/.local/bin, plus Linux launcher or macOS ~/Applications/Beam.app (no sudo)"
 	@echo "android-install: build and install debug APK with ADB; android-install-apk: install existing APK; ANDROID_SERIAL selects a device"
 	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format, lint, and tests"

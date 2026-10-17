@@ -28,6 +28,12 @@ else()
     if(BEAM_ENABLE_DESKTOP)
         set_target_properties(beam-desktop PROPERTIES INSTALL_RPATH "$ORIGIN/${beam_library_path}")
         install(TARGETS beam-desktop RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT desktop)
+        install(FILES "${PROJECT_SOURCE_DIR}/assets/icons/beam.svg"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
+            RENAME org.beam.desktop.svg COMPONENT desktop)
+        install(FILES "${PROJECT_SOURCE_DIR}/assets/icons/beam.png"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps"
+            RENAME org.beam.desktop.png COMPONENT desktop)
         install(FILES ${msquic_runtime} DESTINATION "${CMAKE_INSTALL_LIBDIR}/beam" COMPONENT desktop)
         set(BEAM_DESKTOP_ENTRY_DIR "${CMAKE_INSTALL_DATADIR}/applications" CACHE STRING
             "Desktop entry directory (absolute or relative to the install prefix)")

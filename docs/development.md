@@ -81,8 +81,11 @@ still uses system OpenSSL/Qt/Avahi packages. See [installation](desktop.md#insta
 for destinations, prefix overrides, and CMake install components. CTest's
 `install` check stages and relocates the installation before running its binaries.
 
-The optional desktop app requires the QUIC core. macOS 13+ uses Swift 6 from
+The optional desktop app requires the QUIC core. macOS uses Swift 6 from current
 Xcode Command Line Tools and Ninja (`brew install ninja`); Qt is not required.
+The deployment version follows the selected macOS SDK, including cached desktop
+builds formerly targeting 13.0. Swift bridge PCHs stay in the build directory,
+and the shared C++ runtime is linked once across the C++/Objective-C++ boundary.
 Linux uses Qt 6.4+ Widgets (`qt6-base-dev` and `qt6-qpa-plugins` on Debian/Ubuntu).
 Use `make desktop` / `make desktop-test`. Native macOS builds use Ninja and a
 separate `build-desktop-native` directory, keeping existing Qt build caches separate.
@@ -92,6 +95,11 @@ platform, while macOS tests exercise the Swift model and Objective-C++ bridge.
 `make format` / `make format-check` also use Apple's bundled `xcrun swift-format`
 on macOS; `make lint` includes configured Objective-C++ translation units. See
 [desktop](desktop.md) for launch paths, clipboard privacy, and native checks.
+
+`make icons` regenerates the committed platform icon exports from their shared
+Swift geometry source on macOS. `make icons-native` compiles the layered macOS
+catalog with full Xcode's asset compiler. See [icon sources](../assets/icons/README.md)
+for the Command Line Tools fallback and native appearance verification.
 
 ## Implementation style
 

@@ -4,9 +4,11 @@
 #include <QComboBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMimeData>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTemporaryDir>
@@ -54,6 +56,7 @@ void tests() {
     auto* clipboard = QApplication::clipboard();
     clipboard->setText("private clipboard\r\n世界");
     beam::desktop::Window window({root / "missing-state", 4269, false});
+    require(!window.windowIcon().pixmap(32, 32).isNull(), "packaged app icon cannot be loaded");
     auto* content = window.findChild<QPlainTextEdit*>("content");
     auto* load = window.findChild<QPushButton*>("loadClipboard");
     auto* send = window.findChild<QPushButton*>("send");

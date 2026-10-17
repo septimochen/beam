@@ -1,0 +1,38 @@
+name: Native macOS icons
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/icons/**'
+      - 'tools/GenerateIcons.swift'
+      - 'cmake/CompileMacIcon.cmake'
+      - '.github/workflows/icons.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  icons:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Compile native icon appearances with Xcode
+        run: make icons-native
+      - name: Verify native appearance stacks
+        run: |
+          assetutil --info build/icons/native/Assets.car > build/icons/native/catalog.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          entries = json.loads(Path('build/icons/native/catalog.json').read_text())
+          stacks = [e for e in entries if e.get('AssetType') == 'IconImageStack' and e.get('Name') == 'Beam']
+          appearances = {e.get('Appearance') for e in stacks}
+          assert {'NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua', 'ISAppearanceTintable'} <= appearances, appearances
+          assert all(e.get('LayerCount', 0) > 0 for e in stacks)
+          print('Verified Beam light, dark, and tintable icon stacks')
+          PY
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: beam-native-icons
+          path: build/icons/native/

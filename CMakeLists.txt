@@ -1,6 +1,18 @@
 cmake_minimum_required(VERSION 3.25)
-if(CMAKE_HOST_APPLE AND BEAM_ENABLE_DESKTOP AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 13.0 CACHE STRING "Minimum macOS deployment version" FORCE)
+if(CMAKE_HOST_APPLE AND BEAM_ENABLE_DESKTOP)
+    # Desktop builds follow the selected SDK, including existing build trees
+    # that cached the former macOS 13 baseline. Homebrew/runtime dependencies
+    # built for this macOS must not be linked into an older deployment target.
+    set(beam_macos_sdk macosx)
+    if(CMAKE_OSX_SYSROOT)
+        set(beam_macos_sdk "${CMAKE_OSX_SYSROOT}")
+    endif()
+    execute_process(COMMAND xcrun --sdk "${beam_macos_sdk}" --show-sdk-version
+        OUTPUT_VARIABLE beam_macos_version OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "${beam_macos_version}" CACHE STRING
+        "Desktop deployment version (follows the selected macOS SDK)" FORCE)
+    message(STATUS "Beam desktop targets macOS ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 project(Beam VERSION 0.8.0 LANGUAGES CXX)
 
@@ -119,6 +131,8 @@ if(BUILD_TESTING)
             "-DBEAM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
             "-DBEAM_HAS_DESKTOP=${BEAM_ENABLE_DESKTOP}"
             "-DBEAM_HAS_QUIC=${BEAM_ENABLE_QUIC}"
+            "-DBEAM_HAS_NATIVE_ICON=${BEAM_HAS_NATIVE_ICON}"
+            "-DBEAM_MACOS_VERSION=${CMAKE_OSX_DEPLOYMENT_TARGET}"
             "-DBEAM_CONFIG=$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/install_tests.cmake")
     endif()
