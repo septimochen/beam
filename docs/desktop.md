@@ -84,6 +84,29 @@ Components `cli` and `desktop` allow separate prefixes. The default Linux
 desktop entry follows `PREFIX/share/applications`; set `BEAM_DESKTOP_ENTRY_DIR`
 at configuration to override it.
 
+Quit Beam, then remove a Make installation with:
+
+```sh
+make uninstall
+```
+
+This removes the CLI, private runtime dependencies, and macOS `Beam.app` or Linux
+desktop executable, launcher, and icons. Identities, paired devices, configuration,
+app preferences, and received files are retained. Shared `bin`, `lib`, and `share`
+directories stay in place. No build directory or compiler is required; CMake and
+Make are sufficient, and running it again is safe.
+
+For a custom installation, repeat the same `INSTALL_PREFIX`, `APPLICATIONS_DIR`
+(macOS), and `DESKTOP_ENTRY_DIR` (Linux) overrides used for `make install`.
+For example:
+
+```sh
+make uninstall INSTALL_PREFIX="$HOME/Tools/beam" APPLICATIONS_DIR="$HOME/Applications"
+```
+
+Linux's default launcher path follows `XDG_DATA_HOME` just as installation does.
+`DESTDIR` staging is also respected. The target uses the standard Make install layout.
+
 ## Set up paired devices
 
 Initialize identity and reciprocally pair devices with the CLI using independently

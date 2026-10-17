@@ -1,0 +1,140 @@
+cmake_minimum_required(VERSION 3.25)
+if(NOT IS_ABSOLUTE "${TEST_DIR}")
+    message(FATAL_ERROR "Pass an absolute TEST_DIR for uninstall fixtures")
+endif()
+find_program(make NAMES gmake make REQUIRED)
+file(REMOVE_RECURSE "${TEST_DIR}")
+set(prefix "${TEST_DIR}/prefix with spaces")
+set(applications "${TEST_DIR}/Apps with spaces")
+set(entry "${TEST_DIR}/desktop entries")
+set(script "${BEAM_SOURCE_DIR}/cmake/Uninstall.cmake")
+set(protected "${prefix}/bin/other-tool" "${prefix}/lib/other/library"
+    "${prefix}/share/beam/identity.pem" "${prefix}/share/beam/alice.peer"
+    "${TEST_DIR}/.config/beam/config" "${TEST_DIR}/Downloads/received.txt"
+    "${applications}/Other.app/Contents/Info.plist" "${entry}/other.desktop")
+foreach(path IN LISTS protected)
+    file(WRITE "${path}" "keep")
+endforeach()
+set(files "${prefix}/bin/beam")
+set(directories "${prefix}/lib/beam")
+file(WRITE "${prefix}/lib/beam/lib/runtime" "installed dependency")
+if(APPLE)
+    list(APPEND directories "${applications}/Beam.app")
+    file(WRITE "${prefix}/lib/beam/beam" "installed CLI")
+    file(CREATE_LINK "../lib/beam/beam" "${prefix}/bin/beam" SYMBOLIC)
+    file(WRITE "${applications}/Beam.app/Contents/MacOS/beam-desktop" "installed app")
+else()
+    list(APPEND files "${prefix}/bin/beam-desktop" "${entry}/beam.desktop"
+        "${prefix}/share/icons/hicolor/scalable/apps/org.beam.desktop.svg"
+        "${prefix}/share/icons/hicolor/512x512/apps/org.beam.desktop.png")
+    foreach(path IN LISTS files)
+        file(WRITE "${path}" "installed file")
+    endforeach()
+endif()
+
+function(run_uninstall expected_success entry_directory)
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env --unset=DESTDIR --unset=MAKEFLAGS
+        "${make}" -C "${BEAM_SOURCE_DIR}" uninstall "CMAKE=${CMAKE_COMMAND}"
+        "INSTALL_PREFIX=${prefix}" "APPLICATIONS_DIR=${applications}"
+        "DESKTOP_ENTRY_DIR=${entry_directory}" "INSTALL_BUILD_DIR=${TEST_DIR}/missing build"
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if((expected_success AND NOT result EQUAL 0) OR (NOT expected_success AND result EQUAL 0))
+        message(FATAL_ERROR "Unexpected uninstall result ${result}: ${output}${error}")
+    endif()
+endfunction()
+function(check_removed)
+    foreach(path IN LISTS files directories)
+        if(EXISTS "${path}" OR IS_SYMLINK "${path}")
+            message(FATAL_ERROR "Installed artifact remains: ${path}")
+        endif()
+    endforeach()
+    foreach(path IN LISTS protected)
+        if(NOT EXISTS "${path}")
+            message(FATAL_ERROR "Uninstall removed unrelated/user data: ${path}")
+        endif()
+        file(READ "${path}" contents)
+        if(NOT contents STREQUAL "keep")
+            message(FATAL_ERROR "Uninstall changed unrelated/user data: ${path}")
+        endif()
+    endforeach()
+endfunction()
+
+# The actual Make target handles custom locations/spaces without building, and
+# repeated removal of an absent installation is harmless.
+run_uninstall(TRUE "${entry}")
+check_removed()
+run_uninstall(TRUE "${entry}")
+check_removed()
+if(EXISTS "${TEST_DIR}/missing build" OR NOT IS_DIRECTORY "${prefix}/bin")
+    message(FATAL_ERROR "Uninstall built the project or removed a shared directory")
+endif()
+
+# Remove links themselves, including directory and dangling links; never recurse
+# into their targets or remove the executable they reference.
+set(external "${TEST_DIR}/external")
+file(WRITE "${external}/keep.txt" "keep")
+foreach(path IN LISTS files directories)
+    file(CREATE_LINK "${external}" "${path}" SYMBOLIC)
+endforeach()
+file(REMOVE "${prefix}/bin/beam")
+file(CREATE_LINK "${TEST_DIR}/absent target" "${prefix}/bin/beam" SYMBOLIC)
+run_uninstall(TRUE "${entry}")
+check_removed()
+if(NOT EXISTS "${external}/keep.txt")
+    message(FATAL_ERROR "Uninstall followed a symlink")
+endif()
+
+# Preflight all file targets before deleting the runtime or anything else.
+file(WRITE "${prefix}/bin/beam/keep.txt" "keep")
+file(WRITE "${prefix}/lib/beam/keep.txt" "keep")
+run_uninstall(FALSE "${entry}")
+if(NOT EXISTS "${prefix}/bin/beam/keep.txt" OR NOT EXISTS "${prefix}/lib/beam/keep.txt")
+    message(FATAL_ERROR "Unexpected directory was removed or preflight partially uninstalled")
+endif()
+file(REMOVE_RECURSE "${prefix}/bin/beam")
+run_uninstall(TRUE "${entry}")
+check_removed()
+
+if(NOT APPLE)
+    file(WRITE "${prefix}/share/custom launchers/beam.desktop" "installed launcher")
+    file(WRITE "${prefix}/share/custom launchers/other.desktop" "keep")
+    run_uninstall(TRUE "share/custom launchers")
+    if(EXISTS "${prefix}/share/custom launchers/beam.desktop" OR
+       NOT EXISTS "${prefix}/share/custom launchers/other.desktop")
+        message(FATAL_ERROR "Relative desktop entry directory was not respected")
+    endif()
+endif()
+
+# Staging must affect every destination while leaving the unstaged installation.
+set(staging "${TEST_DIR}/staging")
+file(WRITE "${prefix}/bin/beam" "keep")
+file(WRITE "${staging}${prefix}/bin/beam" "installed CLI")
+file(WRITE "${staging}${prefix}/lib/beam/runtime" "installed dependency")
+if(APPLE)
+    file(WRITE "${staging}${applications}/Beam.app/Contents/MacOS/beam-desktop" "installed app")
+else()
+    foreach(path IN LISTS files)
+        file(WRITE "${staging}${path}" "installed file")
+    endforeach()
+endif()
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env "DESTDIR=${staging}"
+    "${CMAKE_COMMAND}" "-DINSTALL_PREFIX=${prefix}" "-DAPPLICATIONS_DIR=${applications}"
+    "-DDESKTOP_ENTRY_DIR=${entry}" -P "${script}" COMMAND_ERROR_IS_FATAL ANY)
+foreach(path IN LISTS files directories)
+    if(EXISTS "${staging}${path}" OR IS_SYMLINK "${staging}${path}")
+        message(FATAL_ERROR "Staged artifact remains: ${path}")
+    endif()
+endforeach()
+if(NOT EXISTS "${prefix}/bin/beam")
+    message(FATAL_ERROR "Staged uninstall removed the unstaged installation")
+endif()
+foreach(invalid_prefix IN ITEMS "" "relative" "${prefix};extra")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env "DESTDIR=${staging}"
+        "${CMAKE_COMMAND}" "-DINSTALL_PREFIX=${invalid_prefix}"
+        "-DAPPLICATIONS_DIR=${applications}" "-DDESKTOP_ENTRY_DIR=${entry}" -P "${script}"
+        RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(result EQUAL 0 OR NOT EXISTS "${prefix}/bin/beam")
+        message(FATAL_ERROR "Invalid install prefix was accepted: ${invalid_prefix}; ${output}${error}")
+    endif()
+endforeach()
+file(REMOVE_RECURSE "${TEST_DIR}")

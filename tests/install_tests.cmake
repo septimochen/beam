@@ -112,4 +112,12 @@ if(APPLE AND BEAM_HAS_DESKTOP)
     execute_process(COMMAND /usr/bin/codesign --verify --deep "${root}/Applications/Beam.app"
         COMMAND_ERROR_IS_FATAL ANY)
 endif()
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env --unset=DESTDIR
+    "${CMAKE_COMMAND}" "-DINSTALL_PREFIX=${prefix}" "-DAPPLICATIONS_DIR=${root}/Applications"
+    "-DDESKTOP_ENTRY_DIR=share/applications" -P "${CMAKE_CURRENT_LIST_DIR}/../cmake/Uninstall.cmake"
+    COMMAND_ERROR_IS_FATAL ANY)
+file(GLOB_RECURSE remaining LIST_DIRECTORIES FALSE "${root}/*")
+if(remaining)
+    message(FATAL_ERROR "Uninstall left installed files: ${remaining}")
+endif()
 file(REMOVE_RECURSE "${root}")

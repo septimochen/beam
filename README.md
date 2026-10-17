@@ -110,6 +110,8 @@ Run `make install` to build Release binaries and install the CLI in `~/.local/bi
 and the desktop app. Linux gets an application-menu entry; macOS gets
 `~/Applications/Beam.app`. Add `~/.local/bin` to your `PATH` if needed. No `sudo`
 is required. See [installation options](docs/desktop.md#install-for-your-user).
+Use `make uninstall` to remove the installed programs and runtime while retaining
+pairing, settings, and received files.
 
 macOS uses a native SwiftUI/AppKit app; install and select full Xcode and install
 Ninja (`brew install ninja`). Desktop builds target the selected macOS SDK

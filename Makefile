@@ -29,7 +29,7 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps configure build test check icons icons-native install android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps configure build test check icons icons-native install uninstall android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -65,6 +65,10 @@ else
 	$(CMAKE) --install "$(INSTALL_BUILD_DIR)" --config Release --prefix "$(INSTALL_PREFIX)" --component desktop
 endif
 	@echo 'Installed Beam. Add $(INSTALL_PREFIX)/bin to PATH if needed.'
+
+uninstall:
+	$(CMAKE) -DINSTALL_PREFIX="$(INSTALL_PREFIX)" -DAPPLICATIONS_DIR="$(APPLICATIONS_DIR)" \
+		-DDESKTOP_ENTRY_DIR="$(DESKTOP_ENTRY_DIR)" -P cmake/Uninstall.cmake
 
 android-install: android
 	$(MAKE) android-install-apk
@@ -145,6 +149,7 @@ clean:
 help:
 	@echo "icons: regenerate shared icon exports on macOS; icons-native: compile native appearances with Xcode actool"
 	@echo "install: Release CLI to ~/.local/bin, plus Linux launcher or macOS ~/Applications/Beam.app (no sudo)"
+	@echo "uninstall: remove installed Beam binaries, runtime and app/launcher; keep settings, pairing and received files"
 	@echo "android-install: build and install debug APK with ADB; android-install-apk: install existing APK; ANDROID_SERIAL selects a device"
 	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format, lint, and tests"
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"

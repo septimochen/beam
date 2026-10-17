@@ -78,8 +78,10 @@ make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF -DBEAM
 Use `make install` for a user-local Release CLI and desktop installation. It
 includes the private MsQuic runtime; macOS also bundles non-system dylibs. Linux
 still uses system OpenSSL/Qt/Avahi packages. See [installation](desktop.md#install-for-your-user)
-for destinations, prefix overrides, and CMake install components. CTest's
-`install` check stages and relocates the installation before running its binaries.
+for destinations, prefix overrides, and CMake install components. `make uninstall`
+removes that installation without a build directory, retaining user data. CTest's
+`install` check stages and relocates the installation, runs its binaries, then
+checks removal; `uninstall` tests custom paths, staging, and preservation of other files.
 
 The optional desktop app requires the QUIC core. macOS requires full Xcode for
 Swift 6 and native icon compilation, plus Ninja (`brew install ninja`); Qt is not
