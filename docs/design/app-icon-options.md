@@ -1,8 +1,10 @@
-# Beam app icon directions
+# First app icon exploration (rejected)
 
-Design exploration, 2026-10-17. Selection is pending. Each board shows a proposed
-icon against light and dark backgrounds; these generated presentation images are
-concepts, not production icon exports or verified system appearance variants.
+Design exploration, 2026-10-17. The user rejected all three directions. Keep these
+boards as historical exploration, not candidates for implementation. The panels
+compare wallpaper contrast; they do not demonstrate native macOS Default/Dark
+icon appearances. See the [macOS icon research](macos-icon-research.md) for the
+corrected approach and observations from other apps.
 
 ## Current assets
 
@@ -16,7 +18,7 @@ concepts, not production icon exports or verified system appearance variants.
   [foreground-service notification](../../android/app/src/main/java/org/beam/android/TransferService.kt)
   use Android's built-in `ic_menu_share` symbol.
 
-## A: Prism Beam — recommended
+## A: Prism Beam
 
 A luminous cyan beam joins two blue device-like endpoints on a midnight tile.
 The direct connection makes the name and transfer purpose visible. The clear
@@ -48,7 +50,11 @@ This direction emphasizes paired devices and has a calmer color palette.
 Refinement after selection: flatten the perspective and preserve the separation
 between the two portals in the monochrome mark.
 
-## Production plan after selection
+## Original production plan (superseded)
+
+The following plan records the first exploration. The
+[research and revised approach](macos-icon-research.md) supersede its macOS
+appearance assumptions.
 
 1. Create editable vector foreground artwork and a separate background using the
    selected direction. Preserve its core silhouette across appearances. The

@@ -3,7 +3,9 @@
 Generated on 2026-10-17 with the built-in imagegen tool. These are the exact
 prompts for the [three design candidates](app-icon-options.md).
 Each call used `transparent_background: false` and no reference images.
-The PNGs are presentation boards, not platform icon exports.
+The PNGs are rejected presentation boards, not platform icon exports. Their
+unchanged artwork on different wallpapers does not demonstrate macOS dark icon
+appearance. See the [corrected research](macos-icon-research.md).
 
 ## A · Prism Beam
 
