@@ -105,6 +105,16 @@ void runtime_tests(int argc, char** argv) {
         return false;
     };
     options.on_listening = [] { std::cout << "Listening" << std::endl; };
+    if (mode == "hold-probe") {
+        auto connection = beam::transport::listen(endpoint.port, options);
+        auto control = connection->accept(false);
+        require(beam::protocol::read(*control).type == beam::protocol::Type::ping,
+                "expected connectivity probe");
+        std::cout << "Probe received" << std::endl;
+        // Keep the authenticated connection open but never answer the probe.
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        return;
+    }
     options.on_progress = [&](const beam::TransferProgress& update) {
         require(std::this_thread::get_id() == caller && update.bytes <= update.total,
                 "invalid progress thread or count");

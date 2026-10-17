@@ -67,6 +67,8 @@ private func waitUntil(_ condition: () throws -> Bool) throws {
 
 @MainActor
 private func tests() throws {
+  // Test the app's signal policy even if the test runner ignores broken pipes.
+  signal(SIGPIPE, SIG_DFL)
   let manager = FileManager.default
   let suite = "beam-tests-\(UUID().uuidString)"
   let defaults = UserDefaults(suiteName: suite)!
@@ -303,6 +305,13 @@ private func tests() throws {
   }
   receive.shutdown()
   try require(!receiver.receiving, "Shutdown left a receiver worker running")
+  send.checkConnectivity()
+  // Darwin can deliver this process-wide when MsQuic's UDP send fails.
+  raise(SIGPIPE)
+  try waitUntil {
+    send.poll()
+    return send.connectivityStatus.contains("is unavailable") && !send.checking
+  }
 
   let restoredBridge = try BeamDesktopBridge(
     stateDirectory: stateRoot + "/right", port: UInt(port), advertise: false)
@@ -311,6 +320,12 @@ private func tests() throws {
   try waitUntil {
     restored.poll()
     return restored.receiveStatus.hasPrefix("Listening")
+  }
+  send.checkConnectivity()
+  try waitUntil {
+    send.poll()
+    restored.poll()
+    return send.connectivityStatus.contains("is reachable") && !send.checking
   }
   restored.shutdown()
 

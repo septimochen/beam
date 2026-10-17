@@ -268,6 +268,12 @@ int identity_command(int argc, char** argv) {
     return 0;
 }
 int transfer_command(int argc, char** argv, bool receive) {
+#ifdef __APPLE__
+    // MsQuic's Darwin UDP sends can raise SIGPIPE. Report the bounded transport
+    // failure instead of terminating before the normal error/cancellation path.
+    if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+        throw std::runtime_error("configure network signal handling failed");
+#endif
     const std::string command = argv[1];
     const bool typed = command == "text";
     const bool checking = command == "check";

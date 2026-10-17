@@ -54,6 +54,22 @@ reset_output() {
     if compgen -G 'output/.beam-*' >/dev/null; then echo 'partial file leaked'; exit 1; fi
     rm -f output/*
 }
+if [[ $(uname -s) == Darwin ]]; then
+    # A failed Darwin UDP send can raise process-wide SIGPIPE. The CLI must
+    # survive it and report the probe timeout through its usual error path.
+    start_receiver hold-probe
+    "$beam" check bob --state-dir "$root/alice" --timeout 1 >sender.log 2>&1 &
+    sender_pid=$!
+    ready "$receiver_pid" receiver.log '^Probe received'
+    kill -PIPE "$sender_pid"
+    status=0
+    wait "$sender_pid" || status=$?
+    sender_pid=
+    [[ $status == 1 ]] || { cat sender.log; echo "probe exited with status $status after SIGPIPE"; exit 1; }
+    grep -Eq 'beam \[(timed out|connection failed)\]' sender.log || { cat sender.log; echo 'probe lost its typed network error'; exit 1; }
+    wait_receiver
+    [[ -z "$(ls -A output)" ]]
+fi
 # UTF-8, newlines, shell-like text and empty payloads preserve exact bytes.
 start_receiver
 if ! send check bob; then cat sender.log receiver.log; exit 1; fi

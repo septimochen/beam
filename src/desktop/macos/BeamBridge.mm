@@ -3,6 +3,7 @@
 #include "beam/config.hpp"
 #include "beam/identity.hpp"
 #include "desktop/service.hpp"
+#include <csignal>
 #include <memory>
 
 namespace {
@@ -103,6 +104,10 @@ void report(NSError** output, const std::exception& error) {
             if (!timeout || timeout > 86400000)
                 throw std::invalid_argument("Invalid transfer timeout");
             _config.timeout = std::chrono::milliseconds(timeout);
+            // MsQuic's Darwin UDP sends can raise process-wide SIGPIPE on failure.
+            // The app owns this policy; let transport errors reach the UI instead.
+            if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+                throw std::runtime_error("Configure network signal handling failed");
             _service = std::make_unique<beam::desktop::Service>(_config);
         } catch (const std::exception& exception) {
             report(error, exception);

@@ -47,6 +47,12 @@ is pinned by the explicit `make deps` workflow. Regular CMake configuration disc
 installed dependencies and never downloads code. See [TLS](tls.md) for peer authorization,
 [wire protocol](protocol.md), and the upstream [MsQuic build guide](https://github.com/microsoft/msquic/blob/v2.6.2/docs/BUILD.md).
 
+The macOS application bridge and CLI transfer entry point ignore `SIGPIPE` before
+starting network workers. Failed Darwin UDP sends in the pinned MsQuic backend can
+otherwise terminate the process before a transport error reaches the caller. This
+process-wide signal policy belongs to the applications, not the reusable core;
+timeouts, cancellation, and authenticated peer verification still apply normally.
+
 ## Design constraints
 
 Keep dependencies flowing downward. Protocol, transfer, discovery, and transport code
