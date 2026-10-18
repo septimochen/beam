@@ -26,7 +26,11 @@ warns on stderr without preventing direct transfer. `--no-discovery` disables
 advertisement and cannot be combined with `--name`. The advertisement belongs to
 the single-use receive invocation and is removed on success, failure, or Ctrl-C;
 it can remain visible while the one transfer is in progress. Force-killing a process
-can leave cached records until the daemon withdraws them or they expire.
+can leave cached records until the daemon withdraws them or they expire. Even
+normal withdrawal allows a one-second mDNS cache grace period
+([RFC 6762 section 10.1](https://www.rfc-editor.org/rfc/rfc6762#section-10.1)).
+The desktop live test checks withdrawal within a bounded five-second window;
+stale discovery records never restore trust or keep a stopped receiver open.
 
 Copy a discovered endpoint into the existing `beam send IP:PORT FILE ...` command.
 In dedicated-CA mode, all certificate flags and verification still apply. Set `--server-name` to the

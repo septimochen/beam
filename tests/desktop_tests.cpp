@@ -206,9 +206,18 @@ void tests(bool live_discovery) {
     if (live_discovery) {
         DiscoveryOptions browse;
         browse.timeout = std::chrono::seconds(1);
-        for (const auto& device : discover_devices(browse))
-            for (const auto& endpoint : device.endpoints)
-                require(endpoint.port != port, "stopped desktop receiver is still advertised");
+        // mDNS goodbye records have a one-second cache grace period (RFC 6762
+        // section 10.1). A single one-second browse races Avahi's withdrawal.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        bool withdrawn = false;
+        while (!withdrawn && std::chrono::steady_clock::now() < deadline) {
+            withdrawn = true;
+            for (const auto& device : discover_devices(browse))
+                for (const auto& endpoint : device.endpoints)
+                    withdrawn &= endpoint.port != port;
+        }
+        require(withdrawn,
+                "stopped desktop receiver is still advertised after withdrawal deadline");
     }
 #endif
     // Empty trust fails before binding and the next start loads the changed store.
