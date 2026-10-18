@@ -74,9 +74,13 @@ current certificate authorization model and [protocol](protocol.md) for wire val
 - Stage provider files in a unique private directory with bounded buffers and a
   4 GiB file limit. Cancel provider reads and native work on Stop; remove staged
   files after the native worker finishes and remove abandoned staging on startup.
-- Keep identity, trust, and received content in app-private storage with backup
-  disabled. Public certificate export must never expose the private identity file.
-  Only an explicit document-picker Save action exports received content.
+- Keep identity, trust, and unverified incoming files in app-private storage with backup
+  disabled. After verification, save files to shared Downloads using a new MediaStore
+  row with `IS_PENDING` until the bounded copy closes successfully. Never overwrite
+  existing downloads; remove incomplete rows on failure and keep the verified staging
+  copy for explicit document-picker recovery. Remove staging after successful publication.
+  Received text stays in bounded memory. Public certificate export must never expose
+  the private identity file.
 - Start reception when the user opens the visible app, after pairing and required
   network permission; keep share intents limited to content review. Show a foreground
   notification with a Stop action, and honor Stop across activity recreation.

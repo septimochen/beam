@@ -148,12 +148,24 @@ identity**; reception starts after pairing without another button press. A share
 intent only opens the review screen and does not start reception. **Stop receiving**
 pauses reception for the current app session, including activity recreation;
 **Start receiving** resumes it or retries after a startup failure. Files are
-verified before exclusive publication in Beam's private receive folder. Text
+verified in temporary private staging, then saved automatically to the device's
+shared **Downloads** folder through [Android's MediaStore](https://developer.android.com/training/data-storage/shared/media).
+Downloads with the same
+name get a new name; existing files are never replaced. Incomplete copies stay
+hidden until saving finishes. The temporary private copy is removed after a
+successful save. No storage permission or manual export is needed. Text
 (including URLs) stays in bounded memory and appears in the app's **Received text**
 area after verification and acknowledgement; no text file is saved. Both outgoing
 and received text have a **Copy to clipboard** button at the top right.
-Existing files are never replaced. **Save a received file…** explicitly
-exports one completed file through the document picker. Beam never opens content
+The **Receive** area at the top of the screen shows transfer percentage, speed,
+verification, saving progress, and a persistent **Saved to Downloads** result.
+**Show Downloads** opens the system downloads view. A separate completion
+notification announces received files/text when notification permission is enabled;
+its tap opens Beam and never opens received content automatically. In-app feedback
+works with notification permission denied. If saving to Downloads fails, Beam
+reports the error and retains the verified private copy. **Recover an unsaved
+file…** exports it through the system document picker to a location you choose;
+this also makes files received by older app versions accessible. Beam never opens content
 or copies it to the clipboard automatically. If acknowledgement fails after publication,
 a verified file can remain; check received files before retrying.
 
@@ -183,7 +195,7 @@ The app shows send/receive percentage, progress bars, and average payload MiB/s;
 the foreground notification reflects progress too. Completion still follows
 verification and acknowledgement. **Check connectivity** checks the selected
 peer's authenticated Beam receiver with a bounded probe and no payload/file.
-**Settings** stores a private receive-folder name, listen port, and timeout;
+**Settings** shows Downloads as the receive destination and stores the listen port and timeout;
 see [configuration](configuration.md). Stop active workers before editing.
 Beam 0.9 requires protocol v4 on both peers; existing identity/pairing remains usable.
 
@@ -207,7 +219,9 @@ fingerprint rejection, authenticated file/text transfers, exact Unicode bytes,
 trust edits during reception, revocation, and persistent identity. JVM tests
 exercise provider-name/URI validation, UTF-8 limits, bounded streaming, and
 cancellation. AndroidX Test Runner 1.7.0 and JUnit are test-only dependencies.
-Device tests exercise actual JNI paired transfers, automatic reception on launch,
+Device tests exercise actual JNI paired transfers, shared Downloads publication,
+duplicate names, failed-copy cleanup, zero-byte files, background receipt,
+receive UI/completion notifications, automatic reception on launch,
 Stop across activity/service recreation, provider staging/foreground controls,
 and share-target review without automatic staging/sending. The launch test also
 supports Android 17 permission allow/deny cases with optional notifications denied.

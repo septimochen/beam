@@ -210,7 +210,7 @@ remain usable. Phase 9 adds authenticated pairing while retaining these transfer
   mode is retired and older protocols fail ALPN negotiation.
 - [x] Persistent configuration: support desktop configuration at
   `~/.config/beam/config` with bounded key/value settings for receive folder, port,
-  discovery, and timeout; Android provides private folder/port/timeout Settings.
+  discovery, and timeout; Android saves to shared Downloads and provides port/timeout Settings.
   See [configuration](configuration.md).
 
 ## Product scope

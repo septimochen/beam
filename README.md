@@ -100,7 +100,7 @@ records continue to work. Check a paired receiver with `./build/beam check lapto
 
 Desktop/CLI defaults can be set in `~/.config/beam/config`; see
 [configuration](docs/configuration.md) for the receive folder, port, discovery,
-and timeout. Android has equivalent private folder/port/timeout **Settings**.
+and timeout. Android saves received files to shared Downloads and has port/timeout **Settings**.
 
 ## Desktop sharing
 
@@ -135,8 +135,10 @@ Install it, open **Manage devices and identity**, exchange public certificates,
 verify full fingerprints, and pair on both devices. Choose a paired device and
 one file or text (including URLs), then tap **Send**. Other apps' **Share → Beam** opens the
 same review screen. Opening Beam starts reception after pairing and required
-permissions; **Stop receiving** pauses it. Use
-**Save a received file…** to export from private storage.
+permissions; **Stop receiving** pauses it.
+Received files save automatically to **Downloads**. The Receive area shows progress
+and completion, with a separate completion notification when enabled. Use **Show
+Downloads** to find files, or **Recover an unsaved file…** if a save fails.
 
 See [Android setup, pairing, and tests](docs/android.md) for QR/PIN pairing,
 foreground controls, APK paths, and platform verification.

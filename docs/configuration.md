@@ -32,9 +32,9 @@ shell commands, keys, certificates, or trust records belong in this file.
 
 If you change a listen port, update this device's saved endpoint on its peers.
 
-Android uses **Settings** with the same default port and timeout. Its receive
-folder is a single private subfolder name, initially `received`; it cannot point
-outside Beam's private storage or at identity/outgoing staging storage. Stop
-transfers, reception, and checks before saving. Settings survive relaunch; existing
-files remain in their original folder. Export still requires **Save a received
-file…**. Android has no desktop discovery backend or `~/.config` location.
+Android uses **Settings** with the same default port and timeout. Received files
+save automatically to shared **Downloads**, after verification in temporary private
+staging. No storage permission is required. Stop transfers, reception, and checks
+before changing network settings. Settings survive relaunch. **Recover an unsaved
+file…** offers the system document picker for a failed Downloads save or files
+received by older versions. Android has no desktop discovery backend or `~/.config` location.

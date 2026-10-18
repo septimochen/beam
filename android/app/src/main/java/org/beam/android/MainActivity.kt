@@ -51,6 +51,7 @@ class MainActivity : Activity() {
   private lateinit var receiveProgress: ProgressBar
   private lateinit var sendProgressLabel: TextView
   private lateinit var receiveProgressLabel: TextView
+  private lateinit var receivedFileStatus: TextView
   private lateinit var connectivity: TextView
   private lateinit var checkConnectivity: Button
   private lateinit var unpair: Button
@@ -159,6 +160,29 @@ class MainActivity : Activity() {
       }
     label("Beam", 32f)
     label("Share directly with your paired devices. Review your selection, then Send.")
+    label("Receive")
+    label("Files from paired devices save to Downloads automatically.")
+    receiveProgress =
+      ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).also {
+        it.max = 100
+        it.contentDescription = "Incoming transfer progress"
+        column.addView(it)
+      }
+    receiveProgressLabel = label("Receive: idle")
+    receivedFileStatus = label("Received files save to Downloads")
+    receivedFileStatus.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    button("Show Downloads") {
+      startActivity(Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS))
+    }
+    receive =
+      button("Start receiving") {
+        val core = checkNotNull(service) { "Beam is starting" }
+        if (core.receiving) {
+          receiveOnLaunchPending = false
+          core.stopReceiving()
+        } else requestReceiving()
+        update()
+      }
     label("Paired device")
     devices = Spinner(this).also { column.addView(it) }
     unpair =
@@ -252,25 +276,6 @@ class MainActivity : Activity() {
         column.addView(it)
       }
     sendProgressLabel = label("Send: idle")
-    label("Receive")
-    label(
-      "Beam receives from paired devices automatically when opened. Files are saved privately on this device."
-    )
-    receive =
-      button("Start receiving") {
-        val core = checkNotNull(service) { "Beam is starting" }
-        if (core.receiving) {
-          receiveOnLaunchPending = false
-          core.stopReceiving()
-        } else requestReceiving()
-        update()
-      }
-    receiveProgress =
-      ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).also {
-        it.max = 100
-        column.addView(it)
-      }
-    receiveProgressLabel = label("Receive: idle")
     copyRow("Received text") { receivedText.text.toString() }
     receivedText =
       EditText(this).apply {
@@ -281,7 +286,7 @@ class MainActivity : Activity() {
         setTextIsSelectable(true)
         column.addView(this)
       }
-    button("Save a received file…") { receivedFiles() }
+    button("Recover an unsaved file…") { receivedFiles() }
     status = label("Starting Beam…")
     status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
     if (savedInstanceState != null) {
@@ -480,6 +485,8 @@ class MainActivity : Activity() {
       receiveProgress.progress = core.receivePercent
       sendProgressLabel.text = core.sendStatus
       receiveProgressLabel.text = core.receiveStatus
+      if (receivedFileStatus.text.toString() != core.receivedFileStatus)
+        receivedFileStatus.text = core.receivedFileStatus
       core.receivedText?.let { if (receivedText.text.toString() != it) receivedText.setText(it) }
     }
   }
@@ -588,7 +595,7 @@ class MainActivity : Activity() {
         form.addView(TextView(context).apply { text = label })
         form.addView(this)
       }
-    val folder = field("Receive folder (private)", core.receiveFolder)
+    form.addView(TextView(this).apply { text = "Received files: Downloads" })
     val port = field("Listen port", core.port.toString())
     val timeout = field("Timeout (seconds)", core.timeoutSeconds.toString())
     val dialog =
@@ -596,7 +603,7 @@ class MainActivity : Activity() {
         .setTitle("Settings")
         .setView(form)
         .setMessage(
-          "Stop reception and active transfers before saving. Files stay private until you choose Save a received file."
+          "Stop reception and active transfers before changing network settings. Received files save to Downloads automatically."
         )
         .setNegativeButton("Cancel", null)
         .setPositiveButton("Save", null)
@@ -605,7 +612,7 @@ class MainActivity : Activity() {
       dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
         attempt {
           core.saveSettings(
-            folder.text.toString(),
+            core.receiveFolder,
             port.text.toString().toInt(),
             timeout.text.toString().toInt(),
           )
@@ -755,7 +762,7 @@ class MainActivity : Activity() {
         ?: emptyList()
     require(files.isNotEmpty()) { "No received files yet" }
     AlertDialog.Builder(this)
-      .setTitle("Save received file")
+      .setTitle("Recover a received file")
       .setItems(files.map { "${it.name} (${it.length()} bytes)" }.toTypedArray()) { _, index ->
         exportFile = files[index]
         createDocument(files[index].name, "application/octet-stream", EXPORT_FILE)

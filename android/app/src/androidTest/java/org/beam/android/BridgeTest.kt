@@ -9,6 +9,7 @@ import android.content.ServiceConnection
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.net.Uri
 import android.os.IBinder
+import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
@@ -68,6 +69,7 @@ class BridgeTest {
     val alias = "launch-${UUID.randomUUID().toString().take(8)}"
     val spareAlias = "spare-${UUID.randomUUID().toString().take(8)}"
     var activity: android.app.Activity? = null
+    var downloaded: Uri? = null
     try {
       assertTrue(connected.await(10, TimeUnit.SECONDS))
       NativeSession(File(root, "desktop").path).use { desktop ->
@@ -149,6 +151,66 @@ class BridgeTest {
             "receive on launch 🌍",
             clipboard.primaryClip?.getItemAt(0)?.text?.toString(),
           )
+        }
+        val incoming = File(root, "received-${UUID.randomUUID()}.bin")
+        val payload = ByteArray(1024 * 1024) { (it % 251).toByte() }
+        incoming.writeBytes(payload)
+        instrumentation.runOnMainSync { checkNotNull(activity).moveTaskToBack(true) }
+        instrumentation.waitForIdleSync()
+        desktop.call(Command.SEND, "phone", "file", incoming.path, "")
+        await(desktop, "0", "2")
+        waitForService {
+          checkNotNull(core).receivedFileStatus.contains("Received ${incoming.name}") &&
+            checkNotNull(core).receivedFileStatus.contains("Saved to Downloads")
+        }
+        context.contentResolver
+          .query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.IS_PENDING),
+            "${MediaStore.Downloads.DISPLAY_NAME} = ?",
+            arrayOf(incoming.name),
+            null,
+          )!!
+          .use {
+            assertTrue("Received file is missing from Downloads", it.moveToFirst())
+            downloaded =
+              android.content.ContentUris.withAppendedId(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                it.getLong(0),
+              )
+            assertEquals(0, it.getInt(1))
+          }
+        assertArrayEquals(
+          payload,
+          context.contentResolver.openInputStream(downloaded!!)!!.use { it.readBytes() },
+        )
+        activity =
+          instrumentation.startActivitySync(
+            Intent(context, MainActivity::class.java)
+              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+          )
+        instrumentation.waitForIdleSync()
+        instrumentation.runOnMainSync {
+          assertFalse(File(checkNotNull(core).inbox, incoming.name).exists())
+          assertEquals(100, checkNotNull(core).receivePercent)
+          fun resultVisible(view: View): Boolean =
+            (view is android.widget.TextView &&
+              view.text.toString().contains("Received ${incoming.name}")) ||
+              (view is ViewGroup &&
+                (0 until view.childCount).any { resultVisible(view.getChildAt(it)) })
+          assertTrue(resultVisible(checkNotNull(activity).window.decorView))
+          val notifications = context.getSystemService(android.app.NotificationManager::class.java)
+          if (notifications.areNotificationsEnabled()) {
+            val completed = notifications.activeNotifications.first { it.id == 2 }.notification
+            assertEquals(
+              "File received",
+              completed.extras.getString(android.app.Notification.EXTRA_TITLE),
+            )
+            assertEquals(
+              "Saved to Downloads",
+              completed.extras.getString(android.app.Notification.EXTRA_TEXT),
+            )
+          }
         }
         fun recreate() {
           val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, false)
@@ -276,6 +338,7 @@ class BridgeTest {
         }
       }
       if (bound) context.unbindService(connection)
+      downloaded?.let { context.contentResolver.delete(it, null, null) }
       root.deleteRecursively()
     }
   }
