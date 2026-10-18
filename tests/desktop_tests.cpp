@@ -186,6 +186,14 @@ void tests(bool live_discovery) {
         require(send_result.result.bytes == expected.size(),
                 "desktop completed byte count changed");
         received.await(Direction::receive, EventKind::listening);
+        require(std::none_of(received.pending.begin(), received.pending.end(),
+                             [](const Event& event) {
+                                 return event.direction == Direction::receive &&
+                                        event.kind == EventKind::progress &&
+                                        event.progress.stage == TransferStage::waiting &&
+                                        event.progress.filename.empty();
+                             }),
+                "idle listener restart replaced completed transfer progress");
     }
     sender.send({"bob", ContentKind::file, root / "sample.txt", {}});
     sent.await(Direction::send, EventKind::failed);

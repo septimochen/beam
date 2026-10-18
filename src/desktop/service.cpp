@@ -242,6 +242,10 @@ void Service::receive_loop(std::stop_token stop, const std::filesystem::path& di
                 publish({Direction::receive, EventKind::listening});
             };
             options.on_progress = [&](const TransferProgress& progress) {
+                // Listener readiness has its own event. Idle waits are not a new
+                // transfer and must not overwrite the last verified result.
+                if (progress.stage == TransferStage::waiting && progress.filename.empty())
+                    return;
                 if (progress.stage == TransferStage::transferring)
                     payload_started = true;
                 publish({Direction::receive, EventKind::progress, {}, {}, progress});
