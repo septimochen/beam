@@ -122,6 +122,30 @@ Notifications entry. macOS may retain that entry after uninstall; Launch Service
 unregistration does not reset notification settings. No Notification Center
 database, other app's notifications, or system service is modified.
 
+### Remove a retained entry or stale notification icon
+
+macOS provides a manual reset in System Settings even though apps cannot invoke
+an equivalent public API:
+
+1. Open **System Settings → Notifications**.
+2. Control-click (or right-click) **Beam** in Application Notifications.
+3. Choose **Reset Notifications…**, then confirm **Reset Notifications**.
+
+This resets only Beam's notification permission. On the development Mac it
+removed the retained Beam entry after uninstall; other apps' entries and settings
+stayed in place. Apply the same action separately to Beam Dev if needed. Beam
+will have to request notification permission again if you later enable its
+**Transfer notifications** feature. This is a user action, not something the
+uninstaller automates.
+
+If an installed Beam shows an old icon, first inspect and unregister old build
+copies with `./scripts/cleanup-macos.sh --development`, then install the current
+production build with `make install`. Installation validates the icon resources
+and requests registration of that exact installed bundle. If the notification
+icon remains stale, reset Beam's entry using the steps above. Build copies can be
+rediscovered, and macOS controls its icon caches; re-registration alone does not
+guarantee a refresh. Uninstall does not delete old build directories.
+
 ## Inspect development registrations
 
 ```sh

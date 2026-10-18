@@ -47,4 +47,5 @@ unregister_app() {
 }
 notification_note() {
     echo 'macOS may retain Beam in System Settings > Notifications. Notification authorization and other apps are unchanged.'
+    echo 'To remove a retained entry: Control-click Beam (or Beam Dev) in that list > Reset Notifications. This resets only that app; it must request permission again.'
 }
