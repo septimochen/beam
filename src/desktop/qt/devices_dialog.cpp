@@ -131,6 +131,10 @@ bool edit_device(QWidget* parent, Service& service, const TrustedPeer& peer,
 } // namespace
 void show_devices_dialog(QWidget* parent, const Config& config, Service& service,
                          const std::function<void()>& changed, QLabel* connectivity) {
+    {
+        IdentityStore store(config.state_directory, true);
+        store.initialize();
+    }
     QDialog dialog(parent);
     dialog.setWindowTitle("Your devices — Beam");
     dialog.resize(720, 740);

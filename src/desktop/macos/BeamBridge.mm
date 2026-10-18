@@ -264,6 +264,11 @@ void report(NSError** output, const std::exception& error) {
                 throw std::invalid_argument("Invalid device argument");
             return result;
         };
+        if (action == "details" || action == "identity" || action == "save" ||
+            action == "preview" || action == "import") {
+            beam::IdentityStore store(_config.state_directory, true);
+            store.initialize();
+        }
         NSMutableArray<NSString*>* values = [NSMutableArray array];
         if (action == "details") {
             for (const auto& peer : beam::IdentityStore(_config.state_directory).peers())

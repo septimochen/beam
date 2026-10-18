@@ -254,7 +254,10 @@ beam peers import beam-devices.beam-backup            # preview only
 beam peers import beam-devices.beam-backup --approve  # restore after review
 ```
 
-All these commands support `--state-dir DIR`. A backup restores peer records on
+All these commands support `--state-dir DIR`. On a fresh CLI installation, run
+`beam identity init` before importing. Native device management initializes an
+identity on first use and never replaces an existing or damaged one.
+A backup restores peer records on
 the original device while its persistent identity is intact. Reinstalling Android,
 losing `identity.pem`, or moving the backup to a new identity requires approving
 that new identity on the other devices before transfers can work. The import

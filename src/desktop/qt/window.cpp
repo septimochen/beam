@@ -98,13 +98,17 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     manage->setObjectName("manageDevices");
     peer_row->addWidget(manage);
     connect(manage, &QPushButton::clicked, this, [this] {
-        show_devices_dialog(
-            this, config, service,
-            [this] {
-                poll();
-                refresh_peers();
-            },
-            connectivity_status);
+        try {
+            show_devices_dialog(
+                this, config, service,
+                [this] {
+                    poll();
+                    refresh_peers();
+                },
+                connectivity_status);
+        } catch (const std::exception& error) {
+            send_status->setText(display(error.what()));
+        }
     });
     send_layout->addLayout(peer_row);
     check_button = new QPushButton("Check connectivity", this);

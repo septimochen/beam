@@ -153,9 +153,25 @@ private func tests() throws {
     options.port == 12345 && !options.advertise && options.output == root.path,
     "Launch options lost")
 
+  guard let freshCanonical = realpath(root.path, nil) else {
+    throw NSError(domain: "BeamTests", code: 1)
+  }
+  let freshDirectory = String(cString: freshCanonical) + "/missing"
+  free(freshCanonical)
   let missing = try BeamDesktopBridge(
-    stateDirectory: root.appendingPathComponent("missing").path, port: 4269, advertise: false)
+    stateDirectory: freshDirectory, port: 4269, advertise: false)
   let empty = DesktopModel(bridge: missing, port: 4269, defaults: defaults)
+  let freshIdentity = try missing.devices(command: "identity", arguments: [])
+  let sameIdentity = try missing.devices(command: "identity", arguments: [])
+  try require(
+    freshIdentity.count == 3 && freshIdentity == sameIdentity,
+    "First-use device management replaced or omitted identity")
+  let emptyBackupPath = root.appendingPathComponent("empty.beam-backup").path
+  _ = try missing.devices(command: "save", arguments: [emptyBackupPath])
+  let emptyBackup = try missing.devices(command: "read", arguments: [emptyBackupPath])[0]
+  let emptyPreview = try missing.devices(command: "preview", arguments: [emptyBackup])
+  try require(
+    emptyPreview[1] == "0" && emptyPreview[2] == "0", "Fresh identity cannot preview backups")
   let pasteboard = NSPasteboard.withUniqueName()
   defer { pasteboard.releaseGlobally() }
   pasteboard.setString("private snapshot\r\n世界", forType: .string)

@@ -106,6 +106,13 @@ void tests() {
     require(!send->isEnabled(), "unpaired send enabled");
     require(window.findChild<QPushButton*>("manageDevices") != nullptr,
             "device management is missing");
+    QTimer::singleShot(0, &window, [&] {
+        auto* manager = window.findChild<QDialog*>("devicesDialog");
+        require(manager && manager->findChild<QPushButton*>("importDevices"),
+                "first-use device management cannot import a backup");
+        manager->accept();
+    });
+    window.findChild<QPushButton*>("manageDevices")->click();
     load->click();
     require(content->toPlainText().contains("private clipboard") && kind->currentIndex() == 1,
             "explicit clipboard load failed");
