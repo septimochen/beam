@@ -2,8 +2,8 @@ package org.beam.android
 
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
-import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.ReaderException
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
 
@@ -21,9 +21,10 @@ internal object PairingQr {
     val text =
       try {
         QRCodeReader().decode(bitmap, mapOf(DecodeHintType.TRY_HARDER to true)).text
-      } catch (_: NotFoundException) {
+      } catch (_: ReaderException) {
         // The standard pure-symbol path also handles screen captures and
-        // perfectly aligned symbols whose dense data resembles finder patterns.
+        // aligned symbols whose dense data resembles finder patterns. A false
+        // detection can fail format/checksum validation as well as discovery.
         QRCodeReader().decode(bitmap, mapOf(DecodeHintType.PURE_BARCODE to true)).text
       }
     require(text.length <= 2048 && text.startsWith("beam-pair:1:")) {
