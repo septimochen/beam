@@ -276,7 +276,6 @@ void show_devices_dialog(QWidget* parent, const Config& config, Service& service
             QObject::connect(edit, &QPushButton::clicked, &dialog, [&, device] {
                 attempt([&] {
                     const auto saved = edit_device(&dialog, service, device, changed);
-                    changed();
                     render();
                     if (saved)
                         status->setText("Saved device changes.");

@@ -6,6 +6,7 @@ struct DevicesView: View {
   @State private var search = ""
   @State private var editing: ManagedDevice?
   @State private var removing: ManagedDevice?
+  @State private var showUnpair = false
   @State private var backup = ""
   @State private var preview: [String] = []
   @State private var showRestore = false
@@ -107,7 +108,10 @@ struct DevicesView: View {
               Button("Check connection") { model.checkDevice(device.name) }.disabled(model.checking)
               Menu {
                 Button("View certificate") { editing = device }
-                Button("Unpair device…", role: .destructive) { removing = device }
+                Button("Unpair device…", role: .destructive) {
+                  removing = device
+                  showUnpair = true
+                }
               } label: {
                 Image(systemName: "ellipsis")
               }.menuStyle(.borderlessButton).frame(width: 26)
@@ -133,10 +137,8 @@ struct DevicesView: View {
     }
     .sheet(item: $editing) { DeviceEditor(model: model, device: $0) }
     .confirmationDialog(
-      "Unpair \(removing?.name ?? "device")?",
-      isPresented: Binding(
-        get: { removing != nil }, set: { if !$0 { removing = nil } }
-      ), titleVisibility: .visible
+      "Unpair \(removing?.name ?? "device")?", isPresented: $showUnpair,
+      titleVisibility: .visible
     ) {
       Button("Unpair", role: .destructive) {
         if let device = removing { model.unpair(device.name) }
