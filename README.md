@@ -50,6 +50,10 @@ Desktop apps provide **Add device**, QR display, nearby selection, and invitatio
 paste. Android also scans QR codes. No accounts or internet service are required.
 See [pairing](docs/pairing.md) for recovery and advanced manual PEM pairing.
 
+To revoke a device, select it and choose **Unpair device** in the app, or run
+`./build/beam unpair NAME` (use `./build/beam peers` to list names). This removes
+trust on this device only; pair again to reconnect.
+
 ### 3. Start the receiver
 
 ```sh

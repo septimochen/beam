@@ -77,6 +77,11 @@ File drops and explicit clipboard reads only select content for a subsequent
 Send action. Success notifications follow the returned verified transfer result.
 See [desktop](desktop.md) for the clipboard privacy design and platform limits.
 
+Unpairing joins all workers before removing local trust; the frontend then
+refreshes its device selection and resumes reception for any remaining peers.
+Cancelled, unauthenticated connection attempts shut down locally without waiting
+for a remote handshake timeout; authenticated connections retain typed peer errors.
+
 The Android app in `android/` uses platform Kotlin widgets and a bound/started
 foreground service. `src/android/session` translates bounded value commands into
 IdentityStore and the existing `src/desktop/service` worker owner; both desktop

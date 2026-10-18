@@ -119,11 +119,23 @@ if wait_receiver; then echo 'reissued server published transfer'; exit 1; fi
 unset receiver_cert
 # Removing one peer leaves other peers usable but immediately denies new sessions
 # from the removed identity. Existing sessions retain their initial trust snapshot.
-"$beam" unpair alice --state-dir "$root/bob"
+"$beam" identity show --state-dir "$root/bob" >identity-before-unpair.log
+"$beam" unpair alice --state-dir "$root/bob" >unpair.log
+grep -q 'Unpaired alice on this device' unpair.log
+if "$beam" unpair alice --state-dir "$root/bob" >unpair-again.log 2>&1; then echo 'missing peer silently unpaired'; exit 1; fi
 start_receiver
 if send denied.bin; then echo 'revoked sender accepted'; exit 1; fi
 if wait_receiver; then echo 'revoked sender published transfer'; exit 1; fi
+sender=charlie
+printf 'remaining peer' >remaining.bin
+start_receiver
+if ! send remaining.bin; then cat sender.log receiver.log; exit 1; fi
+if ! wait_receiver; then cat receiver.log; exit 1; fi
+cmp remaining.bin output/remaining.bin
+unset sender
 "$beam" unpair charlie --state-dir "$root/bob"
+"$beam" identity show --state-dir "$root/bob" >identity-after-unpair.log
+cmp identity-before-unpair.log identity-after-unpair.log
 if "$beam" receive --state-dir "$root/bob" --listen "$port" --output output --timeout 1 --no-discovery >receiver.log 2>&1; then echo 'empty trust receiver accepted'; exit 1; fi
 grep -q 'no trusted peers' receiver.log
 if compgen -G 'output/.beam-*' >/dev/null; then echo 'pairing failures leaked partial files'; exit 1; fi

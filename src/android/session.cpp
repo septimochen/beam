@@ -117,14 +117,13 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         IdentityStore(state).pair(arguments[0], arguments[1], arguments[2], arguments[3]);
         break;
     case Command::unpair:
+        service.unpair(arguments[0]);
+        break;
     case Command::endpoint:
-        // Revocation cannot leave a listener using an earlier trust snapshot.
+        // Route edits keep the existing idle-only policy.
         if (service.is_receiving() || service.is_sending() || service.is_checking())
             throw std::logic_error("Stop transfers before editing paired devices");
-        if (command == Command::unpair)
-            IdentityStore(state).unpair(arguments[0]);
-        else
-            IdentityStore(state).set_endpoint(arguments[0], arguments[1]);
+        IdentityStore(state).set_endpoint(arguments[0], arguments[1]);
         break;
     case Command::send: {
         ContentKind kind;

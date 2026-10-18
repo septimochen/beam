@@ -56,6 +56,7 @@ typedef NS_ENUM(NSInteger, BeamTransferStage) {
 @property(nonatomic, readonly) BOOL checking;
 @property(nonatomic, readonly, copy) NSString* version;
 - (nullable NSArray<NSString*>*)peersAndReturnError:(NSError**)error;
+- (BOOL)unpairPeer:(NSString*)peer error:(NSError**)error;
 - (BOOL)sendToPeer:(NSString*)peer
               kind:(BeamContentKind)kind
               file:(NSString*)file

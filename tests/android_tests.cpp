@@ -103,7 +103,7 @@ void tests() {
         std::ofstream(source) << content;
         android.call(Command::receive, {output.string()});
         await(android, 1, 0);
-        rejects([&] { android.call(Command::unpair, {"laptop"}); });
+        rejects([&] { android.call(Command::endpoint, {"laptop", "127.0.0.1:4269"}); });
         desktop.call(Command::send,
                      {"phone", kind, kind == std::string("file") ? source.string() : "",
                       kind == std::string("file") ? "" : content});
@@ -118,10 +118,11 @@ void tests() {
     }
     android.call(Command::receive, {output.string()});
     await(android, 1, 0);
-    // Joined destruction cancels a blocked listener without lifetime races.
-    android.call(Command::stop, {});
-    idle(android);
+    rejects([&] { android.call(Command::unpair, {"missing"}); });
+    require(android.call(Command::busy, {})[1] == "1", "invalid unpair stopped reception");
     android.call(Command::unpair, {"laptop"});
+    require(android.call(Command::busy, {}) == std::vector<std::string>{"0", "0", "0"},
+            "Android unpair retained a worker using revoked trust");
     require(android.call(Command::peers, {}).empty(), "Android revocation failed");
     Session reopened(fixture.root / "android");
     require(reopened.call(Command::identity, {}) == phone,

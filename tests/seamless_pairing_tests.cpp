@@ -164,6 +164,20 @@ int main() {
         pending.prepare_pairing(host_peer);
         pending.forget_incomplete_pairing();
         require(pending.peers().size() == 1, "forget removed a previously committed peer");
+        pending.prepare_pairing(host_peer);
+        pending.unpair(host_peer.name);
+        require(pending.peers().empty() && !pending.has_incomplete_pairing(),
+                "unpair retained trust or its interrupted pairing journal");
+        fails([&] { static_cast<void>(pending.commit_pairing()); });
+        const auto other_peer = beam::IdentityStore(root / "phone").peer("host");
+        pending.prepare_pairing(host_peer);
+        static_cast<void>(pending.commit_pairing());
+        pending.finish_pairing();
+        pending.prepare_pairing(other_peer);
+        pending.unpair(host_peer.name);
+        require(pending.peers().empty() && pending.has_incomplete_pairing(),
+                "unpair discarded another device's pending approval");
+        pending.forget_incomplete_pairing();
         // PIN success uses the same full-certificate proof and reciprocal flow.
         host.host();
         invitation = await(host, beam::PairingState::hosting);

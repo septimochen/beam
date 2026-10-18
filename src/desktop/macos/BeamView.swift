@@ -2,6 +2,8 @@ import SwiftUI
 
 struct BeamView: View {
   @ObservedObject var model: DesktopModel
+  @State private var showUnpair = false
+  @State private var unpairTarget = ""
 
   var body: some View {
     ScrollView {
@@ -30,6 +32,10 @@ struct BeamView: View {
             HStack {
               Button("Check connectivity", action: model.checkConnectivity)
                 .disabled(model.peers.isEmpty || model.checking)
+              Button("Unpair device…") {
+                unpairTarget = model.peer
+                showUnpair = true
+              }.disabled(model.peer.isEmpty)
               Text(model.connectivityStatus).textSelection(.enabled)
             }
             Picker("Content type", selection: $model.kind) {
@@ -104,6 +110,16 @@ struct BeamView: View {
     }.frame(minWidth: 600, minHeight: 640)
       .sheet(isPresented: $model.showPairing, onDismiss: model.closePairing) {
         PairingView(model: model)
+      }
+      .confirmationDialog(
+        "Unpair \(unpairTarget)?", isPresented: $showUnpair, titleVisibility: .visible
+      ) {
+        Button("Unpair", role: .destructive) { model.unpair(unpairTarget) }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text(
+          "Active transfers and connectivity checks will stop. This removes trust on this device only. Pair again to reconnect."
+        )
       }
   }
 

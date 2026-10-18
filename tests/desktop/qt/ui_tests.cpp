@@ -1,5 +1,6 @@
 #include "beam/identity.hpp"
 #include "desktop/qt/window.hpp"
+#include <QAbstractButton>
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
@@ -9,12 +10,14 @@
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QUrl>
 #include <chrono>
 #include <fstream>
@@ -100,6 +103,8 @@ void tests() {
             "unset receive folder did not default to Downloads");
     require(content->toPlainText().isEmpty(), "startup read the clipboard");
     require(!send->isEnabled(), "unpaired send enabled");
+    require(!window.findChild<QPushButton*>("unpairDevice")->isEnabled(),
+            "unpair enabled without a selected device");
     load->click();
     require(content->toPlainText().contains("private clipboard") && kind->currentIndex() == 1,
             "explicit clipboard load failed");
@@ -210,11 +215,42 @@ void tests() {
         await([&] {
             return invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
         });
-        beam::IdentityStore(right).unpair("left");
+        const auto extra = beam::IdentityStore(root / "extra", true).initialize();
+        std::ofstream(root / "extra.pem") << extra.certificate_pem;
+        beam::IdentityStore(right).pair("spare", root / "extra.pem", extra.fingerprint);
         invalid.findChild<QPushButton*>("refreshPeers")->click();
+        await([&] {
+            return invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
+        });
+        auto* unpair = invalid.findChild<QPushButton*>("unpairDevice");
+        auto* devices = invalid.findChild<QComboBox*>("peers");
+        devices->setCurrentText("left");
+        const auto confirm = [&](QMessageBox::StandardButton answer) {
+            QTimer::singleShot(0, &invalid, [&, answer] {
+                auto* dialog = invalid.findChild<QMessageBox*>();
+                require(dialog != nullptr, "unpair skipped confirmation");
+                dialog->button(answer)->click();
+            });
+            unpair->click();
+        };
+        confirm(QMessageBox::Cancel);
+        require(beam::IdentityStore(right).peers().size() == 2, "cancelled unpair changed trust");
+        confirm(QMessageBox::Yes);
+        await([&] {
+            return devices->count() == 1 && devices->currentText() == "spare" &&
+                   invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
+        });
+        require(beam::IdentityStore(right).identity().fingerprint == right_identity.fingerprint &&
+                    beam::IdentityStore(left).peer("right").identity.fingerprint ==
+                        right_identity.fingerprint,
+                "unpair changed identity or remote trust");
+        confirm(QMessageBox::Yes);
         await([&] {
             return invalid.findChild<QLabel*>("receiveStatus")->text().contains("pair a device");
         });
+        require(devices->count() == 0 && !unpair->isEnabled() &&
+                    !invalid.findChild<QPushButton*>("send")->isEnabled(),
+                "last-device unpair left stale controls");
     }
 }
 } // namespace

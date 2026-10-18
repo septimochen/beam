@@ -173,9 +173,22 @@ To revoke a peer:
 ./build/beam unpair laptop
 ```
 
-Removal denies new transfers when credentials are next loaded. A running transfer
-or listener retains its original trust snapshot; stop and restart it to apply
-revocation immediately. To replace a device, remove its old identity on each peer,
+In macOS, Linux, or Android, select the device in the paired-device picker and
+choose **Unpair device**. Confirm the named device to remove it. Cancel leaves
+trust and transfers unchanged. The app stops and joins active transfers and
+connectivity checks before removal, then refreshes the picker and restarts
+reception for the remaining devices. Removing the last peer stops reception.
+Android preserves an explicit receiving Stop across this change.
+
+Unpairing removes local trust and any matching interrupted-pairing journal; it
+keeps your identity, other paired devices, settings, and received files. The other
+device keeps its own record until you unpair there too. Reconnecting requires
+pairing again.
+
+CLI removal denies new transfers when credentials are next loaded. A separately
+running transfer or listener retains its original trust snapshot; stop and restart
+those processes to apply CLI revocation immediately. To replace a device, remove
+its old identity on each peer,
 verify the replacement fingerprint independently, and pair again.
 
 ## Storage and recovery

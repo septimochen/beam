@@ -550,8 +550,19 @@ class QuicConnection final : public Connection {
     }
     void abort(TransferErrorCode code) noexcept override {
         close_code.store(code);
+        bool cancelled_handshake = false;
+        {
+            std::lock_guard lock(mutex);
+            cancelled_handshake = code == TransferErrorCode::cancelled && !connected;
+        }
+        // An unauthenticated, unresponsive endpoint cannot acknowledge a close.
+        // Avoid waiting for its handshake timeout when joining cancelled workers.
+        // Authenticated connections still notify the peer with the typed error.
         if (handle)
-            runtime.api->ConnectionShutdown(handle, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE,
+            runtime.api->ConnectionShutdown(handle,
+                                            cancelled_handshake
+                                                ? QUIC_CONNECTION_SHUTDOWN_FLAG_SILENT
+                                                : QUIC_CONNECTION_SHUTDOWN_FLAG_NONE,
                                             static_cast<std::uint16_t>(code));
     }
     std::unique_ptr<Stream> open(bool uni) override {

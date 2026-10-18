@@ -86,6 +86,18 @@ final class DesktopModel: ObservableObject {
     startReceiving()
   }
 
+  func unpair(_ name: String) {
+    do {
+      try bridge.unpairPeer(name)
+      poll()
+      connectivityStatus = ""
+      refreshPeers()
+      lastResult = "Unpaired \(name) on this device. Pair again to reconnect."
+    } catch {
+      lastResult = error.localizedDescription
+    }
+  }
+
   func selectReceiveFolder(_ directory: String) {
     guard !directory.isEmpty else { return }
     output = directory

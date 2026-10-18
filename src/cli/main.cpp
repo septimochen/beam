@@ -405,7 +405,7 @@ int identity_command(int argc, char** argv) {
     } else if (command == "unpair") {
         beam::IdentityStore store(state_directory(options));
         store.unpair(positional[0]);
-        std::cout << "Removed trusted peer " << positional[0] << '\n';
+        std::cout << "Unpaired " << positional[0] << " on this device. Pair again to reconnect.\n";
     } else {
         const auto choices = static_cast<unsigned>(options.contains("--endpoint")) +
                              static_cast<unsigned>(options.contains("--tailscale-endpoint")) +

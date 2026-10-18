@@ -196,7 +196,11 @@ void tests(bool live_discovery) {
     sender.send({"bob", ContentKind::text, {}, "after rejection"});
     sent.await(Direction::send, EventKind::completed);
     received.await(Direction::receive, EventKind::completed);
-    receiver.stop_receiving();
+    rejects([&] { receiver.unpair("missing"); });
+    require(receiver.is_receiving(), "invalid unpair stopped reception");
+    receiver.unpair("alice");
+    require(!receiver.is_receiving() && IdentityStore(right).peers().empty(),
+            "unpair retained a listener or trusted peer");
     received.await(Direction::receive, EventKind::stopped);
 #ifdef BEAM_HAS_DISCOVERY
     if (live_discovery) {
@@ -208,10 +212,6 @@ void tests(bool live_discovery) {
     }
 #endif
     // Empty trust fails before binding and the next start loads the changed store.
-    {
-        IdentityStore store(right);
-        store.unpair("alice");
-    }
     receiver.start_receiving(output);
     received.await(Direction::receive, EventKind::failed);
     received.await(Direction::receive, EventKind::stopped);
@@ -232,6 +232,14 @@ void tests(bool live_discovery) {
     }
     require(std::chrono::steady_clock::now() - start < std::chrono::seconds(2),
             "shutdown did not cancel/join sender");
+    sender.send({"bob", ContentKind::text, {}, "revoke during connect"});
+    sender.check_peer("bob");
+    const auto revoke_started = std::chrono::steady_clock::now();
+    sender.unpair("bob");
+    require(!sender.is_sending() && !sender.is_checking() && IdentityStore(left).peers().empty(),
+            "unpair retained outgoing workers or trust");
+    require(std::chrono::steady_clock::now() - revoke_started < std::chrono::seconds(2),
+            "unpair did not cancel/join outgoing workers");
 }
 } // namespace
 int main(int argc, char** argv) {

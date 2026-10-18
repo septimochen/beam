@@ -385,12 +385,17 @@ private func tests() throws {
     invalid.poll()
     return invalid.receiving && invalid.receiveStatus.hasPrefix("Listening")
   }
-  _ = try runCLI(executable, ["unpair", "left", "--state-dir", stateRoot + "/right"])
-  invalid.refreshPeers()
+  invalid.unpair("missing")
+  try require(invalid.receiving && invalid.peers == ["left"], "Invalid unpair stopped reception")
+  invalid.unpair("left")
   try waitUntil {
     invalid.poll()
     return !invalid.receiving && invalid.receiveStatus.contains("Add device")
   }
+  try require(invalid.peer.isEmpty && invalid.peers.isEmpty, "Unpair retained the device picker")
+  try require(invalid.lastResult.contains("Unpaired left"), "Unpair omitted confirmation status")
+  let remainingPeers = try invalidBridge.peers()
+  try require(remainingPeers.isEmpty, "Native unpair did not persist trust removal")
   invalid.shutdown()
 }
 

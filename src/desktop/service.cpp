@@ -23,7 +23,8 @@ Service::Service(Config configuration) : config(std::move(configuration)) {
     if (!config.port || config.timeout.count() <= 0 || config.timeout > std::chrono::hours(24))
         throw std::invalid_argument("Invalid desktop listen port or timeout");
 }
-Service::~Service() {
+Service::~Service() { stop_workers(); }
+void Service::stop_workers() {
     cancel_send();
     stop_receiving();
     cancel_check();
@@ -41,6 +42,15 @@ bool Service::is_checking() const noexcept { return checking.load(); }
 void Service::cancel_check() { checker.request_stop(); }
 void Service::cancel_send() { sender.request_stop(); }
 void Service::stop_receiving() { receiver.request_stop(); }
+void Service::unpair(const std::string& name) {
+    {
+        IdentityStore store(config.state_directory);
+        static_cast<void>(store.peer(name));
+    }
+    // Release the store lock before joining workers that may be loading trust.
+    stop_workers();
+    IdentityStore(config.state_directory).unpair(name);
+}
 void Service::publish(Event event) {
     std::lock_guard lock(mutex);
     auto& latest = event.direction == Direction::send ? send_progress : receive_progress;

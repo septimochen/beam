@@ -435,6 +435,9 @@ void IdentityStore::unpair(const std::string& name) {
     File file(openat(implementation->root.descriptor, (name + ".peer").c_str(),
                      O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC));
     validate_file(file.descriptor, true);
+    if (has_incomplete_pairing() &&
+        implementation->read("pairing.journal").starts_with(name + "\n"))
+        finish_pairing();
     checked(unlinkat(implementation->root.descriptor, (name + ".peer").c_str(), 0) == 0 &&
                 fsync(implementation->root.descriptor) == 0,
             "remove trusted peer failed");

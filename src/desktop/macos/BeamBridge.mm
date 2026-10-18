@@ -242,6 +242,15 @@ void report(NSError** output, const std::exception& error) {
         return nil;
     }
 }
+- (BOOL)unpairPeer:(NSString*)peer error:(NSError**)error {
+    try {
+        [self service].unpair(utf8(peer));
+        return YES;
+    } catch (const std::exception& exception) {
+        report(error, exception);
+        return NO;
+    }
+}
 - (BOOL)sendToPeer:(NSString*)peer
               kind:(BeamContentKind)kind
               file:(NSString*)file

@@ -53,6 +53,7 @@ class MainActivity : Activity() {
   private lateinit var receiveProgressLabel: TextView
   private lateinit var connectivity: TextView
   private lateinit var checkConnectivity: Button
+  private lateinit var unpair: Button
   private lateinit var receivedText: EditText
   private lateinit var outgoingHeader: LinearLayout
   private var uri: Uri? = null
@@ -160,6 +161,12 @@ class MainActivity : Activity() {
     label("Share directly with your paired devices. Review your selection, then Send.")
     label("Paired device")
     devices = Spinner(this).also { column.addView(it) }
+    unpair =
+      button("Unpair device") {
+        confirmUnpair(
+          peerNames.getOrNull(devices.selectedItemPosition) ?: error("Choose a paired device")
+        )
+      }
     button("Manage devices and identity") { manage() }
     button("Settings") { settings() }
     checkConnectivity =
@@ -467,6 +474,7 @@ class MainActivity : Activity() {
       receive.isEnabled = !pendingReceive && !requestingPermissions
       checkConnectivity.isEnabled =
         peerNames.isNotEmpty() && !core.checking && !requestingPermissions
+      unpair.isEnabled = peerNames.isNotEmpty()
       connectivity.text = core.connectivityStatus
       sendProgress.progress = core.sendPercent
       receiveProgress.progress = core.receivePercent
@@ -549,7 +557,7 @@ class MainActivity : Activity() {
           "Show / export my public certificate",
           "Pair a device",
           "Update device address",
-          "Remove paired device",
+          "Unpair device",
         )
       ) { _, which ->
         attempt {
@@ -695,22 +703,10 @@ class MainActivity : Activity() {
   private fun choosePeer(remove: Boolean) {
     require(peerNames.isNotEmpty()) { "No paired devices" }
     AlertDialog.Builder(this)
-      .setTitle(if (remove) "Remove device" else "Update address")
+      .setTitle(if (remove) "Unpair device" else "Update address")
       .setItems(peerNames.toTypedArray()) { _, index ->
         val peer = peerNames[index]
-        if (remove)
-          AlertDialog.Builder(this)
-            .setTitle("Remove $peer?")
-            .setMessage("Stop active transfers first. This revokes trust for new transfers.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Remove") { _, _ ->
-              attempt {
-                checkNotNull(service).call(Command.UNPAIR, peer)
-                refreshPeers()
-                report("Removed $peer")
-              }
-            }
-            .show()
+        if (remove) confirmUnpair(peer)
         else {
           val field =
             EditText(this).apply {
@@ -728,6 +724,25 @@ class MainActivity : Activity() {
               }
             }
             .show()
+        }
+      }
+      .show()
+  }
+
+  private fun confirmUnpair(peer: String) {
+    AlertDialog.Builder(this)
+      .setTitle("Unpair $peer?")
+      .setMessage(
+        "Active transfers and connectivity checks will stop. This removes trust on this device only. Pair again to reconnect."
+      )
+      .setNegativeButton("Cancel", null)
+      .setPositiveButton("Unpair") { _, _ ->
+        attempt {
+          val core = checkNotNull(service)
+          pendingReceive = false
+          core.unpair(peer)
+          receiveOnLaunchPending = core.receiveOnLaunchPending
+          refreshPeers()
         }
       }
       .show()

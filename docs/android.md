@@ -9,6 +9,12 @@ The launcher uses Beam's adaptive three-ray icon with day/night colors and a
 monochrome layer for themed icons. Transfer notifications use the monochrome
 mark without a launcher background. See [shared icon sources](../assets/icons/README.md).
 
+To remove trust, select a paired device and tap **Unpair device**, then confirm.
+Active transfers, file staging, and connectivity checks stop before removal.
+Reception resumes for remaining devices if it was enabled; an explicit Stop is
+preserved. Removing the last device stops reception. Your identity and received
+files remain. The other device must be unpaired separately.
+
 ## Build
 
 Install JDK 17+, Android command-line tools (or Android Studio), CMake 3.25+,

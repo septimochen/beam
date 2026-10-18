@@ -28,6 +28,10 @@ current certificate authorization model and [protocol](protocol.md) for wire val
 - Keep identity keys and peer records in an owner-only store. Reject symlink and
   hardlink records, bound file/peer counts, serialize mutations, and publish them
   atomically. Never silently replace a damaged identity or an existing peer.
+- App unpairing must cancel and join workers holding trust snapshots before
+  removing the peer, discard its matching interrupted-pairing journal, and reload
+  trust before restarting reception. It revokes only local trust; no unauthenticated
+  remote message can revoke or restore a peer.
 
 ## Remote input and files
 

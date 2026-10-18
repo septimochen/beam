@@ -310,6 +310,26 @@ class TransferService : Service() {
     status = "Stopping receiver…"
   }
 
+  internal fun unpair(peer: String) {
+    require(call(Command.PEERS).chunked(3).any { it[0] == peer }) { "Device is no longer paired" }
+    val resume = receiving || receiveOnLaunchPending
+    // Invalidate document staging too, so a late provider read cannot start a send.
+    cancelSend()
+    try {
+      call(Command.UNPAIR, peer) // Cancels and joins all native workers before revocation.
+    } finally {
+      val busy = call(Command.BUSY)
+      sending = busy[0] == "1"
+      receiving = busy[1] == "1"
+      checking = busy[2] == "1"
+      if (!sending) cleanupStaged()
+      receiveOnLaunchPending = resume
+      finishIdle()
+    }
+    connectivityStatus = ""
+    report("Unpaired $peer on this device. Pair again to reconnect.")
+  }
+
   private fun cleanupStaged() {
     staged?.deleteRecursively()
     staged = null

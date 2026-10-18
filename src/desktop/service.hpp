@@ -38,6 +38,7 @@ class Service {
     std::optional<Event> send_progress, receive_progress;
     std::atomic<bool> sending{false}, receiving{false}, checking{false};
     std::jthread sender, receiver, checker;
+    void stop_workers();
     void publish(Event event);
     void receive_loop(std::stop_token stop, const std::filesystem::path& directory);
 
@@ -52,6 +53,9 @@ class Service {
     void cancel_check();
     void cancel_send();
     void stop_receiving();
+    // Joins workers before removing trust, so no old credential snapshot survives.
+    // The frontend may restart reception for the remaining peers afterwards.
+    void unpair(const std::string& peer);
     [[nodiscard]] bool is_sending() const noexcept;
     [[nodiscard]] bool is_receiving() const noexcept;
     [[nodiscard]] bool is_checking() const noexcept;

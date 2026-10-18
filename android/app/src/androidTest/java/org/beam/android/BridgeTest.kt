@@ -66,6 +66,7 @@ class BridgeTest {
     val root =
       File(context.cacheDir.canonicalFile, "launch-${UUID.randomUUID()}").apply { mkdirs() }
     val alias = "launch-${UUID.randomUUID().toString().take(8)}"
+    val spareAlias = "spare-${UUID.randomUUID().toString().take(8)}"
     var activity: android.app.Activity? = null
     try {
       assertTrue(connected.await(10, TimeUnit.SECONDS))
@@ -195,6 +196,72 @@ class BridgeTest {
         instrumentation.runOnMainSync { checkNotNull(core).stopReceiving() }
         waitForService { !checkNotNull(core).receiving }
         instrumentation.runOnMainSync { checkNotNull(core).saveSettings("received", 4269, 30) }
+        NativeSession(File(root, "spare").path).use { spare ->
+          val extra = spare.call(Command.IDENTITY)
+          val extraCertificate = File(root, "spare.pem").apply { writeText(extra[2]) }
+          instrumentation.runOnMainSync {
+            checkNotNull(core).call(Command.PAIR, spareAlias, extraCertificate.path, extra[0], "")
+            checkNotNull(core).startReceiving()
+          }
+          waitForService { checkNotNull(core).status.startsWith("Receiving from paired devices") }
+          recreate()
+          fun tap(label: String) {
+            val deadline = System.nanoTime() + 5_000_000_000L
+            while (System.nanoTime() < deadline) {
+              val node =
+                instrumentation.uiAutomation.rootInActiveWindow
+                  ?.findAccessibilityNodeInfosByText(label)
+                  ?.firstOrNull { it.isClickable && it.text?.toString().equals(label, true) }
+              if (node?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) return
+              Thread.sleep(50)
+            }
+            error("Missing unpair control: $label")
+          }
+          tap("Unpair device")
+          tap("Cancel")
+          instrumentation.runOnMainSync {
+            assertTrue(checkNotNull(core).call(Command.PEERS).chunked(3).any { it[0] == alias })
+            assertTrue(checkNotNull(core).receiving)
+          }
+          tap("Unpair device")
+          tap("Unpair")
+          waitForService {
+            checkNotNull(core).call(Command.PEERS).chunked(3).map { it[0] } == listOf(spareAlias) &&
+              checkNotNull(core).receiving
+          }
+          desktop.call(Command.CHECK, "phone")
+          assertTrue(
+            "Removed device still authenticated",
+            await(desktop, "2", "3")[2].contains("unavailable"),
+          )
+          instrumentation.runOnMainSync { checkNotNull(core).stopReceiving() }
+          waitForService { !checkNotNull(core).receiving }
+          instrumentation.runOnMainSync {
+            checkNotNull(core).call(Command.PAIR, alias, certificate.path, identity[0], "")
+          }
+          recreate()
+          tap("Unpair device")
+          tap("Unpair")
+          waitForService {
+            checkNotNull(core).call(Command.PEERS).chunked(3).map { it[0] } == listOf(spareAlias)
+          }
+          Thread.sleep(300)
+          instrumentation.runOnMainSync {
+            assertFalse("Unpair ignored an explicit Stop", checkNotNull(core).receiving)
+            checkNotNull(core).startReceiving()
+          }
+          waitForService { checkNotNull(core).status.startsWith("Receiving from paired devices") }
+          tap("Unpair device")
+          tap("Unpair")
+          waitForService {
+            checkNotNull(core).call(Command.PEERS).isEmpty() && !checkNotNull(core).receiving
+          }
+          recreate()
+          instrumentation.runOnMainSync {
+            assertEquals(phone, checkNotNull(core).call(Command.IDENTITY))
+            assertFalse(checkNotNull(core).receiving)
+          }
+        }
       }
     } finally {
       instrumentation.runOnMainSync {
@@ -202,7 +269,12 @@ class BridgeTest {
         activity?.finish()
       }
       waitForService { core?.receiving != true }
-      instrumentation.runOnMainSync { core?.call(Command.UNPAIR, alias) }
+      instrumentation.runOnMainSync {
+        for (name in listOf(alias, spareAlias)) {
+          if (core?.call(Command.PEERS)?.chunked(3)?.any { it[0] == name } == true)
+            core?.call(Command.UNPAIR, name)
+        }
+      }
       if (bound) context.unbindService(connection)
       root.deleteRecursively()
     }

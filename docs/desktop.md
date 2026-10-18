@@ -116,6 +116,12 @@ with `beam peer NAME --endpoint IP:PORT` or its optional Tailscale route. Click
 **Refresh devices** after CLI changes. Discovery never chooses or approves a peer.
 The app reports missing identity, peers, or addresses with setup guidance.
 
+Select a device and click **Unpair device…** to revoke its local trust. Confirmation
+names the device and explains that active transfers and connectivity checks stop.
+The picker refreshes and reception restarts for remaining devices; with no peers,
+reception stops. Cancel makes no changes. Identities and received files are kept;
+the other device's trust record is managed there separately.
+
 Options are `--state-dir DIR`, `--output DIR`, `--listen PORT` (default 4269), and
 `--no-discovery`. Reception starts automatically once a paired identity is
 available. The default receive folder is `~/Downloads`. `--output` overrides
