@@ -4,12 +4,16 @@
 #include "transport/pairing_tls.hpp"
 #include <atomic>
 #include <chrono>
+#ifdef __APPLE__
+#include <unistd.h>
+#else
+#include <stdlib.h>
+#endif
 #include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <thread>
-#include <unistd.h>
 
 namespace {
 void require(bool ok, const std::string& message) {
@@ -147,6 +151,13 @@ int main() {
             recovery.finish_pairing();
         }
         // Publication survives process restart and never overwrites an alias.
+        {
+            beam::IdentityStore lost(root / "lost-key", true);
+            lost.initialize();
+            lost.prepare_pairing(host_peer);
+            std::filesystem::remove(root / "lost-key" / "identity.pem");
+            fails([&] { static_cast<void>(lost.initialize()); });
+        }
         auto conflicting = host_peer;
         conflicting.name = "different-alias";
         fails([&] { pending.prepare_pairing(conflicting); });

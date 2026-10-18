@@ -9,7 +9,11 @@
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/ssl.h>
 #include <mutex>
+#ifdef __linux__
+#include <linux/if.h>
+#else
 #include <net/if.h>
+#endif
 #include <netdb.h>
 #include <openssl/evp.h>
 #include <poll.h>

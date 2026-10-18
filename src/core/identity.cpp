@@ -323,8 +323,9 @@ IdentityStore::IdentityStore(const std::filesystem::path& directory, bool create
 IdentityStore::~IdentityStore() = default;
 DeviceIdentity IdentityStore::initialize() {
     if (!implementation->exists("identity.pem")) {
-        checked(peers().empty(), "device identity missing from a paired store; restore it or "
-                                 "explicitly start with a new store");
+        checked(peers().empty() && !implementation->exists("pairing.journal"),
+                "device identity missing from a paired store; restore it or "
+                "explicitly start with a new store");
         implementation->write("identity.pem", generate_identity());
     }
     return identity();

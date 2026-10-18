@@ -166,6 +166,8 @@ int pairing_command(int argc, char** argv) {
     if (command != "host" && command != "nearby" && command != "join" && command != "forget")
         throw std::invalid_argument("Unknown pairing command");
     beam::PairingOptions options{beam::default_state_directory()};
+    if (command == "host" || command == "join")
+        options.transfer_port = beam::load_config(beam::default_config_file()).listen_port;
     std::string endpoint;
     bool qr = false;
     std::map<std::string, bool> seen;
