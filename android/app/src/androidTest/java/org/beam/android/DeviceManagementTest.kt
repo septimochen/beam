@@ -3,6 +3,7 @@ package org.beam.android
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.drawable.ColorDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ScrollView
@@ -111,10 +112,11 @@ class DeviceManagementTest {
           )) assertTrue("Missing $expected", labels.contains(expected))
         if (InstrumentationRegistry.getArguments().getString("renderDevices") == "true") {
           val container = activity.findViewById<ViewGroup>(android.R.id.content)
-          val column = (container.getChildAt(0) as ScrollView).getChildAt(0)
+          val scroll = container.getChildAt(0) as ScrollView
+          val column = scroll.getChildAt(0)
           val bitmap = Bitmap.createBitmap(column.width, column.height, Bitmap.Config.ARGB_8888)
           val canvas = Canvas(bitmap)
-          canvas.drawColor(android.graphics.Color.WHITE)
+          canvas.drawColor((scroll.background as ColorDrawable).color)
           column.draw(canvas)
           File(context.cacheDir, "devices-ui.png").outputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)

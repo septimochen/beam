@@ -1,4 +1,6 @@
 <resources>
     <item name="kind_file" type="id" />
     <item name="kind_text" type="id" />
+    <item name="send_card" type="id" />
+    <item name="receive_card" type="id" />
 </resources>

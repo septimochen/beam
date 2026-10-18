@@ -11,13 +11,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.OpenableColumns
 import android.text.InputFilter
-import android.view.Gravity
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -26,7 +26,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
-import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.content.edit
@@ -56,6 +55,10 @@ class MainActivity : Activity() {
   private lateinit var unpair: Button
   private lateinit var receivedText: EditText
   private lateinit var outgoingHeader: LinearLayout
+  private lateinit var fileContent: LinearLayout
+  private lateinit var cancelSend: Button
+  private lateinit var receiveSummary: TextView
+  private val ui by lazy { BeamUi(this) }
   private var uri: Uri? = null
   private var peerNames = emptyList<String>()
   private var exportFile: File? = null
@@ -86,207 +89,9 @@ class MainActivity : Activity() {
     }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    ui.applyTheme()
     super.onCreate(savedInstanceState)
-    val scroll = ScrollView(this)
-    val column =
-      LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        val padding = (20 * resources.displayMetrics.density).toInt()
-        setPadding(padding, padding, padding, padding)
-      }
-    // Target 36 draws edge-to-edge. Keep controls outside system bars/IME.
-    scroll.setOnApplyWindowInsetsListener { view, insets ->
-      if (Build.VERSION.SDK_INT >= 30) {
-        val bars =
-          insets.getInsets(
-            android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.ime()
-          )
-        view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-      } else {
-        @Suppress("DEPRECATION")
-        view.setPadding(
-          insets.systemWindowInsetLeft,
-          insets.systemWindowInsetTop,
-          insets.systemWindowInsetRight,
-          insets.systemWindowInsetBottom,
-        )
-      }
-      insets
-    }
-    scroll.addView(column)
-    setContentView(scroll)
-    column.addView(
-      Button(this).apply {
-        text = "Add device"
-        setOnClickListener {
-          attempt {
-            withNetwork {
-              val core = checkNotNull(service) { "Beam is starting" }
-              check(!core.sending && !core.checking) {
-                "Wait for the active transfer before pairing"
-              }
-              resumeAfterPairing = core.receiving || core.receiveOnLaunchPending
-              core.stopReceiving()
-              startActivityForResult(Intent(this@MainActivity, PairingActivity::class.java), 140)
-            }
-          }
-        }
-      }
-    )
-    if (Build.VERSION.SDK_INT >= 30) {
-      val appearance =
-        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-          android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-      window.insetsController?.setSystemBarsAppearance(appearance, appearance)
-    } else {
-      @Suppress("DEPRECATION")
-      window.decorView.systemUiVisibility =
-        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-    }
-    fun label(text: String, size: Float = 16f): TextView =
-      TextView(this).apply {
-        this.text = text
-        textSize = size
-        setPadding(0, 16, 0, 8)
-        column.addView(this)
-      }
-    fun button(text: String, action: () -> Unit): Button =
-      Button(this).apply {
-        this.text = text
-        column.addView(this)
-        setOnClickListener { attempt(action) }
-      }
-    label("Beam", 32f)
-    label("Share directly with your paired devices. Review your selection, then Send.")
-    label("Receive")
-    label("Files from paired devices save to Downloads automatically.")
-    receiveProgress =
-      ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).also {
-        it.max = 100
-        it.contentDescription = "Incoming transfer progress"
-        column.addView(it)
-      }
-    receiveProgressLabel = label("Receive: idle")
-    receivedFileStatus = label("Received files save to Downloads")
-    receivedFileStatus.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-    button("Show Downloads") {
-      startActivity(Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS))
-    }
-    receive =
-      button("Start receiving") {
-        val core = checkNotNull(service) { "Beam is starting" }
-        if (core.receiving) {
-          receiveOnLaunchPending = false
-          core.stopReceiving()
-        } else requestReceiving()
-        update()
-      }
-    label("Paired device")
-    devices = Spinner(this).also { column.addView(it) }
-    unpair =
-      button("Unpair device") {
-        confirmUnpair(
-          peerNames.getOrNull(devices.selectedItemPosition) ?: error("Choose a paired device")
-        )
-      }
-    button("Manage devices") { manage() }
-    button("Settings") { settings() }
-    checkConnectivity =
-      button("Check connectivity") {
-        val peer =
-          peerNames.getOrNull(devices.selectedItemPosition) ?: error("Choose a paired device")
-        withNetwork { checkNotNull(service).checkConnectivity(peer) }
-      }
-    connectivity = label("")
-    label("Content")
-    kinds =
-      RadioGroup(this).apply {
-        orientation = RadioGroup.HORIZONTAL
-        listOf("File", "Text").forEachIndexed { index, title ->
-          addView(
-            RadioButton(context).apply {
-              id = kindIds[index]
-              text = title
-            }
-          )
-        }
-        check(R.id.kind_file)
-        column.addView(this)
-      }
-    button("Choose file") { openDocument(PICK_FILE) }
-    selected = label("No file selected")
-    filename =
-      EditText(this).apply {
-        hint = "Filename"
-        contentDescription = "Outgoing filename"
-        setSingleLine()
-        filters = arrayOf(InputFilter.LengthFilter(255))
-        column.addView(this)
-      }
-    fun copyRow(title: String, content: () -> String): LinearLayout {
-      val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-      row.addView(TextView(this).apply { text = title }, LinearLayout.LayoutParams(0, -2, 1f))
-      row.addView(
-        Button(this).apply {
-          text = "Copy to clipboard"
-          setOnClickListener {
-            getSystemService(ClipboardManager::class.java)
-              .setPrimaryClip(ClipData.newPlainText("Beam text", content()))
-          }
-        }
-      )
-      column.addView(row)
-      return row
-    }
-    outgoingHeader = copyRow("Text to send") { review.text.toString() }
-    review =
-      EditText(this).apply {
-        hint = "Text to send (including URLs)"
-        contentDescription = "Review outgoing text"
-        minLines = 3
-        maxLines = 8
-        inputType =
-          android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        filters = arrayOf(InputFilter.LengthFilter(Selection.MAX_TEXT))
-        column.addView(this)
-      }
-    kinds.setOnCheckedChangeListener { _, _ -> updateContent() }
-    send =
-      button("Send") {
-        val peer =
-          peerNames.getOrNull(devices.selectedItemPosition)
-            ?: error("Pair and choose a device first")
-        val kind = listOf("file", "text")[kindIds.indexOf(kinds.checkedRadioButtonId)]
-        val core = checkNotNull(service) { "Beam is starting" }
-        val selectedUri = uri
-        val selectedName = filename.text.toString()
-        val selectedText = review.text.toString()
-        withNetwork {
-          checkNotNull(service) { "Beam is starting" }
-            .send(peer, kind, selectedUri, selectedName, selectedText)
-        }
-        update()
-      }
-    button("Cancel send") { service?.cancelSend() }
-    sendProgress =
-      ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).also {
-        it.max = 100
-        column.addView(it)
-      }
-    sendProgressLabel = label("Send: idle")
-    copyRow("Received text") { receivedText.text.toString() }
-    receivedText =
-      EditText(this).apply {
-        contentDescription = "Received text"
-        minLines = 3
-        maxLines = 8
-        keyListener = null
-        setTextIsSelectable(true)
-        column.addView(this)
-      }
-    button("Recover an unsaved file…") { receivedFiles() }
-    status = label("Starting Beam…")
-    status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    buildScreen()
     if (savedInstanceState != null) {
       // Keep Stop through activity recreation; a new process gets a fresh
       // automatic attempt only when the user opens the app again.
@@ -313,6 +118,218 @@ class MainActivity : Activity() {
       selected.text = if (uri == null) "No file selected" else "Selected file: ${filename.text}"
     } else acceptShare(intent)
     updateContent()
+  }
+
+  private fun button(title: String, primary: Boolean = false, action: () -> Unit) =
+    ui.button(title, primary) { attempt(action) }
+
+  private fun buildScreen() {
+    val column = ui.screen()
+    column.addView(ui.label("Beam", 30f, true))
+    column.addView(ui.label("Share directly with your paired devices.", 15f))
+    val navigation = ui.actionRow()
+    navigation.addView(button("Manage devices") { manage() }, ui.weight())
+    navigation.addView(button("+ Add device", true) { addDevice() }, ui.weight())
+    column.addView(navigation)
+    status = ui.label("Starting Beam…", 13f)
+    status.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    column.addView(status)
+
+    val outgoing = ui.card().apply { id = R.id.send_card }
+    column.addView(outgoing)
+    outgoing.addView(ui.label("Send", 22f, true))
+    outgoing.addView(ui.label("Paired device", 13f))
+    devices =
+      Spinner(this).apply {
+        contentDescription = "Paired device"
+        minimumHeight = ui.dp(48)
+        backgroundTintList = ColorStateList.valueOf(ui.accent)
+        outgoing.addView(this, LinearLayout.LayoutParams(-1, -2))
+      }
+    val deviceActions = ui.actionRow()
+    checkConnectivity =
+      button("Check connectivity") {
+        val peer =
+          peerNames.getOrNull(devices.selectedItemPosition) ?: error("Choose a paired device")
+        withNetwork { checkNotNull(service).checkConnectivity(peer) }
+      }
+    unpair =
+      button("Unpair device") {
+        confirmUnpair(
+          peerNames.getOrNull(devices.selectedItemPosition) ?: error("Choose a paired device")
+        )
+      }
+    deviceActions.addView(checkConnectivity, ui.weight())
+    deviceActions.addView(unpair, ui.weight())
+    outgoing.addView(deviceActions)
+    connectivity = ui.label("", 13f)
+    connectivity.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    outgoing.addView(connectivity)
+    outgoing.addView(ui.divider())
+    kinds =
+      RadioGroup(this).apply {
+        contentDescription = "Content type"
+        orientation = RadioGroup.HORIZONTAL
+        listOf("File", "Text").forEachIndexed { index, title ->
+          addView(
+            RadioButton(context).apply {
+              id = kindIds[index]
+              text = title
+              textSize = 14f
+              gravity = android.view.Gravity.CENTER
+              buttonDrawable = null
+              minHeight = ui.dp(48)
+              setTextColor(
+                ColorStateList(
+                  arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                  intArrayOf(ui.surface, ui.accent),
+                )
+              )
+              background = ui.rounded(ui.surface)
+              backgroundTintList =
+                ColorStateList(
+                  arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                  intArrayOf(ui.accent, ui.surface),
+                )
+            },
+            ui.weight(),
+          )
+        }
+        check(R.id.kind_file)
+        outgoing.addView(this)
+      }
+    fileContent = ui.column()
+    outgoing.addView(fileContent)
+    fileContent.addView(button("Choose file") { openDocument(PICK_FILE) })
+    selected = ui.label("No file selected")
+    fileContent.addView(selected)
+    fileContent.addView(ui.label("Filename", 13f))
+    filename =
+      EditText(this).apply {
+        hint = "Filename"
+        contentDescription = "Outgoing filename"
+        setSingleLine()
+        filters = arrayOf(InputFilter.LengthFilter(255))
+        ui.styleInput(this)
+        fileContent.addView(this)
+      }
+    outgoingHeader = copyRow("Text to send", outgoing) { review.text.toString() }
+    review =
+      EditText(this).apply {
+        hint = "Text to send (including URLs)"
+        contentDescription = "Review outgoing text"
+        minLines = 3
+        maxLines = 8
+        inputType =
+          android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        filters = arrayOf(InputFilter.LengthFilter(Selection.MAX_TEXT))
+        ui.styleInput(this)
+        outgoing.addView(this)
+      }
+    kinds.setOnCheckedChangeListener { _, _ -> updateContent() }
+    outgoing.addView(ui.label("Review your selection. Nothing is sent until you tap Send.", 13f))
+    val sendActions = ui.actionRow()
+    send =
+      button("Send", true) {
+        val peer =
+          peerNames.getOrNull(devices.selectedItemPosition)
+            ?: error("Pair and choose a device first")
+        val kind = listOf("file", "text")[kindIds.indexOf(kinds.checkedRadioButtonId)]
+        val selectedUri = uri
+        val selectedName = filename.text.toString()
+        val selectedText = review.text.toString()
+        withNetwork {
+          checkNotNull(service) { "Beam is starting" }
+            .send(peer, kind, selectedUri, selectedName, selectedText)
+        }
+        update()
+      }
+    send.isEnabled = false
+    cancelSend = button("Cancel send") { service?.cancelSend() }.apply { isEnabled = false }
+    sendActions.addView(send, ui.weight())
+    sendActions.addView(cancelSend, ui.weight())
+    outgoing.addView(sendActions)
+    sendProgress = ui.progress("Outgoing transfer progress")
+    outgoing.addView(sendProgress)
+    sendProgressLabel = ui.label("Send: idle", 13f)
+    outgoing.addView(sendProgressLabel)
+
+    val incoming = ui.card().apply { id = R.id.receive_card }
+    column.addView(incoming)
+    incoming.addView(ui.label("Receive", 22f, true))
+    receiveSummary = ui.label("Pair a device to start receiving automatically.")
+    incoming.addView(receiveSummary)
+    receiveProgress = ui.progress("Incoming transfer progress")
+    incoming.addView(receiveProgress)
+    receiveProgressLabel = ui.label("Receive: idle", 13f)
+    incoming.addView(receiveProgressLabel)
+    receivedFileStatus = ui.label("Received files save to Downloads")
+    receivedFileStatus.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    incoming.addView(receivedFileStatus)
+    val receiveActions = ui.actionRow()
+    receive =
+      button("Start receiving") {
+        val core = checkNotNull(service) { "Beam is starting" }
+        if (core.receiving) {
+          receiveOnLaunchPending = false
+          core.stopReceiving()
+        } else requestReceiving()
+        update()
+      }
+    receiveActions.addView(receive, ui.weight())
+    receiveActions.addView(
+      button("Show Downloads") {
+        startActivity(Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS))
+      },
+      ui.weight(),
+    )
+    incoming.addView(receiveActions)
+    incoming.addView(ui.divider())
+    copyRow("Received text", incoming) { receivedText.text.toString() }
+    receivedText =
+      EditText(this).apply {
+        contentDescription = "Received text"
+        hint = "Received text appears here"
+        minLines = 3
+        maxLines = 8
+        keyListener = null
+        setTextIsSelectable(true)
+        ui.styleInput(this)
+        incoming.addView(this)
+      }
+    incoming.addView(button("Recover an unsaved file…") { receivedFiles() })
+    column.addView(
+      button("Settings") { settings() },
+      LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(12) },
+    )
+  }
+
+  private fun copyRow(
+    title: String,
+    parent: LinearLayout,
+    content: () -> String,
+  ): LinearLayout {
+    val row = ui.row()
+    row.addView(ui.label(title, 14f, true), ui.weight())
+    row.addView(
+      button("Copy to clipboard") {
+        getSystemService(ClipboardManager::class.java)
+          .setPrimaryClip(ClipData.newPlainText("Beam text", content()))
+      },
+      ui.weight(),
+    )
+    parent.addView(row)
+    return row
+  }
+
+  private fun addDevice() {
+    withNetwork {
+      val core = checkNotNull(service) { "Beam is starting" }
+      check(!core.sending && !core.checking) { "Wait for the active transfer before pairing" }
+      resumeAfterPairing = core.receiving || core.receiveOnLaunchPending
+      core.stopReceiving()
+      startActivityForResult(Intent(this, PairingActivity::class.java), 140)
+    }
   }
 
   override fun onResume() {
@@ -471,12 +488,20 @@ class MainActivity : Activity() {
       if (!core.receiveOnLaunchPending) receiveOnLaunchPending = false
       status.text = core.status
       send.isEnabled = !core.sending && peerNames.isNotEmpty()
+      cancelSend.isEnabled = core.sending
+      receiveSummary.text =
+        when {
+          core.receiving -> "Ready for paired devices · Files save to Downloads."
+          peerNames.isEmpty() -> "Pair a device to start receiving automatically."
+          else -> "Reception paused · Tap Start receiving to resume."
+        }
       receive.text = if (core.receiving) "Stop receiving" else "Start receiving"
       receive.isEnabled = !pendingReceive && !requestingPermissions
       checkConnectivity.isEnabled =
         peerNames.isNotEmpty() && !core.checking && !requestingPermissions
       unpair.isEnabled = peerNames.isNotEmpty()
       connectivity.text = core.connectivityStatus
+      connectivity.visibility = if (core.connectivityStatus.isEmpty()) View.GONE else View.VISIBLE
       sendProgress.progress = core.sendPercent
       receiveProgress.progress = core.receivePercent
       sendProgressLabel.text = core.sendStatus
@@ -489,8 +514,7 @@ class MainActivity : Activity() {
 
   private fun updateContent() {
     val file = kinds.checkedRadioButtonId == R.id.kind_file
-    filename.visibility = if (file) View.VISIBLE else View.GONE
-    selected.visibility = if (file) View.VISIBLE else View.GONE
+    fileContent.visibility = if (file) View.VISIBLE else View.GONE
     review.visibility = if (file) View.GONE else View.VISIBLE
     outgoingHeader.visibility = if (file) View.GONE else View.VISIBLE
   }

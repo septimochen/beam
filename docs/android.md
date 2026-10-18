@@ -160,6 +160,14 @@ does not change Beam's certificate verification.
 
 ## Send and receive
 
+The main screen follows desktop's **Send**, then **Receive** layout. Both it and
+**Manage devices** share rounded cards, indigo actions, typography, spacing, and
+light/dark colors. Content stays centered on wider screens, with controls clear
+of system bars and the keyboard. **Manage devices** and **Add device** sit at the
+top; settings stay below the transfer sections. File controls appear only for
+File, while Text provides a review editor and explicit Copy action. Received text,
+Downloads, and recovery actions stay together in the Receive card.
+
 Choose a paired device and **Choose file**, edit/review its portable ASCII
 basename if needed, and tap **Send**. A system **Share → Beam** action selects
 one file or text for the same review screen. URLs use the Text choice and the same 64 KiB UTF-8 limit as other text.
@@ -186,7 +194,7 @@ successful save. No storage permission or manual export is needed. Text
 (including URLs) stays in bounded memory and appears in the app's **Received text**
 area after verification and acknowledgement; no text file is saved. Both outgoing
 and received text have a **Copy to clipboard** button at the top right.
-The **Receive** area at the top of the screen shows transfer percentage, speed,
+The **Receive** card shows transfer percentage, speed,
 verification, saving progress, and a persistent **Saved to Downloads** result.
 **Show Downloads** opens the system downloads view. A separate completion
 notification announces received files/text when notification permission is enabled;

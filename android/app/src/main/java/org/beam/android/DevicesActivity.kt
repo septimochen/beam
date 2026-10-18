@@ -9,10 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.content.res.ColorStateList
-import android.content.res.Configuration
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -22,7 +19,6 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.TextWatcher
 import android.view.View
-import android.view.WindowInsets
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -52,24 +48,17 @@ class DevicesActivity : Activity() {
   private var resumeAfterPairing = false
   private var pendingAction: (() -> Unit)? = null
   private var replacementReceiver: ((String) -> Unit)? = null
-  private val dark
-    get() =
-      resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
-        Configuration.UI_MODE_NIGHT_YES
-
+  private val ui by lazy { BeamUi(this) }
   private val ink
-    get() = (if (dark) "#F2F3FA" else "#192235").toColorInt()
+    get() = ui.ink
 
   private val muted
-    get() = (if (dark) "#ADB6CC" else "#58667D").toColorInt()
+    get() = ui.muted
 
   private val surface
-    get() = (if (dark) "#202531" else "#FFFFFF").toColorInt()
+    get() = ui.surface
 
-  private val accent
-    get() = (if (dark) "#A5B4FC" else "#4B57CB").toColorInt()
-
-  private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+  private fun dp(value: Int) = ui.dp(value)
 
   private val connection =
     object : ServiceConnection {
@@ -98,33 +87,14 @@ class DevicesActivity : Activity() {
     }
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    if (dark) setTheme(android.R.style.Theme_Material_NoActionBar)
+    ui.applyTheme()
     super.onCreate(savedInstanceState)
     resumeAfterPairing = savedInstanceState?.getBoolean("resumePairing") ?: false
     replacementTarget = savedInstanceState?.getStringArrayList("replacementTarget")
-    val scroll = ScrollView(this)
-    scroll.setBackgroundColor((if (dark) "#141822" else "#F3F5FA").toColorInt())
-    scroll.setOnApplyWindowInsetsListener { view, insets ->
-      if (Build.VERSION.SDK_INT >= 30) {
-        val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
-        view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-      } else {
-        @Suppress("DEPRECATION")
-        view.setPadding(
-          insets.systemWindowInsetLeft,
-          insets.systemWindowInsetTop,
-          insets.systemWindowInsetRight,
-          insets.systemWindowInsetBottom,
-        )
-      }
-      insets
-    }
-    val column = column().apply { setPadding(dp(20), dp(12), dp(20), dp(24)) }
-    scroll.addView(column)
-    setContentView(scroll)
+    val column = ui.screen()
     val navigation = row()
-    navigation.addView(button("‹ Back") { finish() })
-    navigation.addView(button("My identity") { identity() })
+    navigation.addView(button("‹ Back") { finish() }, weight())
+    navigation.addView(button("My identity") { identity() }, weight())
     column.addView(navigation)
     column.addView(label("Your devices", 30f, true))
     column.addView(label("A trusted connection, wherever you work.", 15f))
@@ -235,46 +205,21 @@ class DevicesActivity : Activity() {
 
   private fun core() = checkNotNull(service) { "Beam is starting. Try again in a moment." }
 
-  private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+  private fun column() = ui.column()
 
-  private fun row() = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+  private fun row() = ui.actionRow()
 
-  private fun weight() = LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(6) }
+  private fun weight() = ui.weight()
 
-  private fun rounded(color: Int) =
-    GradientDrawable().apply {
-      setColor(color)
-      cornerRadius = dp(20).toFloat()
-      setStroke(dp(1), (if (dark) "#343C50" else "#E1E5EF").toColorInt())
-    }
+  private fun rounded(color: Int) = ui.rounded(color)
 
-  private fun card() =
-    column().apply {
-      background = rounded(surface)
-      setPadding(dp(18), dp(14), dp(18), dp(14))
-      layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) }
-    }
+  private fun card() = ui.card()
 
   private fun label(value: String, size: Float = 14f, bold: Boolean = false) =
-    TextView(this).apply {
-      text = value
-      textSize = size
-      setTextColor(if (bold) ink else muted)
-      if (bold) setTypeface(typeface, Typeface.BOLD)
-      setPadding(0, dp(4), 0, dp(8))
-    }
+    ui.label(value, size, bold)
 
   private fun button(title: String, primary: Boolean = false, action: () -> Unit) =
-    Button(this).apply {
-      text = title
-      isAllCaps = false
-      textSize = 14f
-      minHeight = dp(48)
-      setTextColor(if (primary) surface else accent)
-      if (primary) backgroundTintList = ColorStateList.valueOf(accent)
-      else backgroundTintList = ColorStateList.valueOf(surface)
-      setOnClickListener { attempt(action) }
-    }
+    ui.button(title, primary) { attempt(action) }
 
   private fun attempt(action: () -> Unit) {
     try {
