@@ -19,8 +19,9 @@ import android.widget.TextView
 import androidx.core.graphics.toColorInt
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isEmpty
+import androidx.core.widget.addTextChangedListener
 
-/** Shared native presentation for the Share and Devices screens. */
+/** Shared native presentation for Android screens. */
 internal class BeamUi(private val activity: Activity) {
   val dark =
     activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
@@ -137,6 +138,13 @@ internal class BeamUi(private val activity: Activity) {
       if (bold) setTypeface(typeface, Typeface.BOLD)
       setPadding(0, dp(4), 0, dp(8))
       if (bold) isAccessibilityHeading = true
+    }
+
+  fun message(size: Float = 14f) =
+    label("", size).apply {
+      visibility = View.GONE
+      accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+      addTextChangedListener { visibility = if (it.isNullOrEmpty()) View.GONE else View.VISIBLE }
     }
 
   fun button(title: String, primary: Boolean = false, action: () -> Unit) =

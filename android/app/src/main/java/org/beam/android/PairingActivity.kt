@@ -19,7 +19,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -55,6 +54,15 @@ class PairingActivity : ComponentActivity() {
   private lateinit var approve: Button
   private lateinit var nearby: Spinner
   private lateinit var code: EditText
+  private lateinit var approvalCard: LinearLayout
+  private lateinit var connectionCard: LinearLayout
+  private lateinit var invitationCard: LinearLayout
+  private lateinit var localCard: LinearLayout
+  private lateinit var pastedInvitation: LinearLayout
+  private lateinit var newInvitation: Button
+  private lateinit var forgetApproval: Button
+  private lateinit var done: Button
+  private val ui by lazy { BeamUi(this) }
   private var devices = emptyList<Pair<String, String>>()
   private var lastInvitation = ""
   private var lastState = ""
@@ -63,89 +71,124 @@ class PairingActivity : ComponentActivity() {
     get() = Build.MODEL.filter { it.code in 32..126 }.take(63).ifBlank { "Beam Android" }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    ui.applyTheme()
     super.onCreate(savedInstanceState)
-    val column =
-      LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(24, 64, 24, 64)
-      }
-    setContentView(ScrollView(this).apply { addView(column) })
-    fun label(text: String) =
-      TextView(this).also {
-        it.text = text
-        column.addView(it)
-      }
-    fun input(hint: String, max: Int) =
-      EditText(this).also {
-        it.hint = hint
-        it.filters = arrayOf(InputFilter.LengthFilter(max))
-        it.setSingleLine()
-        column.addView(it)
-      }
-    fun button(text: String, action: () -> Unit) =
-      Button(this).also {
-        it.text = text
-        it.setOnClickListener {
-          errorLabel.text = ""
-          attempt(action)
-        }
-        column.addView(it)
-      }
-    label("Add device")
-    label(
-      "Open Add device on both devices on the same local network. Pairing closes after three minutes or when you leave this screen."
-    )
-    status = label("Starting pairing…")
-    errorLabel = label("")
-    pinLabel = label("")
-    qr =
-      ImageView(this).also {
-        it.contentDescription = "Pairing QR code"
-        column.addView(
-          it,
-          LinearLayout.LayoutParams(-1, (300 * resources.displayMetrics.density).toInt()),
-        )
-      }
-    button("Show QR code") {
-      qr.isVisible = !qr.isVisible
-    }
-    qr.visibility = View.GONE
-    button("Copy invitation") {
-      val text = snapshot.getOrNull(2).orEmpty()
-      check(text.isNotEmpty()) { "Open a new invitation first" }
-      getSystemService(ClipboardManager::class.java)
-        .setPrimaryClip(ClipData.newPlainText("Beam pairing invitation", text))
-    }
-    button("Scan QR code") { scan() }
-    invitation = input("Paste a Beam invitation", 2048)
-    button("Use invitation") { call(Command.PAIRING_JOIN, invitation.text.toString().trim()) }
+    val column = ui.screen()
+    column.addView(button("‹ Back") { finish() })
+    column.addView(ui.label("Add device", 30f, true))
+    column.addView(ui.label("Open Add device on your other device.", 14f))
+    status = ui.message()
+    column.addView(status)
+    errorLabel = ui.message().apply { setTextColor(ui.accent) }
+    column.addView(errorLabel)
+
+    approvalCard = ui.card().apply { visibility = View.GONE }
+    approvalCard.addView(ui.label("Confirm device", 20f, true))
+    alias = input("Device name", 63)
+    approvalCard.addView(alias)
+    val approvalActions = ui.actionRow()
+    approve =
+      button("Approve device", true) { call(Command.PAIRING_APPROVE, alias.text.toString()) }
+    decline = button("Decline") { call(Command.PAIRING_REJECT) }
+    approvalActions.addView(approve, ui.weight())
+    approvalActions.addView(decline, ui.weight())
+    approvalCard.addView(approvalActions)
+    column.addView(approvalCard)
+
+    connectionCard = ui.card()
+    connectionCard.addView(button("Scan QR code", true) { scan() })
+    connectionCard.addView(ui.divider())
+    connectionCard.addView(ui.label("Nearby devices", 18f, true))
     nearby =
-      Spinner(this).also {
-        it.contentDescription = "Nearby device"
-        column.addView(it)
+      Spinner(this).apply {
+        contentDescription = "Nearby device"
+        minimumHeight = ui.dp(48)
+        backgroundTintList = android.content.res.ColorStateList.valueOf(ui.accent)
+        adapter =
+          ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, listOf("Searching…"))
       }
-    button("Find nearby devices") { discovery.browse() }
+    connectionCard.addView(nearby)
     code =
-      input("Six-digit PIN shown on the other device", 6).apply {
+      input("Six-digit PIN", 6).apply {
         inputType = android.text.InputType.TYPE_CLASS_NUMBER
       }
-    button("Pair nearby") {
-      val endpoint =
-        devices.getOrNull(nearby.selectedItemPosition)?.second
-          ?: error("Choose a nearby device first")
-      call(Command.PAIRING_PIN, endpoint, code.text.toString())
-    }
-    alias = input("Local device alias", 63)
-    approve = button("Approve device") { call(Command.PAIRING_APPROVE, alias.text.toString()) }
-    decline = button("Decline pairing") { call(Command.PAIRING_REJECT) }
-    button("New invitation") { call(Command.PAIRING_HOST, name) }
-    button("Forget pending approval") { call(Command.PAIRING_FORGET) }
-    button("Done") { finish() }
+    connectionCard.addView(code)
+    val nearbyActions = ui.actionRow()
+    nearbyActions.addView(button("Refresh") { discovery.browse() }, ui.weight())
+    nearbyActions.addView(
+      button("Pair nearby") {
+        val endpoint =
+          devices.getOrNull(nearby.selectedItemPosition)?.second
+            ?: error("Choose a nearby device first")
+        call(Command.PAIRING_PIN, endpoint, code.text.toString())
+      },
+      ui.weight(),
+    )
+    connectionCard.addView(nearbyActions)
+    column.addView(connectionCard)
+
+    localCard = ui.card()
+    localCard.addView(ui.label("This device’s PIN", 18f, true))
+    pinLabel = ui.label("…", 32f, true).apply { typeface = android.graphics.Typeface.MONOSPACE }
+    localCard.addView(pinLabel)
+    qr =
+      ImageView(this).apply {
+        contentDescription = "Pairing QR code"
+        visibility = View.GONE
+        adjustViewBounds = true
+      }
+    localCard.addView(qr, LinearLayout.LayoutParams(-1, ui.dp(280)))
+    val invitationActions = ui.actionRow()
+    invitationActions.addView(
+      button("Show QR code") {
+        qr.isVisible = !qr.isVisible
+        (invitationActions.getChildAt(0) as Button).text =
+          if (qr.isVisible) "Hide QR code" else "Show QR code"
+      },
+      ui.weight(),
+    )
+    invitationActions.addView(
+      button("Copy invitation") {
+        val text = snapshot.getOrNull(2).orEmpty()
+        check(text.isNotEmpty()) { "Open a new invitation first" }
+        getSystemService(ClipboardManager::class.java)
+          .setPrimaryClip(ClipData.newPlainText("Beam pairing invitation", text))
+      },
+      ui.weight(),
+    )
+    localCard.addView(invitationActions)
+    column.addView(localCard)
+
+    invitationCard = ui.card()
+    invitationCard.addView(
+      button("Paste invitation") { pastedInvitation.isVisible = !pastedInvitation.isVisible }
+    )
+    pastedInvitation = ui.column().apply { visibility = View.GONE }
+    invitation = input("Beam invitation", 2048)
+    pastedInvitation.addView(invitation)
+    pastedInvitation.addView(
+      button("Use invitation") { call(Command.PAIRING_JOIN, invitation.text.toString().trim()) }
+    )
+    invitationCard.addView(pastedInvitation)
+    column.addView(invitationCard)
+    newInvitation =
+      button("New invitation") { call(Command.PAIRING_HOST, name) }.apply { visibility = View.GONE }
+    column.addView(newInvitation)
+    forgetApproval =
+      button("Forget pending approval") { call(Command.PAIRING_FORGET) }
+        .apply { visibility = View.GONE }
+    column.addView(forgetApproval)
+    done = button("Done", true) { finish() }.apply { visibility = View.GONE }
+    column.addView(done)
     discovery =
       PairingDiscovery(this) { values ->
         devices = values
         nearby.adapter =
-          ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, values.map { it.first })
+          ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            values.map { it.first }.ifEmpty { listOf("No nearby devices") },
+          )
       }
     val settings = getSharedPreferences("settings", MODE_PRIVATE)
     session =
@@ -155,6 +198,21 @@ class PairingActivity : ComponentActivity() {
         settings.getInt("timeout", 30) * 1000,
       )
   }
+
+  private fun input(hint: String, max: Int) =
+    EditText(this).apply {
+      this.hint = hint
+      contentDescription = hint
+      filters = arrayOf(InputFilter.LengthFilter(max))
+      setSingleLine()
+      ui.styleInput(this)
+    }
+
+  private fun button(title: String, primary: Boolean = false, action: () -> Unit) =
+    ui.button(title, primary) {
+      errorLabel.text = ""
+      attempt(action)
+    }
 
   override fun onStart() {
     super.onStart()
@@ -211,12 +269,21 @@ class PairingActivity : ComponentActivity() {
           if (snapshot.size >= 8) {
             val state = snapshot[0]
             status.text =
-              "$state: ${snapshot[1]}" +
-                if (state == "awaiting approval") "\nPair with ${snapshot[4]}?" else ""
-            pinLabel.text = if (state == "hosting") "PIN: ${snapshot[3]}" else ""
-            approve.visibility = if (state == "awaiting approval") View.VISIBLE else View.GONE
-            alias.visibility = approve.visibility
-            decline.visibility = approve.visibility
+              when (state) {
+                "hosting" -> ""
+                "awaiting approval" -> "Pair with ${snapshot[4]}?"
+                "paired" -> "Device added"
+                else -> snapshot[1]
+              }
+            pinLabel.text = snapshot[3]
+            approvalCard.isVisible = state == "awaiting approval"
+            connectionCard.isVisible = state in listOf("hosting", "incomplete")
+            localCard.isVisible = state == "hosting"
+            invitationCard.isVisible = connectionCard.isVisible
+            newInvitation.isVisible =
+              state in listOf("idle", "expired", "rejected", "incomplete", "failed", "cancelled")
+            forgetApproval.isVisible = state == "incomplete"
+            done.isVisible = state == "paired"
             if (state != lastState) {
               lastState = state
               if (state == "awaiting approval") alias.setText(snapshot[5])
@@ -328,7 +395,7 @@ class PairingActivity : ComponentActivity() {
     super.onRequestPermissionsResult(code, permissions, results)
     if (code == 22) {
       if (results.firstOrNull() == PackageManager.PERMISSION_GRANTED) attempt { startCamera() }
-      else errorLabel.text = "Camera access denied. Paste an invitation or use nearby PIN pairing."
+      else errorLabel.text = "Camera access denied. Use a PIN or paste an invitation."
     }
   }
 }

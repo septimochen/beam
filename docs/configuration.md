@@ -35,6 +35,6 @@ If you change a listen port, update this device's saved endpoint on its peers.
 Android uses **Settings** with the same default port and timeout. Received files
 save automatically to shared **Downloads**, after verification in temporary private
 staging. No storage permission is required. Stop transfers, reception, and checks
-before changing network settings. Settings survive relaunch. **Recover an unsaved
-file…** offers the system document picker for a failed Downloads save or files
-received by older versions. Android has no desktop discovery backend or `~/.config` location.
+before changing network settings. Settings survive relaunch; receive completion
+messages do not. **Retry saving** appears only for unsaved verified files and
+retries saving them to Downloads. Android has no desktop discovery backend or `~/.config` location.

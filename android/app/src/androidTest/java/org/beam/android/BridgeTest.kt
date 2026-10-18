@@ -142,7 +142,9 @@ class BridgeTest {
           )
           fun buttons(view: View): List<Button> =
             when (view) {
-              is Button -> if (view.text == "Copy to clipboard") listOf(view) else emptyList()
+              is Button ->
+                if (view.contentDescription == "Copy Received text to clipboard") listOf(view)
+                else emptyList()
               is ViewGroup -> (0 until view.childCount).flatMap { buttons(view.getChildAt(it)) }
               else -> emptyList()
             }
@@ -160,8 +162,7 @@ class BridgeTest {
         desktop.call(Command.SEND, "phone", "file", incoming.path, "")
         await(desktop, "0", "2")
         waitForService {
-          checkNotNull(core).receivedFileStatus.contains("Received ${incoming.name}") &&
-            checkNotNull(core).receivedFileStatus.contains("Saved to Downloads")
+          checkNotNull(core).receivedFileStatus.contains("Saved ${incoming.name} to Downloads")
         }
         context.contentResolver
           .query(
@@ -192,13 +193,21 @@ class BridgeTest {
         instrumentation.waitForIdleSync()
         instrumentation.runOnMainSync {
           assertFalse(File(checkNotNull(core).inbox, incoming.name).exists())
-          assertEquals(100, checkNotNull(core).receivePercent)
+          assertEquals(0, checkNotNull(core).receivePercent)
+          assertEquals("", checkNotNull(core).receivedFileStatus)
+          assertFalse(
+            context
+              .getSharedPreferences("settings", Context.MODE_PRIVATE)
+              .contains("lastReceivedFile")
+          )
           fun resultVisible(view: View): Boolean =
-            (view is android.widget.TextView &&
-              view.text.toString().contains("Received ${incoming.name}")) ||
+            (view is android.widget.TextView && view.text.toString().contains(incoming.name)) ||
               (view is ViewGroup &&
                 (0 until view.childCount).any { resultVisible(view.getChildAt(it)) })
-          assertTrue(resultVisible(checkNotNull(activity).window.decorView))
+          assertFalse(
+            "Old receive result returned after reopening",
+            resultVisible(checkNotNull(activity).window.decorView),
+          )
           val notifications = context.getSystemService(android.app.NotificationManager::class.java)
           if (notifications.areNotificationsEnabled()) {
             val completed = notifications.activeNotifications.first { it.id == 2 }.notification
@@ -279,14 +288,46 @@ class BridgeTest {
             }
             error("Missing unpair control: $label")
           }
-          tap("Unpair device")
-          tap("Cancel")
+          fun unpairDevice(name: String, confirm: Boolean = true) {
+            val managed =
+              instrumentation.startActivitySync(
+                Intent(context, DevicesActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              ) as DevicesActivity
+            fun descendants(view: View): List<View> =
+              listOf(view) +
+                if (view is ViewGroup)
+                  (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) }
+                else emptyList()
+            try {
+              waitForService {
+                descendants(managed.window.decorView)
+                  .filterIsInstance<android.widget.TextView>()
+                  .any { it.text == name }
+              }
+              instrumentation.runOnMainSync {
+                val title =
+                  descendants(managed.window.decorView)
+                    .filterIsInstance<android.widget.TextView>()
+                    .first { it.text == name }
+                val card = title.parent as ViewGroup
+                descendants(card)
+                  .filterIsInstance<Button>()
+                  .single { it.text == "More" }
+                  .performClick()
+              }
+              tap("Unpair device…")
+              tap(if (confirm) "Unpair" else "Cancel")
+            } finally {
+              instrumentation.runOnMainSync { managed.finish() }
+              instrumentation.waitForIdleSync()
+            }
+          }
+          unpairDevice(alias, confirm = false)
           instrumentation.runOnMainSync {
             assertTrue(checkNotNull(core).call(Command.PEERS).chunked(3).any { it[0] == alias })
             assertTrue(checkNotNull(core).receiving)
           }
-          tap("Unpair device")
-          tap("Unpair")
+          unpairDevice(alias)
           waitForService {
             checkNotNull(core).call(Command.PEERS).chunked(3).map { it[0] } == listOf(spareAlias) &&
               checkNotNull(core).receiving
@@ -302,8 +343,7 @@ class BridgeTest {
             checkNotNull(core).call(Command.PAIR, alias, certificate.path, identity[0], "")
           }
           recreate()
-          tap("Unpair device")
-          tap("Unpair")
+          unpairDevice(alias)
           waitForService {
             checkNotNull(core).call(Command.PEERS).chunked(3).map { it[0] } == listOf(spareAlias)
           }
@@ -313,8 +353,7 @@ class BridgeTest {
             checkNotNull(core).startReceiving()
           }
           waitForService { checkNotNull(core).status.startsWith("Receiving from paired devices") }
-          tap("Unpair device")
-          tap("Unpair")
+          unpairDevice(spareAlias)
           waitForService {
             checkNotNull(core).call(Command.PEERS).isEmpty() && !checkNotNull(core).receiving
           }

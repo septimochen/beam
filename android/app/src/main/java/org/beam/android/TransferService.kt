@@ -80,8 +80,19 @@ class TransferService : Service() {
   internal var receiveStatus = "Receive: idle"
     private set
 
-  internal var receivedFileStatus = "Received files save to Downloads"
+  internal var receivedFileStatus = ""
     private set
+
+  internal var hasUnsavedFiles = false
+    private set
+
+  internal var receiveFailed = false
+    private set
+
+  internal val receivingContent: Boolean
+    get() = receiveActive || saving.isNotEmpty()
+
+  private var fileResultExpiresAt = 0L
 
   internal var connectivityStatus = ""
     private set
@@ -109,12 +120,13 @@ class TransferService : Service() {
       port = settings.getInt("port", 4269)
       timeoutSeconds = settings.getInt("timeout", 30)
       receiveFolder = settings.getString("folder", "received") ?: "received"
-      receivedFileStatus =
-        settings.getString("lastReceivedFile", receivedFileStatus) ?: receivedFileStatus
+      // Older releases persisted a completion banner as a setting.
+      settings.edit { remove("lastReceivedFile") }
       validateSettings(receiveFolder, port, timeoutSeconds)
       session =
         NativeSession(File(filesDir.canonicalFile, "identity").path, port, timeoutSeconds * 1000)
       inbox.mkdirs()
+      hasUnsavedFiles = pendingDownloads().isNotEmpty()
       File(filesDir, "outbox").apply {
         deleteRecursively()
         mkdirs()
@@ -153,7 +165,7 @@ class TransferService : Service() {
             )
             .setContentText(
               if (success) if (text) "Open Beam to view received text" else "Saved to Downloads"
-              else "Open Beam to recover the verified file"
+              else "Open Beam to retry saving to Downloads"
             )
             .setContentIntent(openApp())
             .setAutoCancel(true)
@@ -280,6 +292,7 @@ class TransferService : Service() {
   internal fun startReceiving() {
     check(!receiving) { "Receiver is already running" }
     receiveOnLaunchPending = false
+    receiveFailed = false
     beginForeground()
     try {
       call(Command.RECEIVE, inbox.canonicalPath)
@@ -394,9 +407,36 @@ class TransferService : Service() {
     staged = null
   }
 
+  private fun pendingDownloads() =
+    inbox.listFiles()?.filter { it.isFile && !it.name.startsWith('.') } ?: emptyList()
+
+  internal fun retrySavingReceivedFiles() {
+    val files = pendingDownloads()
+    if (files.isEmpty()) return
+    if (!foreground) beginForeground()
+    files.forEach { saveReceivedFile(it.name) }
+    listener?.invoke()
+  }
+
+  internal fun clearReceiveResult() {
+    if (fileResultExpiresAt == 0L) return
+    val previousFileStatus = receivedFileStatus
+    fileResultExpiresAt = 0L
+    receivedFileStatus = ""
+    if (!receivingContent) {
+      val previousReceiveStatus = receiveStatus
+      receiveStatus =
+        if (receiving) "Receiving from paired devices on port $port" else "Receive: idle"
+      receivePercent = 0
+      if (status == previousFileStatus || status == previousReceiveStatus) status = receiveStatus
+    }
+    listener?.invoke()
+  }
+
   private fun saveReceivedFile(name: String) {
     Selection.filename(name)
     if (!saving.add(name)) return
+    fileResultExpiresAt = 0L
     val source = File(inbox, name)
     receivedFileStatus = "Saving $name to Downloads…"
     downloads.submit {
@@ -413,19 +453,17 @@ class TransferService : Service() {
             }
           }
         success = true
-        message = "Received ${saved.name} · Saved to Downloads"
+        message = "Saved ${saved.name} to Downloads"
         if (!source.delete()) message += " · Temporary copy could not be removed"
       } catch (error: Exception) {
-        message =
-          "Could not save $name to Downloads: ${error.message}. Use Recover an unsaved file."
+        message = "Could not save $name to Downloads: ${error.message}. Tap Retry saving."
       }
       main.post {
         saving.remove(name)
         if (!destroyed) {
           receivedFileStatus = message
-          getSharedPreferences("settings", MODE_PRIVATE).edit {
-            putString("lastReceivedFile", message)
-          }
+          hasUnsavedFiles = pendingDownloads().isNotEmpty()
+          fileResultExpiresAt = if (success) android.os.SystemClock.elapsedRealtime() + 8000 else 0L
           status = message
           receivedNotification(success)
           listener?.invoke()
@@ -462,6 +500,10 @@ class TransferService : Service() {
                     receiveStatus
                   }
                   "1" -> {
+                    if (event[0] == "1") {
+                      clearReceiveResult()
+                      receiveFailed = false
+                    }
                     val stages =
                       listOf(
                         "Hashing",
@@ -503,7 +545,10 @@ class TransferService : Service() {
                   } else saveReceivedFile(event[3])
                 }
               }
-              if (event[0] == "1" && event[1] in listOf("3", "5")) receiveActive = false
+              if (event[0] == "1" && event[1] in listOf("3", "4", "5")) {
+                receiveActive = false
+                receiveFailed = event[1] == "3"
+              }
               if (event[0] == "0") sendStatus = status else receiveStatus = status
             }
             val wasReceiving = receiving
@@ -523,6 +568,11 @@ class TransferService : Service() {
             if (!sending) cleanupStaged()
           }
           finishIdle()
+          if (
+            fileResultExpiresAt != 0L &&
+              android.os.SystemClock.elapsedRealtime() >= fileResultExpiresAt
+          )
+            clearReceiveResult()
           listener?.invoke()
         } catch (error: Exception) {
           status = error.message ?: "Beam operation failed"

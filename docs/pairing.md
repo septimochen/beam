@@ -8,8 +8,8 @@ QUIC/TLS connection and exact full SHA-256 leaf certificate pins.
 ## Add a device on the LAN
 
 - **Phone and computer:** computer chooses **Add device → Show QR code**;
-  Android chooses **Add device → Scan QR code**. Review the names and approve
-  on both screens. Camera permission is requested only for scanning; denied or
+  Android chooses **Manage devices → Add device → Scan QR code**. Review the names
+  and approve on both screens. Camera permission is requested only for scanning; denied or
   missing cameras leave invitation paste and nearby PIN pairing available.
 - **Nearby devices:** open **Add device** on both, select the nearby device,
   and enter the six-digit PIN shown on its screen. Approve on both devices.
@@ -173,8 +173,9 @@ To revoke a peer:
 ./build/beam unpair laptop
 ```
 
-In macOS, Linux, or Android, select the device in the paired-device picker and
-choose **Unpair device**. Confirm the named device to remove it. Cancel leaves
+On Android, open **Manage devices → More → Unpair device** on the device's card.
+In macOS or Linux, select the device and choose **Unpair device**.
+Confirm the named device to remove it. Cancel leaves
 trust and transfers unchanged. The app stops and joins active transfers and
 connectivity checks before removal, then refreshes the picker and restarts
 reception for the remaining devices. Removing the last peer stops reception.

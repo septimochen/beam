@@ -133,14 +133,15 @@ Build an ARM64 APK with `make android` after the [Android build setup](docs/andr
 `make android-toolchain` shows the installed versions selected for builds.
 With USB debugging enabled and your phone connected/authorized, run
 `make android-install`; see [phone installation](docs/android.md#install-on-your-phone).
-Install it, open **Manage devices and identity**, exchange public certificates,
-verify full fingerprints, and pair on both devices. Choose a paired device and
-one file or text (including URLs), then tap **Send**. Other apps' **Share → Beam** opens the
+Open **Manage devices → Add device** on Android and **Add device** on the other
+device. Scan its QR code or enter its nearby PIN, then approve on both screens.
+Choose a paired device and one file or text (including URLs), then tap **Send**. Other apps' **Share → Beam** opens the
 same review screen. Opening Beam starts reception after pairing and required
 permissions; **Stop receiving** pauses it.
 Received files save automatically to **Downloads**. The Receive area shows progress
-and completion, with a separate completion notification when enabled. Use **Show
-Downloads** to find files, or **Recover an unsaved file…** if a save fails.
+and a brief completion message, with a separate notification when enabled. Use
+**Downloads** to find files. **Retry saving** appears only if a Downloads save failed
+or an older private file still needs saving.
 
 See [Android setup, pairing, and tests](docs/android.md) for QR/PIN pairing,
 foreground controls, APK paths, and platform verification.

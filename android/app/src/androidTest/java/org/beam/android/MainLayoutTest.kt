@@ -62,9 +62,16 @@ class MainLayoutTest {
         assertFalse("File picker should be hidden for shared text", chooser.isShown)
         assertTrue(review.isShown)
         assertEquals("Review this text before sending 🌍", review.text.toString())
-        assertTrue(
-          descendants(incoming).any { it.contentDescription == "Received text" && it.isShown }
+        assertFalse(
+          "Empty received text should stay hidden",
+          descendants(incoming).any { it.contentDescription == "Received text" && it.isShown },
         )
+        val mainButtons =
+          descendants(activity.window.decorView).filterIsInstance<Button>().map {
+            it.text.toString()
+          }
+        assertFalse(mainButtons.any { it.contains("Add device") || it.contains("Recover") })
+        assertFalse(mainButtons.contains("Unpair device"))
         render("share-text-ui.png")
         controls.filterIsInstance<RadioGroup>().single().check(R.id.kind_file)
         assertTrue("Switching to File should show the picker", chooser.isShown)

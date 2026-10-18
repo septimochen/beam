@@ -88,7 +88,7 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   disabled. After verification, save files to shared Downloads using a new MediaStore
   row with `IS_PENDING` until the bounded copy closes successfully. Never overwrite
   existing downloads; remove incomplete rows on failure and keep the verified staging
-  copy for explicit document-picker recovery. Remove staging after successful publication.
+  copy for an explicit retry of Downloads publication. Remove staging after successful publication.
   Received text stays in bounded memory. Public certificate export must never expose
   the private identity file.
 - Start reception when the user opens the visible app, after pairing and required

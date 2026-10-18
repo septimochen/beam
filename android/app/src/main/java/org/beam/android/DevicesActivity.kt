@@ -97,7 +97,6 @@ class DevicesActivity : Activity() {
     navigation.addView(button("My identity") { identity() }, weight())
     column.addView(navigation)
     column.addView(label("Your devices", 30f, true))
-    column.addView(label("A trusted connection, wherever you work.", 15f))
     summary = label("Loading paired devices…", 13f)
     column.addView(summary)
     val actions = row()
@@ -138,8 +137,7 @@ class DevicesActivity : Activity() {
         bottomMargin = dp(8)
       },
     )
-    status =
-      label("", 14f).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+    status = ui.message()
     column.addView(status)
     list = column()
     column.addView(list)
@@ -147,7 +145,7 @@ class DevicesActivity : Activity() {
     backup.addView(label("Backup & restore", 18f, true))
     backup.addView(
       label(
-        "Save your devices, addresses, and public certificates. Your private key stays here.",
+        "Your private key stays on this device.",
         14f,
       )
     )
@@ -236,7 +234,7 @@ class DevicesActivity : Activity() {
 
   private fun refresh() {
     rows = core().call(Command.DEVICE_DETAILS).chunked(5)
-    summary.text = "${rows.size} paired · Certificate verified for every connection"
+    summary.text = "${rows.size} paired"
     renderDevices()
   }
 
@@ -259,9 +257,7 @@ class DevicesActivity : Activity() {
       )
       empty.addView(
         label(
-          if (rows.isEmpty())
-            "Pair with a QR code, a nearby PIN, or an invitation. You can also restore a backup below."
-          else "Try another name or IP address."
+          if (rows.isEmpty()) "Tap Add device to connect." else "Try another name or IP address."
         )
       )
       list.addView(empty)
@@ -329,10 +325,30 @@ class DevicesActivity : Activity() {
 
   @Suppress("DEPRECATION")
   private fun addDevice() {
+    if (
+      Build.VERSION.SDK_INT >= 37 &&
+        checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) !=
+          PackageManager.PERMISSION_GRANTED
+    ) {
+      requestPermissions(arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK), 30)
+      return
+    }
     check(!core().sending && !core().checking) { "Wait for the active transfer before pairing" }
     resumeAfterPairing = core().receiving || core().receiveOnLaunchPending
     core().stopReceiving()
     startActivityForResult(Intent(this, PairingActivity::class.java), PAIR_DEVICE)
+  }
+
+  override fun onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray,
+  ) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    if (requestCode != 30) return
+    if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+      whenConnected { addDevice() }
+    else status.text = "Local network access is required to pair devices."
   }
 
   private fun identity() {

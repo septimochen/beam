@@ -9,7 +9,7 @@ The launcher uses Beam's adaptive three-ray icon with day/night colors and a
 monochrome layer for themed icons. Transfer notifications use the monochrome
 mark without a launcher background. See [shared icon sources](../assets/icons/README.md).
 
-To remove trust, select a paired device and tap **Unpair device**, then confirm.
+To remove trust, open **Manage devices → More → Unpair device**, then confirm.
 Active transfers, file staging, and connectivity checks stop before removal.
 Reception resumes for remaining devices if it was enabled; an explicit Stop is
 preserved. Removing the last device stops reception. Your identity and received
@@ -117,8 +117,9 @@ needed for that manual APK installation.
 
 ## Pair and choose a device
 
-Choose **Add device** on Android and the other device. Scan the computer's QR,
-select a nearby device and enter its PIN, or paste its invitation. Approve on
+Choose **Manage devices → Add device** on Android and **Add device** on the other
+device. Scan the computer's QR, select a nearby device and enter its PIN, or paste
+its invitation. Approve on
 both screens. Android discovers/advertises `_beam-pair._tcp` through NsdManager
 only while this screen is open. The bundled ZXing decoder works offline through
 CameraX; Google Play Services are not required. Camera denial keeps paste/PIN
@@ -160,13 +161,11 @@ does not change Beam's certificate verification.
 
 ## Send and receive
 
-The main screen follows desktop's **Send**, then **Receive** layout. Both it and
-**Manage devices** share rounded cards, indigo actions, typography, spacing, and
-light/dark colors. Content stays centered on wider screens, with controls clear
-of system bars and the keyboard. **Manage devices** and **Add device** sit at the
-top; settings stay below the transfer sections. File controls appear only for
-File, while Text provides a review editor and explicit Copy action. Received text,
-Downloads, and recovery actions stay together in the Receive card.
+The main screen contains **Send** and **Receive** cards, with **Manage devices**
+and **Settings** at the top. Pairing and connection checks live in Manage devices.
+All three screens share cards, controls, spacing, and light/dark colors. Idle
+progress bars and empty received-text fields stay hidden. File names appear only
+after choosing a file; pasted invitations expand on demand in Add device.
 
 Choose a paired device and **Choose file**, edit/review its portable ASCII
 basename if needed, and tap **Send**. A system **Share → Beam** action selects
@@ -193,17 +192,20 @@ hidden until saving finishes. The temporary private copy is removed after a
 successful save. No storage permission or manual export is needed. Text
 (including URLs) stays in bounded memory and appears in the app's **Received text**
 area after verification and acknowledgement; no text file is saved. Both outgoing
-and received text have a **Copy to clipboard** button at the top right.
+and received text have an explicit **Copy** button at the top right.
 The **Receive** card shows transfer percentage, speed,
-verification, saving progress, and a persistent **Saved to Downloads** result.
-**Show Downloads** opens the system downloads view. A separate completion
+verification, and saving progress. A successful save appears for eight seconds
+and clears when the main screen reopens. Completion messages stay in service
+memory; they are not saved to preferences or restored after restart. Upgrading
+removes the old `settings / lastReceivedFile` preference.
+**Downloads** opens the system downloads view. A separate completion
 notification announces received files/text when notification permission is enabled;
 its tap opens Beam and never opens received content automatically. In-app feedback
 works with notification permission denied. If saving to Downloads fails, Beam
-reports the error and retains the verified private copy. **Recover an unsaved
-file…** exports it through the system document picker to a location you choose;
-this also makes files received by older app versions accessible. Beam never opens content
-or copies it to the clipboard automatically. If acknowledgement fails after publication,
+reports the error and retains the verified private copy. **Retry saving** appears
+only when such files exist and retries publication to Downloads; this includes
+files retained by older versions. Beam never opens content or copies it to the
+clipboard automatically. If acknowledgement fails after publication,
 a verified file can remain; check received files before retrying.
 
 Transfers/reception run in a `connectedDevice` foreground service started while
@@ -230,7 +232,7 @@ and [local-network permissions](https://developer.android.com/privacy-and-securi
 
 The app shows send/receive percentage, progress bars, and average payload MiB/s;
 the foreground notification reflects progress too. Completion still follows
-verification and acknowledgement. **Check connectivity** checks the selected
+verification and acknowledgement. **Manage devices → Check** checks the selected
 peer's authenticated Beam receiver with a bounded probe and no payload/file.
 **Settings** shows Downloads as the receive destination and stores the listen port and timeout;
 see [configuration](configuration.md). Stop active workers before editing.
