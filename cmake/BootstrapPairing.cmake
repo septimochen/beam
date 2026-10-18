@@ -1,5 +1,8 @@
 # Explicit, checksum-pinned provisioning. Normal configuration never downloads.
 cmake_minimum_required(VERSION 3.25)
+if(ANDROID_ABI AND NOT ANDROID_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "Beam Android supports only arm64-v8a")
+endif()
 if(NOT BEAM_DEPS_DIR)
     set(BEAM_DEPS_DIR "${CMAKE_CURRENT_LIST_DIR}/../build/deps")
 endif()
@@ -18,15 +21,20 @@ if(NOT EXISTS "${source}/CMakeLists.txt")
     file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${BEAM_DEPS_DIR}")
 endif()
 set(build "${BEAM_DEPS_DIR}/pairing-build")
+set(install "${build}/install")
 set(extra)
 if(ANDROID_ABI)
-    set(build "${BEAM_DEPS_DIR}/pairing-${ANDROID_ABI}")
+    file(READ "${ANDROID_NDK}/source.properties" ndk_properties)
+    string(SHA256 toolchain_id "${ANDROID_NDK}\n${ndk_properties}")
+    string(SUBSTRING "${toolchain_id}" 0 12 toolchain_id)
+    set(install "${BEAM_DEPS_DIR}/pairing-${ANDROID_ABI}/install")
+    set(build "${BEAM_DEPS_DIR}/pairing-${ANDROID_ABI}/build-${toolchain_id}")
     list(APPEND extra "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake"
         "-DANDROID_ABI=${ANDROID_ABI}" -DANDROID_PLATFORM=android-29)
 endif()
 execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${build}"
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-    -DCMAKE_INSTALL_PREFIX=${build}/install -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF
+    -DCMAKE_INSTALL_PREFIX=${install} -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF
     -DMBEDTLS_USER_CONFIG_FILE=${CMAKE_CURRENT_LIST_DIR}/PairingMbedConfig.h ${extra}
     -DTF_PSA_CRYPTO_USER_CONFIG_FILE=${CMAKE_CURRENT_LIST_DIR}/PairingCryptoConfig.h
     COMMAND_ERROR_IS_FATAL ANY)

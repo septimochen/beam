@@ -2,7 +2,7 @@
 
 Beam's Android app sends and receives the same authenticated `beam/4` file,
 and text transfers as the CLI and desktop apps. It supports Android 10+
-(API 29), with ARM64 device and x86-64 emulator APK libraries. The app uses Kotlin
+(API 29), with ARM64 (`arm64-v8a`) libraries for phones and ARM64 emulators. The app uses Kotlin
 and JNI over the existing C++ identity store and joined transfer workers.
 
 The launcher uses Beam's adaptive three-ray icon with day/night colors and a
@@ -19,30 +19,59 @@ files remain. The other device must be unpaired separately.
 
 Install JDK 17+, Android command-line tools (or Android Studio), CMake 3.25+,
 Ninja, Git, Perl, and Make. Set `JAVA_HOME` and `ANDROID_HOME` for those installs.
-Install the pinned SDK packages:
+Install the latest stable SDK packages, provision the native libraries, and build:
 
 ```sh
-sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' \
-  'ndk;28.2.13676358' 'cmake;3.31.6' 'platform-tools'
-export ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358"
-make android-deps ANDROID_ABI=arm64-v8a
-make android-deps ANDROID_ABI=x86_64
+make android-setup
+make android-deps
 make android
 ```
 
-The SDK's newer Android CLI can also install these packages; follow its `android
-sdk --help`. The checked-in Gradle 9.8.1 wrapper validates its distribution SHA-256;
-AGP 9.2.0 provides built-in Kotlin. `make android-deps` explicitly downloads
-MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9` and its pinned
-quictls submodule. It cross-compiles a static library per ABI and reuses that TLS
-build for Beam's EVP/X.509 operations. Normal CMake configuration downloads no
-native dependencies. Android imports the ABI-specific quictls archives directly;
+`android-setup` queries the SDK Manager's stable channel and installs the newest
+platform, Build Tools, NDK, CMake, and Platform Tools. Run it again when you want
+to upgrade. It requires `sdkmanager` on `PATH` or in
+`$ANDROID_HOME/cmdline-tools/latest/bin`; accept SDK licenses when prompted.
+`make android-setup ANDROID_SETUP_DRY_RUN=ON` lists the packages without installing.
+See the [SDK Manager documentation](https://developer.android.com/tools/sdkmanager).
+
+Builds use the newest complete, stable packages already installed in that SDK,
+without querying the network for tool versions. `make android-toolchain` shows
+the selection. Make and Gradle share the same selector, including direct Gradle
+and Android Studio builds. Preview packages are excluded. Beam currently needs
+platform 37+, NDK 28+, and CMake 3.25+; Android 10 remains the minimum device OS.
+Compile SDK (including minor API levels) and target SDK follow the selected platform.
+
+Optional environment variables or Make arguments choose specific installed versions:
+
+| Override | Value |
+| --- | --- |
+| `ANDROID_PLATFORM_VERSION` | Platform suffix, such as `37.0` |
+| `ANDROID_BUILD_TOOLS_VERSION` | Build Tools version |
+| `ANDROID_NDK_VERSION` | Side-by-side NDK version |
+| `ANDROID_CMAKE_VERSION` | SDK CMake version |
+| `ANDROID_NDK` | Explicit NDK directory; must match `ANDROID_NDK_VERSION` if both are set |
+
+For example, `make android-deps android ANDROID_NDK_VERSION=YOUR_VERSION` uses
+that NDK for both native dependencies and the APK. Use shell exports for the same
+selection in Android Studio/direct Gradle. The version overrides also select
+packages for `android-setup`. Remove an old `ANDROID_NDK` export to resume automatic
+NDK selection. SDK discovery uses `ANDROID_HOME`, `ANDROID_SDK_ROOT`,
+`android/local.properties` (`sdk.dir`), then `build/android-tools/sdk`.
+Gradle still needs the standard SDK environment or `sdk.dir` configuration.
+Changing NDKs uses separate native build caches; rerun `android-deps` after a change.
+
+The checked-in Gradle wrapper validates its distribution SHA-256; AGP provides
+built-in Kotlin. These tested build dependencies retain explicit versions.
+`make android-deps` explicitly downloads MsQuic v2.6.2 at commit
+`819ab74f851ee168504cbc392ec32e7bed1d82e9` and its pinned quictls submodule, plus
+checksum-verified Mbed TLS. It cross-compiles ARM64 static libraries and reuses
+that TLS build for Beam's EVP/X.509 operations. Normal CMake configuration downloads
+no native dependencies. Android imports the ARM64 quictls archives directly;
 host OpenSSL/pkg-config metadata cannot add libraries to the Android link.
 All generated output and local SDK configuration stay ignored.
 
-To build one architecture, provision that dependency and run
-`make android ANDROID_GRADLE_ARGS=-PbeamAbis=arm64-v8a`. Debug signing is automatic;
-release signing/distribution is outside this milestone. Native libraries use
+The APK contains only `arm64-v8a`; other ABI overrides are rejected. Debug signing
+is automatic; release signing/distribution is outside this milestone. Native libraries use
 16 KiB page alignment, including the NDK's packaged libc++ runtime. No desktop Qt,
 Swift, Bonjour/Avahi daemon, or Tailscale executable is linked into the APK.
 
@@ -204,13 +233,13 @@ Beam 0.9 requires protocol v4 on both peers; existing identity/pairing remains u
 ```sh
 make check                    # includes native Android session/paired-transfer tests
 make android-format           # ktfmt for Kotlin and Gradle scripts
-make android-check            # ktfmt check, Android lint, JUnit, both-ABI debug APK
-make android-native-test      # both-ABI link graphs with incompatible host OpenSSL metadata
-make android-connected-test   # requires a running emulator or attached device
+make android-check            # ktfmt check, Android lint, JUnit, ARM64 debug APK
+make android-native-test      # ARM64 link graph with incompatible host OpenSSL metadata
+make android-connected-test   # requires a running ARM64 emulator or attached ARM64 device
 ```
 
 `android-native-test` needs pkgconf (`brew install pkgconf` or your distribution's
-`pkgconf` package). It configures both ABIs with host metadata advertising
+`pkgconf` package). It configures ARM64 with host metadata advertising
 `libjitterentropy` and `zstd`, and rejects either dependency in the generated
 Android link graph. CI runs it before building the APK.
 
@@ -227,8 +256,11 @@ and share-target review without automatic staging/sending. The launch test also
 supports Android 17 permission allow/deny cases with optional notifications denied.
 Linux/Android storage uses search-only ancestor handles and atomic no-replace
 rename, retaining
-symlink rejection and collision protection in the app sandbox. Main-branch Android CI builds both
-ABIs, checks Kotlin/lint/JUnit, runs x86-64 emulator tests, and uploads the debug APK.
+symlink rejection and collision protection in the app sandbox. Main-branch Android
+CI builds only ARM64, checks Kotlin/lint/JUnit, and uploads the debug APK. Its accelerated Linux emulator uses an Intel system image with
+ARM64 translation; CI verifies ARM64 ABI availability before running the JNI/UI
+tests against the ARM64 APK. Local device tests should use an ARM64 emulator or
+phone. Set `ANDROID_SERIAL` when multiple devices are attached.
 
 Physical-device LAN/Tailscale interoperability, OEM background policy, notification
 delivery, and third-party document-provider behavior require device checks; emulator

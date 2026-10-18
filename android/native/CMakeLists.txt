@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
+if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "Beam Android supports only arm64-v8a")
+endif()
 project(BeamAndroid LANGUAGES CXX)
 if(NOT ANDROID)
     message(FATAL_ERROR "Use the Android NDK toolchain")
@@ -29,7 +32,7 @@ set(BEAM_ENABLE_DISCOVERY OFF CACHE BOOL "" FORCE)
 set(BEAM_ENABLE_TAILSCALE OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BEAM_PAIRING_ROOT "${BEAM_ANDROID_DEPS}/pairing/pairing-${ANDROID_ABI}/install" CACHE PATH "" FORCE)
-# NDK 28's libc++ provides stop_token/jthread in its experimental library.
+# Android libc++ provides stop_token/jthread in its experimental library.
 add_compile_options(-fexperimental-library)
 add_link_options(-fexperimental-library)
 add_subdirectory(../.. beam)

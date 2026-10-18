@@ -18,9 +18,12 @@ DESKTOP_GENERATOR ?=
 endif
 CMAKE_ARGS ?=
 ANDROID_ABI ?= arm64-v8a
-ANDROID_NDK ?= $(ANDROID_HOME)/ndk/28.2.13676358
 ANDROID_DEPS_DIR ?= $(CURDIR)/build/android-deps
 ANDROID_GRADLE_ARGS ?=
+# Keep Make, direct Gradle builds, and Android Studio on the same tool selection.
+export ANDROID_ABI ANDROID_HOME ANDROID_NDK ANDROID_PLATFORM_VERSION
+export ANDROID_BUILD_TOOLS_VERSION ANDROID_NDK_VERSION ANDROID_CMAKE_VERSION
+export ANDROID_SETUP_DRY_RUN SDKMANAGER
 INSTALL_BUILD_DIR ?= build-install
 INSTALL_PREFIX ?= $(HOME)/.local
 APPLICATIONS_DIR ?= $(HOME)/Applications
@@ -29,7 +32,7 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall android-install android-install-apk android android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -81,18 +84,20 @@ android-install-apk:
 	$(CMAKE) -DADB="$(ADB)" -DANDROID_SERIAL="$(ANDROID_SERIAL)" \
 		-DANDROID_APK="$(ANDROID_APK)" -P cmake/InstallAndroid.cmake
 
+android-setup:
+	$(CMAKE) -DBEAM_ANDROID_ACTION=setup -P cmake/AndroidTools.cmake
+
+android-toolchain:
+	$(CMAKE) -P cmake/AndroidTools.cmake
+
 android-deps:
-	$(CMAKE) -DANDROID_NDK="$(ANDROID_NDK)" -DANDROID_ABI="$(ANDROID_ABI)" \
-		-DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" -P cmake/BootstrapAndroid.cmake
-	$(CMAKE) -DBEAM_DEPS_DIR="$(ANDROID_DEPS_DIR)/pairing" -DANDROID_NDK="$(ANDROID_NDK)" \
-		-DANDROID_ABI="$(ANDROID_ABI)" -P cmake/BootstrapPairing.cmake
+	$(CMAKE) -DBEAM_ANDROID_ACTION=deps -DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" -P cmake/AndroidTools.cmake
 
 android:
 	./android/gradlew -p android assembleDebug $(ANDROID_GRADLE_ARGS)
 
 android-native-test:
-	$(CMAKE) -DBEAM_SOURCE_DIR="$(CURDIR)" -DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" \
-		-DANDROID_NDK="$(ANDROID_NDK)" -P tests/android_dependencies.cmake
+	$(CMAKE) -DBEAM_ANDROID_ACTION=test -DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" -P cmake/AndroidTools.cmake
 
 android-check:
 	./android/gradlew -p android formatCheck lintDebug testDebugUnitTest assembleDebug $(ANDROID_GRADLE_ARGS)
@@ -170,6 +175,7 @@ help:
 	@echo "routing-test: Tailscale discovery fixtures, route selection and safe localhost fallback"
 	@echo "desktop: native Swift macOS (BUILD_DIR-desktop-native) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"
-	@echo "android-deps: pinned NDK dependencies (ANDROID_ABI=arm64-v8a or x86_64); android: debug APK"
-	@echo "android-native-test: configure both Android ABIs with incompatible host OpenSSL metadata"
+	@echo "android-setup: install latest stable SDK/NDK/CMake tools; android-toolchain: show selected installed versions"
+	@echo "android-deps: pinned native dependencies for ARM64; android: ARM64 debug APK"
+	@echo "android-native-test: configure Android ARM64 with incompatible host OpenSSL metadata"
 	@echo "android-check: Kotlin format, Android lint, unit tests and APK; android-connected-test: device/emulator JNI and UI tests"

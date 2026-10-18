@@ -156,12 +156,12 @@ privacy design, and native desktop verification limits.
   safe private publication and explicit document-picker export.
 - [x] Preserve pinning, SHA-256, acknowledgement, and protocol v3 interoperability;
   Android sandbox storage uses no-replace rename and private trust snapshots.
-- [x] Pinned ARM64/x86-64 native builds, checksum-verified Gradle wrapper, SDK 37
+- [x] ARM64 native builds with automatic stable tool selection, checksum-verified Gradle wrapper, SDK 37
   local-network permission flow, backup exclusion, Make commands, and Android CI.
 - [x] Native session/input tests, provider/JVM tests, and actual Android 15/17
   emulator JNI file/text/URL, foreground/provider, and share-review tests.
 - [x] macOS Debug `make check`, Release core/desktop suite, ASan/UBSan,
-  scaffold-only build, Android Kotlin formatting/lint/unit tests, and both-ABI APK.
+  scaffold-only build, Android Kotlin formatting/lint/unit tests, and ARM64 APK.
 
 Beam 0.8.0 retains wire protocol v3 and existing identity/route records. Android
 uses saved numeric endpoints; LAN discovery/advertisement and Tailscale CLI
@@ -178,7 +178,7 @@ See [Android](android.md) for build, install, pairing, and validation details.
 - [x] CLI host/nearby/join, native macOS/Qt Add device, Android CameraX/ZXing QR and NsdManager.
 - [x] Preserve existing certificate stores, advanced manual pairing, and transfer protocol v4.
 - [x] macOS Debug checks, native bridge/UI pairing, ASan/UBSan, scaffold and pairing-disabled builds.
-- [x] Android Kotlin format/lint/unit checks, both-ABI APK, and Android 15 emulator QR/JNI pairing and camera-denial fallback.
+- [x] Android Kotlin format/lint/unit checks, ARM64 APK, and Android 15 emulator QR/JNI pairing and camera-denial fallback.
 - [ ] Complete Linux/Qt CI and physical camera/LAN interoperability validation.
 
 First release targets LAN only. No rendezvous service, relay, account, or remote

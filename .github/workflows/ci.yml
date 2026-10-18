@@ -22,27 +22,29 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build perl pkgconf
-          sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358' 'cmake;3.31.6'
+          make android-setup
       - name: Build pinned Android native dependencies
-        run: |
-          make android-deps ANDROID_ABI=arm64-v8a
-          make android-deps ANDROID_ABI=x86_64
+        run: make android-deps
       - name: Format, lint, test, and package Android
         run: |
-          make android-native-test CMAKE="$ANDROID_HOME/cmake/3.31.6/bin/cmake"
+          make android-native-test
           make android-check
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Test JNI transfers and share-target review on Android
+      # The Linux runner uses an accelerated Intel system image with ARM64
+      # translation. Only ARM64 application/test libraries are built or packaged.
+      - name: Test ARM64 JNI transfers and share-target review on Android
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           target: google_apis
-          script: make android-connected-test
+          script: |
+            adb shell getprop ro.product.cpu.abilist | grep -q arm64-v8a
+            make android-connected-test
       - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:

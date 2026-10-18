@@ -111,7 +111,7 @@ Android build and validation use `make android-deps`, `make android-check`, and
 `make android-connected-test`; see [Android](android.md). The app uses AGP's
 built-in Kotlin, Android platform UI/service/document APIs, and the existing
 C++ core. ktfmt 0.64 is a build-only formatter; AndroidX Test Runner and JUnit 4 are test-only
-dependency. NDK 28's stop-token/jthread support uses `-fexperimental-library`;
+dependency. Android libc++ stop-token/jthread support uses `-fexperimental-library`;
 this is enabled only for Android. Default CLI builds require no JDK or SDK.
 
 - Prefer standard-library facilities and descriptive names such as `send_file`,
@@ -228,7 +228,9 @@ and normal transfers remain available. The MIT Nayuki QR encoder v1.8.0 is vendo
 under `third_party/qrcodegen` with its license retained. Android additionally pins
 CameraX, AndroidX Activity, and the offline Apache-licensed ZXing core.
 
-`make android-deps ANDROID_ABI=...` provisions Mbed TLS for the selected ABI too.
+`make android-deps` provisions ARM64 Mbed TLS too; Android builds support only ARM64.
+`make android-setup` installs the latest stable tools, and `make android-toolchain`
+shows the shared Make/Gradle selection. See [tool overrides](android.md#build).
 `make pairing-test` includes the seamless-pairing test: invitation bounds, PIN
 failure/success, reciprocal approval, certificate substitution/key proof, expiry,
 replay, attempt limits, IPv4/IPv6, journal idempotency, and real QUIC transfers.

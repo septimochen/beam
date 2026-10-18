@@ -128,7 +128,9 @@ separate **Send** click. Tray notifications report verified transfers, and
 
 ## Android sharing
 
-Build an APK with `make android` after the [Android build setup](docs/android.md#build).
+Build an ARM64 APK with `make android` after the [Android build setup](docs/android.md#build).
+`make android-setup` installs the latest stable SDK/NDK/CMake tools;
+`make android-toolchain` shows the installed versions selected for builds.
 With USB debugging enabled and your phone connected/authorized, run
 `make android-install`; see [phone installation](docs/android.md#install-on-your-phone).
 Install it, open **Manage devices and identity**, exchange public certificates,

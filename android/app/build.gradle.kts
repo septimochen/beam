@@ -2,23 +2,45 @@ plugins {
   id("com.android.application")
 }
 
+val toolchain =
+  providers
+    .exec {
+      commandLine(
+        providers.environmentVariable("CMAKE").getOrElse("cmake"),
+        "-DBEAM_ANDROID_ACTION=properties",
+        "-P",
+        "${rootDir.parentFile}/cmake/AndroidTools.cmake",
+      )
+    }
+    .standardOutput
+    .asText
+    .get()
+    .lineSequence()
+    .filter { it.contains('=') }
+    .associate { it.substringBefore('=') to it.substringAfter('=') }
+val platformVersion = toolchain.getValue("platform").split('.').map(String::toInt)
+
+require(!project.hasProperty("beamAbis")) {
+  "Beam Android supports only arm64-v8a; remove the obsolete beamAbis override"
+}
+
 android {
   namespace = "org.beam.android"
-  compileSdk = 37
-  ndkVersion = "28.2.13676358"
+  compileSdk {
+    version = release(platformVersion[0]) { minorApiLevel = platformVersion.getOrElse(1) { 0 } }
+  }
+  buildToolsVersion = toolchain.getValue("buildTools")
+  ndkVersion = toolchain.getValue("ndkVersion")
+  ndkPath = toolchain.getValue("ndk")
   defaultConfig {
     applicationId = "org.beam.android"
     minSdk = 29
-    targetSdk = 37
+    targetSdk = platformVersion[0]
     versionCode = 10
     versionName = "0.10.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     ndk {
-      abiFilters += listOf("arm64-v8a", "x86_64")
-      (project.findProperty("beamAbis") as String?)?.let {
-        abiFilters.clear()
-        abiFilters += it.split(",")
-      }
+      abiFilters += "arm64-v8a"
     }
     externalNativeBuild {
       cmake {
@@ -30,7 +52,7 @@ android {
   externalNativeBuild {
     cmake {
       path = file("../native/CMakeLists.txt")
-      version = "3.31.6"
+      version = toolchain.getValue("cmake")
     }
   }
   compileOptions {
@@ -41,6 +63,8 @@ android {
   lint {
     abortOnError = true
     warningsAsErrors = true
+    // Beam intentionally ships ARM64 only; native Intel ChromeOS is out of scope.
+    disable += "ChromeOsAbiSupport"
   }
 }
 

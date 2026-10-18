@@ -1,10 +1,10 @@
 # Explicit dependency provisioning, separate from Gradle/CMake configuration.
 cmake_minimum_required(VERSION 3.25)
 if(NOT ANDROID_NDK OR NOT EXISTS "${ANDROID_NDK}/build/cmake/android.toolchain.cmake")
-    message(FATAL_ERROR "Set ANDROID_NDK to an installed NDK 28.2.13676358 directory")
+    message(FATAL_ERROR "Set ANDROID_NDK to an installed NDK directory, or use make android-deps for automatic selection")
 endif()
-if(NOT ANDROID_ABI MATCHES "^(arm64-v8a|x86_64)$")
-    message(FATAL_ERROR "ANDROID_ABI must be arm64-v8a or x86_64")
+if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "Beam Android supports only arm64-v8a")
 endif()
 if(NOT BEAM_ANDROID_DEPS)
     message(FATAL_ERROR "Pass BEAM_ANDROID_DEPS (absolute output directory)")
@@ -13,6 +13,11 @@ find_program(GIT_EXECUTABLE git REQUIRED)
 find_program(NINJA_EXECUTABLE ninja REQUIRED)
 set(source "${BEAM_ANDROID_DEPS}/msquic")
 set(output "${BEAM_ANDROID_DEPS}/${ANDROID_ABI}")
+# A newly selected NDK must not reuse compilers cached by an older toolchain.
+file(READ "${ANDROID_NDK}/source.properties" ndk_properties)
+string(SHA256 toolchain_id "${ANDROID_NDK}\n${ndk_properties}")
+string(SUBSTRING "${toolchain_id}" 0 12 toolchain_id)
+set(build "${output}/build-${toolchain_id}")
 function(run)
     execute_process(COMMAND ${ARGV} COMMAND_ERROR_IS_FATAL ANY)
 endfunction()
@@ -30,7 +35,7 @@ list(GET host_tools 0 tool_bin)
 # Upstream quictls invokes the NDK tools by name, separately from CMake.
 set(ENV{ANDROID_NDK_ROOT} "${ANDROID_NDK}")
 set(ENV{PATH} "${tool_bin}:$ENV{PATH}")
-run("${CMAKE_COMMAND}" -G Ninja -S "${source}" -B "${output}/build"
+run("${CMAKE_COMMAND}" -G Ninja -S "${source}" -B "${build}"
     "-DCMAKE_MAKE_PROGRAM=${NINJA_EXECUTABLE}"
     "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake"
     "-DANDROID_ABI=${ANDROID_ABI}" -DANDROID_PLATFORM=android-29
@@ -39,9 +44,9 @@ run("${CMAKE_COMMAND}" -G Ninja -S "${source}" -B "${output}/build"
     -DQUIC_BUILD_SHARED=OFF -DQUIC_TLS_LIB=quictls
     -DQUIC_BUILD_TOOLS=OFF -DQUIC_BUILD_TEST=OFF -DQUIC_BUILD_PERF=OFF
     -DQUIC_ENABLE_LOGGING=OFF -DQUIC_USE_SYSTEM_LIBCRYPTO=OFF)
-run("${CMAKE_COMMAND}" --build "${output}/build" --parallel 4)
-run("${CMAKE_COMMAND}" --install "${output}/build")
+run("${CMAKE_COMMAND}" --build "${build}" --parallel 4)
+run("${CMAKE_COMMAND}" --install "${build}")
 # Reuse the same pinned TLS implementation for Beam's EVP/X.509 operations.
-set(crypto "${output}/build/_deps/opensslquic-build/quictls")
+set(crypto "${build}/_deps/opensslquic-build/quictls")
 file(COPY "${crypto}/include/" DESTINATION "${output}/install/include")
 file(COPY "${crypto}/lib/libssl.a" "${crypto}/lib/libcrypto.a" DESTINATION "${output}/install/lib")

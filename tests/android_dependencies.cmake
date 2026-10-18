@@ -18,9 +18,9 @@ execute_process(COMMAND ${environment} "${PKG_CONFIG_EXECUTABLE}" --static --lib
 if(NOT status STREQUAL "0" OR NOT libraries MATCHES "jitterentropy" OR NOT libraries MATCHES "zstd")
     message(FATAL_ERROR "Host metadata fixture is not active: ${libraries}${error}")
 endif()
-foreach(abi arm64-v8a x86_64)
+foreach(abi arm64-v8a)
     set(build "${output}/${abi}")
-    execute_process(COMMAND ${environment} "${CMAKE_COMMAND}"
+    execute_process(COMMAND ${environment} "${CMAKE_COMMAND}" --fresh
         -G Ninja -S "${BEAM_SOURCE_DIR}/android/native" -B "${build}"
         "-DCMAKE_MAKE_PROGRAM=${NINJA_EXECUTABLE}"
         "-DPKG_CONFIG_EXECUTABLE=${PKG_CONFIG_EXECUTABLE}"
