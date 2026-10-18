@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
-#include <cstring>
 #include <fcntl.h>
 #include <ifaddrs.h>
 #include <mbedtls/error.h>

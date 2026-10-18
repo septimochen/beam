@@ -122,6 +122,30 @@ int main() {
         static_cast<void>(pending.commit_pairing());
         require(pending.peers().size() == 1, "idempotent commit duplicated peer");
         pending.finish_pairing();
+        // Reopen after each durable boundary as if the process stopped before
+        // the next acknowledgement. Pending approval alone cannot authorize TLS.
+        {
+            beam::IdentityStore recovery(root / "recovery", true);
+            recovery.initialize();
+            recovery.prepare_pairing(host_peer);
+        }
+        {
+            beam::IdentityStore recovery(root / "recovery");
+            require(recovery.has_incomplete_pairing() && recovery.peers().empty(),
+                    "restart promoted pending approval");
+            fails([&] { static_cast<void>(recovery.credentials()); });
+            static_cast<void>(recovery.commit_pairing());
+        }
+        {
+            beam::IdentityStore recovery(root / "recovery");
+            require(recovery.has_incomplete_pairing(), "restart lost incomplete receipt state");
+            static_cast<void>(recovery.commit_pairing());
+            require(recovery.peers().size() == 1 &&
+                        recovery.peer(host_peer.name).identity.fingerprint ==
+                            host_peer.identity.fingerprint,
+                    "restart duplicated or replaced pinned trust");
+            recovery.finish_pairing();
+        }
         // Publication survives process restart and never overwrites an alias.
         auto conflicting = host_peer;
         conflicting.name = "different-alias";
