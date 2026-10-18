@@ -9,11 +9,8 @@
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/ssl.h>
 #include <mutex>
-#ifdef __linux__
-#include <linux/if.h>
-#else
-#include <net/if.h>
-#endif
+// Required for IFF_*; glibc exposes these as self-referential enum macros.
+#include <net/if.h> // IWYU pragma: keep
 #include <netdb.h>
 #include <openssl/evp.h>
 #include <poll.h>
