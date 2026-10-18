@@ -215,3 +215,23 @@ correct callback lifetimes, deadlock freedom, or platform clipboard/drop policy.
 The full three-platform build/test matrix can be triggered manually in GitHub Actions.
 Commit completed work with a descriptive message and push when a remote is configured;
 leave unrelated changes unstaged.
+
+## Pairing dependencies and checks
+
+`make deps` also runs `make pairing-deps`. The explicit provisioning script pins
+Mbed TLS 4.2.0's official archive and SHA-256, includes its matching TF-PSA-Crypto,
+and enables EC-JPAKE plus the required pthread locking. Libraries are linked
+statically, separately from MsQuic/quictls. Normal configuration never downloads.
+`BEAM_PAIRING_ROOT` selects that provisioned prefix; `BEAM_ENABLE_PAIRING=OFF`
+removes this dependency and the network pairing implementation. Manual pairing
+and normal transfers remain available. The MIT Nayuki QR encoder v1.8.0 is vendored
+under `third_party/qrcodegen` with its license retained. Android additionally pins
+CameraX, AndroidX Activity, and the offline Apache-licensed ZXing core.
+
+`make android-deps ANDROID_ABI=...` provisions Mbed TLS for the selected ABI too.
+`make pairing-test` includes the seamless-pairing test: invitation bounds, PIN
+failure/success, reciprocal approval, certificate substitution/key proof, expiry,
+replay, attempt limits, IPv4/IPv6, journal idempotency, and real QUIC transfers.
+Android JVM tests exercise QR decoding; emulator JNI tests decode a QR produced
+by the C++ encoder and persist both full certificate pins across restart.
+Physical cameras and LAN interoperability still need device validation.

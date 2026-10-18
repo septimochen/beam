@@ -109,7 +109,9 @@ jobs:
         run: brew install openssl@3 nlohmann-json ninja
       - name: Build pinned MsQuic
         if: runner.os != 'Windows'
-        run: cmake -DBEAM_DEPS_DIR="$PWD/build/deps" -P cmake/BootstrapMsQuic.cmake
+        run: |
+          cmake -DBEAM_DEPS_DIR="$PWD/build/deps" -P cmake/BootstrapMsQuic.cmake
+          cmake -DBEAM_DEPS_DIR="$PWD/build/deps" -P cmake/BootstrapPairing.cmake
       - name: Check formatting
         if: runner.os == 'Linux'
         run: make format-check CLANG_FORMAT=clang-format-23

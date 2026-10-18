@@ -10,8 +10,8 @@ android {
     applicationId = "org.beam.android"
     minSdk = 29
     targetSdk = 37
-    versionCode = 9
-    versionName = "0.9.0"
+    versionCode = 10
+    versionName = "0.10.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     ndk {
       abiFilters += listOf("arm64-v8a", "x86_64")
@@ -37,6 +37,7 @@ android {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
   }
+  sourceSets.getByName("main").assets.srcDir("../../third_party/licenses")
   lint {
     abortOnError = true
     warningsAsErrors = true
@@ -44,6 +45,11 @@ android {
 }
 
 dependencies {
+  implementation("androidx.activity:activity:1.13.0")
+  implementation("androidx.camera:camera-camera2:1.6.2")
+  implementation("androidx.camera:camera-lifecycle:1.6.2")
+  implementation("androidx.camera:camera-view:1.6.2")
+  implementation("com.google.zxing:core:3.5.4")
   testImplementation("junit:junit:4.13.2")
   androidTestImplementation("androidx.test:runner:1.7.0")
   androidTestImplementation("junit:junit:4.13.2")

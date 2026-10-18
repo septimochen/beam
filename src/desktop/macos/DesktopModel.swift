@@ -31,6 +31,12 @@ final class DesktopModel: ObservableObject {
   @Published var lastResult = "No completed transfers yet."
   @Published var sendProgress: Double? = 0
   @Published var receiveProgress: Double? = 0
+  @Published var showPairing = false
+  @Published var pairingValues: [String] = []
+  @Published var pairingAlias = ""
+  @Published var pairingInvitation = ""
+  @Published var pairingError = ""
+  private var lastPairingState = ""
   var onNotification: ((String) -> Void)?
   let bridge: BeamDesktopBridge
   let port: Int
@@ -60,7 +66,7 @@ final class DesktopModel: ObservableObject {
       peers = try bridge.peers()
       if !peers.contains(peer) { peer = peers.first ?? "" }
       if peers.isEmpty {
-        sendStatus = "No paired devices. Pair using the beam CLI, then refresh."
+        sendStatus = "No paired devices. Choose Add device to pair."
       }
     } catch {
       peers = []
@@ -74,7 +80,7 @@ final class DesktopModel: ObservableObject {
     guard receiveStartPending, !bridge.receiving else { return }
     receiveStartPending = false
     guard !peers.isEmpty else {
-      receiveStatus = "Set up identity and pair a device with the beam CLI, then refresh devices."
+      receiveStatus = "Choose Add device to pair your first device."
       return
     }
     startReceiving()
@@ -184,6 +190,7 @@ final class DesktopModel: ObservableObject {
   }
 
   func poll() {
+    if showPairing { pairingAction("snapshot") }
     do {
       for event in try bridge.events() { report(event) }
       sending = bridge.sending
@@ -258,10 +265,37 @@ final class DesktopModel: ObservableObject {
   }
 
   func shutdown() {
+    if showPairing { pairingAction("cancel") }
     receiveStartPending = false
     bridge.shutdown()
     sending = false
     receiving = false
     checking = false
+  }
+
+  func openPairing() {
+    pairingError = ""
+    showPairing = true
+    pairingAction("host", [Host.current().localizedName ?? "Beam Mac"])
+    pairingAction("browse")
+  }
+
+  func closePairing() {
+    pairingAction("cancel")
+    showPairing = false
+    refreshPeers()
+  }
+
+  func pairingAction(_ command: String, _ arguments: [String] = []) {
+    do {
+      let values = try bridge.pairing(command: command, arguments: arguments)
+      guard values.count >= 8 else { return }
+      pairingValues = values
+      if values[0] != lastPairingState {
+        lastPairingState = values[0]
+        if values[0] == "awaiting approval" { pairingAlias = values[5] }
+        if values[0] == "paired" { refreshPeers() }
+      }
+    } catch { pairingError = error.localizedDescription }
   }
 }

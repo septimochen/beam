@@ -24,6 +24,8 @@ struct BeamView: View {
                 ForEach(model.peers, id: \.self) { Text($0).tag($0) }
               }
               Button("Refresh devices", action: model.refreshPeers)
+              Button("Add device…", action: model.openPairing)
+                .disabled(model.sending || model.checking)
             }
             HStack {
               Button("Check connectivity", action: model.checkConnectivity)
@@ -96,10 +98,13 @@ struct BeamView: View {
           }.padding(8).frame(maxWidth: .infinity, alignment: .leading)
         }
         Text(model.lastResult).font(.callout).textSelection(.enabled)
-        Text("Set up identity, pairing, and addresses with the beam CLI. Then refresh devices.")
+        Text("Use Add device to pair over your local network.")
           .font(.caption).foregroundStyle(.secondary)
       }.padding(24)
     }.frame(minWidth: 600, minHeight: 640)
+      .sheet(isPresented: $model.showPairing, onDismiss: model.closePairing) {
+        PairingView(model: model)
+      }
   }
 
   @ViewBuilder private func transferProgress(_ value: Double?, label: String) -> some View {

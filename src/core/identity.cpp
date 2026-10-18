@@ -468,4 +468,88 @@ Credentials IdentityStore::credentials(const std::string& name) const {
         result.pinned_certificates.push_back(saved.identity.certificate_pem);
     return result;
 }
+DeviceIdentity IdentityStore::validate_public_certificate(const std::string& pem) {
+    checked(pem.find("PRIVATE KEY") == std::string::npos,
+            "pair with an exported public certificate, never a private key");
+    auto certificate = parse_certificate(pem);
+    const auto result = describe(certificate.get());
+    checked(result.certificate_pem == pem, "noncanonical public certificate");
+    return result;
+}
+Credentials IdentityStore::pairing_credentials(const DeviceIdentity& candidate) const {
+    static_cast<void>(identity());
+    const auto remote = validate_public_certificate(candidate.certificate_pem);
+    checked(remote.fingerprint == candidate.fingerprint, "candidate fingerprint mismatch");
+    return {implementation->directory / "identity.pem",
+            implementation->directory / "identity.pem",
+            {},
+            {remote.certificate_pem}};
+}
+bool IdentityStore::has_incomplete_pairing() const {
+    if (!implementation->exists("pairing.journal"))
+        return false;
+    static_cast<void>(implementation->read("pairing.journal"));
+    return true;
+}
+void IdentityStore::prepare_pairing(const TrustedPeer& candidate) {
+    checked(is_peer_name(candidate.name), "invalid pairing alias");
+    validate_endpoint(candidate.endpoint);
+    const auto remote = validate_public_certificate(candidate.identity.certificate_pem);
+    checked(remote.fingerprint == candidate.identity.fingerprint &&
+                remote.fingerprint != identity().fingerprint,
+            "invalid pairing identity");
+    const auto record = candidate.name + "\n" + candidate.endpoint + "\n" + remote.certificate_pem;
+    if (has_incomplete_pairing()) {
+        // Retry only the same locally approved alias and exact certificate.
+        const auto previous = implementation->read("pairing.journal");
+        const auto first = previous.find('\n');
+        const auto second = previous.find('\n', first + 1);
+        checked(first != std::string::npos && second != std::string::npos &&
+                    previous.substr(0, first) == candidate.name &&
+                    previous.substr(second + 1) == remote.certificate_pem,
+                "another incomplete pairing exists; forget it explicitly first");
+    }
+    const auto current = peers();
+    checked(current.size() < max_peers || std::any_of(current.begin(), current.end(),
+                                                      [&](const auto& peer) {
+                                                          return peer.identity.fingerprint ==
+                                                                 remote.fingerprint;
+                                                      }),
+            "trusted peer limit reached");
+    for (const auto& peer : current) {
+        checked(
+            (peer.name != candidate.name && peer.identity.fingerprint != remote.fingerprint) ||
+                (peer.name == candidate.name && peer.identity.fingerprint == remote.fingerprint),
+            "peer name or identity already paired; unpair explicitly before replacing it");
+    }
+    implementation->write("pairing.journal", record, has_incomplete_pairing());
+}
+TrustedPeer IdentityStore::commit_pairing() {
+    const auto record = implementation->read("pairing.journal");
+    const auto first = record.find('\n');
+    const auto second = record.find('\n', first + 1);
+    checked(first != std::string::npos && second != std::string::npos, "invalid pairing journal");
+    TrustedPeer candidate{record.substr(0, first), record.substr(first + 1, second - first - 1),
+                          validate_public_certificate(record.substr(second + 1))};
+    // Recheck while holding the store lock; another process may have added a peer.
+    prepare_pairing(candidate);
+    for (const auto& saved : peers())
+        if (saved.identity.fingerprint == candidate.identity.fingerprint)
+            return saved;
+    implementation->write(candidate.name + ".peer",
+                          candidate.endpoint + "\n" + candidate.identity.certificate_pem);
+    return candidate;
+}
+void IdentityStore::finish_pairing() {
+    if (!has_incomplete_pairing())
+        return;
+    checked(unlinkat(implementation->root.descriptor, "pairing.journal", 0) == 0 &&
+                fsync(implementation->root.descriptor) == 0,
+            "remove pairing journal failed");
+}
+void IdentityStore::forget_incomplete_pairing() {
+    // Explicitly discards the journal. Committed peers remain visible in the
+    // normal peer list and require the existing explicit unpair action.
+    finish_pairing();
+}
 } // namespace beam

@@ -19,42 +19,36 @@ See [build setup](docs/development.md#build-setup) for platform dependencies.
 ```sh
 git clone https://github.com/septimochen/beam.git
 cd beam
-make deps   # downloads and builds MsQuic; takes a few minutes
+make deps   # provisions pinned MsQuic and pairing dependencies
 make build
 ./build/beam --help
 ```
 
 The examples below run from the repository directory on each device.
 
-### 2. Create an identity and pair the devices
+### 2. Pair the devices
 
-On each device, create an identity and export its public certificate:
-
-```sh
-./build/beam identity init
-./build/beam identity export > my-device.pem
-```
-
-Name the exported files `laptop.pem` on the receiver and `desktop.pem` on the
-sender, then exchange the public certificates. Compare the full fingerprint shown by
-`identity init` with the fingerprint on the original device, in person or through
-an independently trusted channel. Keep private keys on their original device.
-
-For a receiver called `laptop` and a sender called `desktop`, run on the sender:
+On the computer or receiver:
 
 ```sh
-./build/beam pair laptop --cert laptop.pem --fingerprint VERIFIED_LAPTOP_SHA256 \
-  --endpoint 192.168.1.50:4269
+./build/beam pairing host --name laptop
 ```
 
-On the receiver:
+On the other device:
 
 ```sh
-./build/beam pair desktop --cert desktop.pem --fingerprint VERIFIED_DESKTOP_SHA256
+./build/beam pairing join --name desktop
+# Paste the invitation printed by the host, then approve on both devices.
 ```
 
-Use the exchanged certificate paths and replace the placeholders with each
-verified 64-character fingerprint. See [pairing setup](docs/pairing.md) for details.
+Identity creation, public certificate exchange, and both transfer addresses are
+handled automatically. Both devices must be on the same LAN. For nearby PIN
+pairing, run `beam pairing nearby`, then `beam pairing join --endpoint IP:PORT`
+and enter the PIN shown on the other screen. Secrets are read from stdin.
+
+Desktop apps provide **Add device**, QR display, nearby selection, and invitation
+paste. Android also scans QR codes. No accounts or internet service are required.
+See [pairing](docs/pairing.md) for recovery and advanced manual PEM pairing.
 
 ### 3. Start the receiver
 
@@ -97,7 +91,7 @@ Restart the receiver for each transfer, then send to its paired name:
 Text, including URLs, uses up to 64 KiB of UTF-8. Apps display it in memory with
 explicit **Copy to clipboard** buttons; the CLI writes received text verbatim to
 stdout. No text files are created automatically. See [content transfers](docs/content.md).
-Both devices must use `beam/4` (Beam 0.9); update older peers. Existing pairing
+Both devices must use `beam/4` (Beam 0.9+); update older peers. Existing pairing
 records continue to work. Check a paired receiver with `./build/beam check laptop`.
 
 Desktop/CLI defaults can be set in `~/.config/beam/config`; see
@@ -119,7 +113,7 @@ version and always compile native icon appearances. See [Xcode setup](assets/ico
 Linux uses Qt 6 Widgets (`qt6-base-dev` and
 `qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
 `build-desktop/beam-desktop` on Linux or `open build-desktop-native/beam-desktop.app`
-on macOS. Use the same CLI pairing setup, choose a device, drop or select one
+on macOS. Choose **Add device** to pair, then choose a device, drop or select one
 file, then click **Send**. After pairing, reception starts automatically when the
 app opens. Files go to `~/Downloads` unless you configure or choose another folder;
 the app remembers folder selections.
@@ -140,7 +134,7 @@ same review screen. Opening Beam starts reception after pairing and required
 permissions; **Stop receiving** pauses it. Use
 **Save a received file…** to export from private storage.
 
-See [Android setup, pairing, and tests](docs/android.md) for numeric addresses,
+See [Android setup, pairing, and tests](docs/android.md) for QR/PIN pairing,
 foreground controls, APK paths, and platform verification.
 
 ## Useful options and tips

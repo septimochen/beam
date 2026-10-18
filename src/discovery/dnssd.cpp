@@ -61,7 +61,7 @@ bool ready(DNSServiceRef ref, int timeout) {
         throw DiscoveryError("DNS-SD daemon disconnected");
     return result > 0 && (descriptor.revents & POLLIN);
 }
-bool compatible(std::span<const unsigned char> txt) {
+bool compatible(std::span<const unsigned char> txt, bool pairing = false) {
     if (txt.empty() || txt.size() > 512)
         return false;
     bool version = false;
@@ -73,7 +73,7 @@ bool compatible(std::span<const unsigned char> txt) {
         const std::string_view field(reinterpret_cast<const char*>(txt.data()), length);
         const auto key = field.substr(0, field.find('='));
         if (key == "v" || key == "V") {
-            if (version || field != "v=4")
+            if (version || field != (pairing ? "v=1" : "v=4"))
                 return false;
             version = true;
         }
@@ -100,10 +100,12 @@ struct Service {
     Reference resolve, ipv4, ipv6;
     std::uint16_t port = 0;
     bool removed = false, resolved = false;
+    bool pairing = false;
     Service(Browser& owner, std::string name, std::uint32_t index)
         : browser(owner), device{std::move(name), {}, index, {}} {}
 };
 struct Browser {
+    bool pairing = false;
     Reference browse;
     std::vector<std::unique_ptr<Service>> services;
     std::exception_ptr failure;
@@ -174,7 +176,7 @@ void DNSSD_API resolve_reply(DNSServiceRef, DNSServiceFlags, std::uint32_t index
         service.resolved = true;
         if (error != kDNSServiceErr_NoError || service.removed || !hostname || !txt || !port ||
             index != service.device.interface_index || !local_hostname(hostname) ||
-            !compatible({txt, txt_length}))
+            !compatible({txt, txt_length}, service.pairing))
             return;
         service.device.hostname = hostname;
         // Save the port independently of address callbacks.
@@ -193,7 +195,8 @@ void DNSSD_API browse_reply(DNSServiceRef, DNSServiceFlags flags, std::uint32_t 
     browser.callback([&] {
         check_dns(error);
         if (!name || !type || !reply_domain || !is_discovery_name(name) ||
-            (std::string_view(type) != service_type && std::string_view(type) != "_beam._udp.") ||
+            (std::string_view(type) != (browser.pairing ? "_beam-pair._tcp" : service_type) &&
+             std::string_view(type) != (browser.pairing ? "_beam-pair._tcp." : "_beam._udp.")) ||
             std::string_view(reply_domain) != domain || index == 0)
             return;
         const auto found = std::find_if(
@@ -209,7 +212,9 @@ void DNSSD_API browse_reply(DNSServiceRef, DNSServiceFlags flags, std::uint32_t 
         if (found != browser.services.end() || browser.services.size() >= max_services)
             return;
         auto service = std::make_unique<Service>(browser, name, index);
-        check_dns(DNSServiceResolve(&service->resolve.value, 0, index, name, service_type, domain,
+        service->pairing = browser.pairing;
+        check_dns(DNSServiceResolve(&service->resolve.value, 0, index, name,
+                                    browser.pairing ? "_beam-pair._tcp" : service_type, domain,
                                     resolve_reply, service.get()));
         browser.services.push_back(std::move(service));
     });
@@ -219,8 +224,10 @@ std::vector<DiscoveredDevice> discover_devices(const DiscoveryOptions& options) 
     validate(options);
     check_cancel(options);
     Browser browser;
-    check_dns(DNSServiceBrowse(&browser.browse.value, 0, 0, service_type, domain, browse_reply,
-                               &browser));
+    browser.pairing = options.pairing;
+    check_dns(DNSServiceBrowse(&browser.browse.value, 0, 0,
+                               options.pairing ? "_beam-pair._tcp" : service_type, domain,
+                               browse_reply, &browser));
     const auto deadline = std::chrono::steady_clock::now() + options.timeout;
     while (std::chrono::steady_clock::now() < deadline) {
         check_cancel(options);
@@ -304,9 +311,10 @@ ReceiverAdvertisement::ReceiverAdvertisement(std::uint16_t port, const std::stri
         throw std::invalid_argument(
             "discovery requires a port and a printable ASCII name of 1-63 bytes");
     check_cancel(options);
-    const unsigned char txt[]{3, 'v', '=', '4'};
+    const unsigned char txt[]{3, 'v', '=', static_cast<unsigned char>(options.pairing ? '1' : '4')};
     auto& self = *implementation;
-    check_dns(DNSServiceRegister(&self.registration.value, 0, 0, name.c_str(), service_type, domain,
+    check_dns(DNSServiceRegister(&self.registration.value, 0, 0, name.c_str(),
+                                 options.pairing ? "_beam-pair._tcp" : service_type, domain,
                                  nullptr, htons(port), sizeof(txt), txt, Impl::reply, &self));
     const auto deadline = std::chrono::steady_clock::now() + options.timeout;
     while (!self.registered) {

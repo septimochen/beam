@@ -17,8 +17,11 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   Bound local CLI output and lifetime, and reap children on cancellation/error.
   See [Tailscale](tailscale.md).
 - Persistent identity must survive network changes; an IP address is not
-  device identity. Pairing must explicitly verify the full certificate fingerprint
-  through an independent channel before storing trust. See [pairing](pairing.md).
+  device identity. Manual pairing must explicitly verify the full certificate fingerprint
+  through an independent channel. Network pairing may instead use the reviewed
+  EC-JPAKE exchange, fresh pinned mutual-TLS key proof, and reciprocal approval
+  described in pairing.md before storing trust. Never treat a short PIN as a
+  raw TLS PSK, skip key proof, or promote pending journal records to trust. See [pairing](pairing.md).
 - Paired transfers must check the exact leaf certificate and normal TLS validity
   and hostname rules. Never authorize another certificate solely because a paired
   certificate or system root signed it. Empty trust sets must fail closed.

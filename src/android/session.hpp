@@ -1,6 +1,9 @@
 #pragma once
 
 #include "desktop/service.hpp"
+#ifdef BEAM_HAS_PAIRING
+#include "beam/pairing.hpp"
+#endif
 
 namespace beam::android {
 // Value-only boundary shared by JNI and host integration tests. Called on one
@@ -17,11 +20,24 @@ enum class Command {
     stop,
     events,
     busy,
-    check
+    check,
+    pairing_host,
+    pairing_join,
+    pairing_pin,
+    pairing_approve,
+    pairing_snapshot,
+    pairing_browse,
+    pairing_cancel,
+    pairing_forget,
+    pairing_reject
 };
 class Session {
     std::filesystem::path state;
     desktop::Service service;
+#ifdef BEAM_HAS_PAIRING
+    std::unique_ptr<PairingSession> pairing;
+    std::uint16_t transfer_port;
+#endif
 
   public:
     explicit Session(const std::filesystem::path& directory, std::uint16_t port = 4269,

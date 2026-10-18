@@ -206,9 +206,46 @@ private func tests() throws {
   let unpaired = DesktopModel(
     bridge: unpairedBridge, port: port, output: stateRoot, defaults: defaults)
   try require(
-    !unpaired.receiving && unpaired.receiveStatus.contains("pair a device"),
+    !unpaired.receiving && unpaired.receiveStatus.contains("Add device"),
     "Unpaired launch did not explain setup")
   unpaired.shutdown()
+
+  // Exercise the actual Objective-C++ value bridge for both ends of pairing.
+  let pairingLeft = try BeamDesktopBridge(
+    stateDirectory: stateRoot + "/network-left", port: 4269, advertise: false)
+  let pairingRight = try BeamDesktopBridge(
+    stateDirectory: stateRoot + "/network-right", port: 4270, advertise: false)
+  defer {
+    pairingLeft.shutdown()
+    pairingRight.shutdown()
+  }
+  _ = try pairingLeft.pairing(command: "host", arguments: ["left"])
+  var invitation: [String] = []
+  try waitUntil {
+    invitation = try pairingLeft.pairing(command: "snapshot", arguments: [])
+    return invitation[0] == "hosting"
+  }
+  try require(!invitation[7].isEmpty && invitation[3].count == 6, "Pairing bridge lost QR or PIN")
+  _ = try pairingRight.pairing(command: "host", arguments: ["right"])
+  _ = try pairingRight.pairing(command: "join", arguments: [invitation[2]])
+  var leftApproval: [String] = []
+  var rightApproval: [String] = []
+  try waitUntil {
+    leftApproval = try pairingLeft.pairing(command: "snapshot", arguments: [])
+    rightApproval = try pairingRight.pairing(command: "snapshot", arguments: [])
+    return leftApproval[0] == "awaiting approval" && rightApproval[0] == "awaiting approval"
+  }
+  let beforeApproval = try pairingLeft.peers()
+  try require(beforeApproval.isEmpty, "Pairing bridge granted trust before approval")
+  _ = try pairingLeft.pairing(command: "approve", arguments: [leftApproval[5]])
+  _ = try pairingRight.pairing(command: "approve", arguments: [rightApproval[5]])
+  try waitUntil {
+    let left = try pairingLeft.pairing(command: "snapshot", arguments: [])
+    let right = try pairingRight.pairing(command: "snapshot", arguments: [])
+    return left[0] == "paired" && right[0] == "paired"
+  }
+  let networkPeers = try pairingLeft.peers()
+  try require(networkPeers == ["right"], "Pairing bridge did not refresh stored devices")
   for (name, peer) in [("left", "right"), ("right", "left")] {
     guard let fingerprint = identities[peer] else { throw NSError(domain: "BeamTests", code: 1) }
     _ = try runCLI(
@@ -352,7 +389,7 @@ private func tests() throws {
   invalid.refreshPeers()
   try waitUntil {
     invalid.poll()
-    return !invalid.receiving && invalid.receiveStatus.contains("pair a device")
+    return !invalid.receiving && invalid.receiveStatus.contains("Add device")
   }
   invalid.shutdown()
 }

@@ -50,6 +50,13 @@
 !/cmake/
 !/cmake/**/*.cmake
 !/cmake/**/*.cmake.in
+!/cmake/PairingMbedConfig.h
+!/cmake/PairingCryptoConfig.h
+!/third_party/
+!/third_party/qrcodegen/
+!/third_party/qrcodegen/*.cpp
+!/third_party/qrcodegen/*.hpp
+!/third_party/qrcodegen/*.md
 !/android/
 !/android/**/
 !/android/**/*.kts
@@ -67,3 +74,6 @@
 /android/.kotlin/
 /android/**/build/
 /android/**/.cxx/
+
+!/third_party/licenses/
+!/third_party/licenses/*.md

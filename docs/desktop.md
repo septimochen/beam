@@ -109,8 +109,9 @@ Linux's default launcher path follows `XDG_DATA_HOME` just as installation does.
 
 ## Set up paired devices
 
-Initialize identity and reciprocally pair devices with the CLI using independently
-verified full fingerprints; see [pairing](pairing.md). Set a peer's numeric address
+Choose **Add device** for QR display, nearby PIN entry, or invitation paste.
+Review and approve on both devices; see [pairing](pairing.md). Manual CLI PEM
+pairing remains available as an advanced option. Set a peer's numeric address
 with `beam peer NAME --endpoint IP:PORT` or its optional Tailscale route. Click
 **Refresh devices** after CLI changes. Discovery never chooses or approves a peer.
 The app reports missing identity, peers, or addresses with setup guidance.
@@ -133,8 +134,7 @@ Reception stays enabled while the app runs, with no Start/Stop receiving buttons
 in the window or tray menu. With no configured or remembered folder, files go to
 `~/Downloads`, which the app creates if missing. **Choose folder…** selects an
 existing alternative and remembers it in native app preferences. Changing folders
-restarts reception automatically. If identity/pairing is missing, complete CLI
-setup and click **Refresh devices**. Missing or unsafe custom folders and startup
+restarts reception automatically. If identity/pairing is missing, choose **Add device**. Missing or unsafe custom folders and startup
 failures remain visible; choose a valid folder or click **Refresh devices** to retry.
 This is app-launch behavior, not an OS-login startup service.
 macOS may ask for Downloads access when the receiver first opens that folder;

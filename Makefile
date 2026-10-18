@@ -29,11 +29,15 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps configure build test check icons icons-native install uninstall android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
 	$(CMAKE) -DBEAM_DEPS_DIR="$(abspath build/deps)" -P cmake/BootstrapMsQuic.cmake
+	$(MAKE) pairing-deps
+
+pairing-deps:
+	$(CMAKE) -DBEAM_DEPS_DIR="$(abspath build/deps)" -P cmake/BootstrapPairing.cmake
 
 configure:
 	$(CMAKE) -S . -B "$(BUILD_DIR)" -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DBUILD_TESTING=ON $(CMAKE_ARGS)
@@ -80,6 +84,8 @@ android-install-apk:
 android-deps:
 	$(CMAKE) -DANDROID_NDK="$(ANDROID_NDK)" -DANDROID_ABI="$(ANDROID_ABI)" \
 		-DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" -P cmake/BootstrapAndroid.cmake
+	$(CMAKE) -DBEAM_DEPS_DIR="$(ANDROID_DEPS_DIR)/pairing" -DANDROID_NDK="$(ANDROID_NDK)" \
+		-DANDROID_ABI="$(ANDROID_ABI)" -P cmake/BootstrapPairing.cmake
 
 android:
 	./android/gradlew -p android assembleDebug $(ANDROID_GRADLE_ARGS)
@@ -111,7 +117,7 @@ desktop-live-test: desktop
 	$(CMAKE) --build "$(DESKTOP_BUILD_DIR)" --target desktop-live-test --config $(BUILD_TYPE)
 
 pairing-test: build
-	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^(identity|pairing-localhost)$$'
+	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^(identity|pairing-localhost|seamless-pairing)$$'
 
 content-test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^content(-localhost)?$$'

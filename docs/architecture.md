@@ -158,3 +158,21 @@ other paired peer, or a certificate issued by a paired identity from authorizing
 an unintended device. Explicit-CA transfers keep their original validation path.
 Device identity, local aliases, LAN display names, and numeric routing endpoints
 are separate: changing an address never changes trust. See [pairing](pairing.md).
+
+## Seamless LAN pairing
+
+`PairingSession` owns joined pairing/discovery workers and exposes bounded value
+snapshots to CLI, Swift/Objective-C++, Qt, and JNI. `protocol/pairing` implements
+bounded framing and canonical invitation encoding; `transport/pairing_tls` owns
+nonblocking sockets and Mbed TLS contexts. Its EC-JPAKE channel authenticates the
+invitation/PIN, followed by fresh pinned mutual TLS 1.3 for certificate-key proof.
+The UI approves both identities before IdentityStore prepares and commits trust.
+An incomplete journal never participates in credential snapshots. Existing peer
+records and the `beam/4` transfer protocol are unchanged. Mbed TLS's PSA backend
+uses pthread locking, including when multiple sessions run in one process.
+
+Desktop reuses Bonjour/Avahi for `_beam-pair._tcp`; Android uses NsdManager outside
+the C++ core. QR modules come from the vendored MIT Nayuki encoder; Android's
+CameraX/ZXing scanner is platform UI and never authorizes trust itself. Pairing
+listeners and secrets exist only for the bounded Add device window. No persistent
+control connection, cloud rendezvous, relay, or account is introduced.

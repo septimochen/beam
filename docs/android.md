@@ -82,6 +82,19 @@ needed for that manual APK installation.
 
 ## Pair and choose a device
 
+Choose **Add device** on Android and the other device. Scan the computer's QR,
+select a nearby device and enter its PIN, or paste its invitation. Approve on
+both screens. Android discovers/advertises `_beam-pair._tcp` through NsdManager
+only while this screen is open. The bundled ZXing decoder works offline through
+CameraX; Google Play Services are not required. Camera denial keeps paste/PIN
+available. Leaving the screen cancels pairing; recreation starts a new invitation.
+Transfers pause during setup and resume on return when previously enabled;
+explicit Stop remains respected. Full certificates and routes are saved for you.
+
+The following manual PEM workflow remains available under **Manage devices and
+identity**:
+
+
 1. Open **Manage devices and identity → Show / export my public certificate**.
    Save `beam-android.pem` through the system document picker and transfer it to
    the desktop. Never export/copy Android's private identity store.
@@ -105,8 +118,8 @@ before updating/removing devices. Pairing must be reciprocal. Empty trust fails
 closed, and system roots/discovery records cannot grant authorization.
 See [pairing](pairing.md) for certificate/storage rules and renewal behavior.
 
-This milestone uses saved numeric endpoints. Android LAN browsing/advertising
-and Tailscale CLI discovery are disabled. A manually entered numeric tailnet
+Transfers use saved numeric endpoints. Pairing LAN discovery is available;
+transfer-receiver DNS-SD and Tailscale CLI discovery remain disabled. A manually entered numeric tailnet
 address works when the Android Tailscale VPN and peer routing permit UDP; this
 does not change Beam's certificate verification.
 

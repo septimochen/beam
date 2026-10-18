@@ -1,5 +1,8 @@
 #include "window.hpp"
 #include "beam/identity.hpp"
+#ifdef BEAM_HAS_PAIRING
+#include "pairing_dialog.hpp"
+#endif
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -93,6 +96,19 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     peer_row->addWidget(peer_label);
     peer_row->addWidget(peers, 1);
     peer_row->addWidget(refresh);
+#ifdef BEAM_HAS_PAIRING
+    auto* add_device = new QPushButton("Add device…", this);
+    add_device->setObjectName("addDevice");
+    peer_row->addWidget(add_device);
+    connect(add_device, &QPushButton::clicked, this, [this] {
+        try {
+            show_pairing_dialog(this, config, service);
+            refresh_peers();
+        } catch (const std::exception& error) {
+            send_status->setText(display(error.what()));
+        }
+    });
+#endif
     send_layout->addLayout(peer_row);
     check_button = new QPushButton("Check connectivity", this);
     check_button->setObjectName("checkConnectivity");
@@ -242,8 +258,7 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     last_result->setObjectName("lastResult");
     plain(last_result);
     layout->addWidget(last_result);
-    auto* hint = new QLabel(
-        "Set up identity, pairing, and addresses with the beam CLI. Then refresh devices.", this);
+    auto* hint = new QLabel("Choose Add device to pair on your local network.", this);
     plain(hint);
     layout->addWidget(hint);
 
@@ -307,7 +322,7 @@ void Window::refresh_peers() {
         if (index >= 0)
             peers->setCurrentIndex(index);
         if (peers->count() == 0)
-            send_status->setText("No paired devices. Pair using the beam CLI, then refresh.");
+            send_status->setText("No paired devices. Choose Add device to pair.");
     } catch (const std::exception& error) {
         send_status->setText("Pairing setup needed: " + display(error.what()));
     }
@@ -319,8 +334,7 @@ void Window::start_receiving_when_ready() {
         return;
     receive_start_pending = false;
     if (peers->count() == 0) {
-        receive_status->setText(
-            "Set up identity and pair a device with the beam CLI, then refresh devices.");
+        receive_status->setText("Choose Add device to pair a device.");
         return;
     }
     start_receiving();

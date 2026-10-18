@@ -25,7 +25,7 @@ if(NOT staging STREQUAL "" AND (NOT IS_ABSOLUTE "${staging}" OR staging MATCHES 
 endif()
 
 set(files "${staging}${INSTALL_PREFIX}/bin/beam")
-set(directories "${staging}${INSTALL_PREFIX}/lib/beam")
+set(directories "${staging}${INSTALL_PREFIX}/lib/beam" "${staging}${INSTALL_PREFIX}/share/licenses/beam")
 if(APPLE)
     list(APPEND directories "${staging}${APPLICATIONS_DIR}/Beam.app")
 else()

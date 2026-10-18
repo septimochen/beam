@@ -1,11 +1,82 @@
 # Device identity and pairing
 
-Each macOS/Linux/Android device keeps one self-signed certificate and private key. Pairing
-stores a peer's exact certificate after you verify its full SHA-256 fingerprint
-through an independent channel. Transfers authenticate both devices using the
-existing QUIC/TLS connection. There is no network pairing protocol or trust on
-first use. The [Android app](android.md#pair-and-choose-a-device) performs this
-same reciprocal approval through its identity and device-management screens.
+Each macOS/Linux/Android device keeps one self-signed certificate and private key.
+Use **Add device** for authenticated LAN pairing, or the advanced manual workflow
+below. Transfers continue to authenticate both devices through the existing
+QUIC/TLS connection and exact full SHA-256 leaf certificate pins.
+
+## Add a device on the LAN
+
+- **Phone and computer:** computer chooses **Add device → Show QR code**;
+  Android chooses **Add device → Scan QR code**. Review the names and approve
+  on both screens. Camera permission is requested only for scanning; denied or
+  missing cameras leave invitation paste and nearby PIN pairing available.
+- **Nearby devices:** open **Add device** on both, select the nearby device,
+  and enter the six-digit PIN shown on its screen. Approve on both devices.
+- **Blocked discovery:** use **Copy invitation** on the host and paste it on
+  the other device. Direct LAN connectivity must still be available; guest Wi-Fi
+  isolation can prevent all three flows.
+
+The invitation expires after three minutes and is consumed by one authenticated
+exchange. Cancel, closing the screen, or leaving the Android screen invalidates
+it. Android recreation opens a new window; old screenshots cannot resume it.
+A successful exchange saves both full certificates and observed transfer routes.
+Aliases are suggested locally and can be edited before approval. A display name
+or discovery record alone never authorizes a peer.
+
+CLI equivalents:
+
+```sh
+beam pairing host --name laptop --qr
+beam pairing nearby
+beam pairing join --name phone
+# Paste the invitation on stdin, then type yes (or an alias) on both devices.
+beam pairing join --endpoint 192.168.1.20:PORT
+# Enter the six-digit PIN on stdin; PORT comes from pairing discovery.
+```
+
+`beam pairing forget` explicitly clears an incomplete journal. `--qr` renders
+a terminal QR code for scanning. `--state-dir DIR` selects an independent store; `--port PORT` specifies the
+normal transfer listener's port (default 4269). The temporary pairing TCP port
+is allocated by the OS. The host's stdout deliberately contains its invitation
+and PIN; do not save or publish that output. Diagnostics omit secrets. These
+commands work without a GUI; invitations/PINs need not enter shell history.
+
+### Authentication and completion
+
+Pairing has two distinct connections, both implemented by Mbed TLS 4.2.0:
+
+1. EC J-PAKE authenticates a temporary encrypted TLS 1.2 channel using the
+   256-bit QR/paste secret or the separate six-digit nearby PIN. Only the
+   library's EC-JPAKE cipher suite is enabled; no password is sent in plaintext.
+2. The devices exchange and validate their public certificates, then open a
+   fresh TLS 1.3 connection with mandatory mutual certificate authentication,
+   exact leaf pins, and the expected Beam TLS identity names. This proves each
+   private key belongs to the exchanged certificate. QR/paste also checks the
+   full host fingerprint carried by the invitation.
+3. Each device approves its peer. Both approvals and preparation acknowledgements
+   precede publishing any trusted-peer record. Storage and completion receipts
+   are exchanged before reporting success.
+
+The EC-JPAKE TLS profile is Mbed TLS's implementation-specific pairing profile;
+this is a Beam-to-Beam protocol. It does not alter the transfer TLS configuration.
+Session resumption and renegotiation are disabled. At most one exchange is active,
+with five failed authentications per window and at least one second between
+failed attempts. Discovery carries `_beam-pair._tcp` and `v=1`, never secrets.
+
+### Interrupted pairing
+
+`pairing.journal` is a bounded, locked, owner-only, atomically published record.
+A prepared record is excluded from transfer trust. An interrupted final exchange
+can leave one side already committed; two-device storage cannot be atomic.
+**Incomplete** means the final receipts were not all observed, and is never
+reported as success. Repeat pairing with the same device and alias: exact
+certificate matching makes the commit idempotent. Different certificates or
+conflicting aliases require explicit removal. **Forget pending approval** removes
+only the journal; any committed peer remains visible and requires explicit unpair.
+Private keys always stay on their original devices.
+
+## Advanced manual pairing
 
 Phase 6 adds an optional saved Tailscale endpoint beside the primary endpoint.
 Route updates preserve the approved certificate and use versioned peer records;

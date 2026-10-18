@@ -37,7 +37,7 @@ protocol v4; see [protocol](protocol.md) for compatibility and cancellation sema
 | 6 | Optional Tailscale endpoint configuration/discovery and sensible endpoint preference |
 | 7 | Desktop tray, drag-and-drop, notifications, and explicit clipboard sharing |
 | 8 | Android Kotlin/JNI app with share target, file picker, receiver, and device picker |
-| 9 (proposed) | Easier pairing: phone QR scan, desktop nearby-device approval, and invitation fallback; pending review |
+| 9 | Authenticated LAN pairing: phone QR scan, nearby PIN entry, and invitation fallback |
 
 Do not begin discovery, GUI, Android packaging, clipboard integration, or history
 before the direct transfer path is reliable on macOS and Linux.
@@ -169,43 +169,27 @@ integration remain desktop/CLI features. Physical-device LAN/tailnet behavior,
 OEM background policy, and third-party provider compatibility remain unverified.
 See [Android](android.md) for build, install, pairing, and validation details.
 
-## Phase 9 proposal: easier pairing (pending review)
+## Phase 9: seamless LAN pairing
 
-This is a design proposal for later review and implementation. The suggested
-combination is QR pairing for phones, nearby-device selection for macOS/Linux,
-and a copy/paste invitation fallback. The desktop flow and authentication protocol
-remain open decisions; adding this proposal does not start implementation.
+- [x] Shared C++ pairing session with bounded invitations, cancellation, and value snapshots.
+- [x] Expiring, single-use QR/paste secrets and six-digit nearby PINs through Mbed TLS EC-JPAKE.
+- [x] Public certificate validation, fresh pinned mutual-TLS key proof, and approval on both devices.
+- [x] Locked atomic pairing journal, pending-trust isolation, and idempotent recovery.
+- [x] CLI host/nearby/join, native macOS/Qt Add device, Android CameraX/ZXing QR and NsdManager.
+- [x] Preserve existing certificate stores, advanced manual pairing, and transfer protocol v4.
+- [x] macOS Debug checks, native bridge/UI pairing, ASan/UBSan, scaffold and pairing-disabled builds.
+- [x] Android Kotlin format/lint/unit checks, both-ABI APK, and Android 15 emulator QR/JNI pairing and camera-denial fallback.
+- [ ] Complete Linux/Qt CI and physical camera/LAN interoperability validation.
 
-- [ ] Phone QR flow: computer opens **Add device → Show QR code**, Android opens
-  **Add device → Scan QR code**, and the computer approves the phone. Exchange
-  public certificates and save reciprocal trust through the authenticated pairing
-  session, without manual PEM files, fingerprint transcription, or IP entry.
-- [ ] Define a temporary QR invitation containing connection details, the host's
-  certificate fingerprint, and a secret valid for one pairing session. Expire and
-  invalidate invitations after use or cancellation; never advertise secrets in
-  discovery records or expose them in logs.
-- [ ] Proposed desktop flow: open **Add device** on both computers, select the
-  nearby device, compare a short verification code, and confirm on both. Discovery
-  supplies untrusted connection hints and cannot authorize a peer.
-- [ ] Provide copy/paste invitations as a fallback when discovery is unavailable,
-  including a CLI entry point that reuses the shared pairing service.
-- [ ] Review typed pairing codes as an alternative desktop/terminal flow before
-  choosing the final UX. Short codes require an established authenticated pairing
-  protocol and attempt limits; do not invent cryptography.
-- [ ] Review and document the authentication design in [pairing](pairing.md) and
-  [security](security.md) before implementation. Require explicit approval, prove
-  possession of the paired keys, retain exact certificate pinning for transfers,
-  and keep private keys on their original devices. Preserve manual PEM pairing
-  as an advanced option.
-- [ ] Validate expiration, replay, wrong codes, mismatched identities, rejection,
-  interrupted reciprocal approval, and recovery without silently granting trust.
-  Verify Android/macOS/Linux interoperability and clear completion/error states.
+First release targets LAN only. No rendezvous service, relay, account, or remote
+pairing infrastructure is added. See [pairing](pairing.md) for the authentication
+protocol, interruption recovery, and deployment limits.
 
 ## Future usability enhancements
 
 These desktop (macOS/Linux) and Android enhancements are implemented in Beam 0.9.
 Protocol v4 requires updating both peers; existing identities and pairing records
-remain usable. The separate Phase 9 pairing proposal above is still deferred.
+remain usable. Phase 9 adds authenticated pairing while retaining these transfer behaviors.
 
 - [x] Receive on launch: desktop apps receive automatically after pairing, with
   no receive toggle in the window or tray. Use `~/Downloads` when no receive folder

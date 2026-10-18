@@ -34,6 +34,15 @@ class IdentityStore {
     [[nodiscard]] DeviceIdentity identity() const;
     TrustedPeer pair(const std::string& name, const std::filesystem::path& certificate,
                      const std::string& verified_fingerprint, const std::string& endpoint = {});
+    // Network pairing calls these only after authenticated certificate exchange,
+    // private-key proof, and reciprocal approval. Journals never grant trust.
+    static DeviceIdentity validate_public_certificate(const std::string& pem);
+    [[nodiscard]] Credentials pairing_credentials(const DeviceIdentity& candidate) const;
+    void prepare_pairing(const TrustedPeer& candidate);
+    TrustedPeer commit_pairing();
+    void finish_pairing();
+    [[nodiscard]] bool has_incomplete_pairing() const;
+    void forget_incomplete_pairing();
     [[nodiscard]] std::vector<TrustedPeer> peers() const;
     [[nodiscard]] TrustedPeer peer(const std::string& name) const;
     void unpair(const std::string& name);

@@ -1,5 +1,11 @@
 #include "beam/beam.hpp"
 #include "beam/config.hpp"
+#ifdef BEAM_HAS_PAIRING
+#include "beam/pairing.hpp"
+#include <poll.h>
+#include <thread>
+#include <unistd.h>
+#endif
 #ifdef BEAM_HAS_DISCOVERY
 #include "beam/discovery.hpp"
 #endif
@@ -28,6 +34,9 @@ void print_help() {
            "  beam --help\n"
            "  beam --version\n"
            "  beam identity init|show|export [--state-dir DIR]\n"
+           "  beam pairing host|nearby|join|forget [--state-dir DIR] [--name NAME] [--endpoint "
+           "IP:PORT]\n"
+           "  beam pairing host --qr [--name NAME]\n"
            "  beam pair NAME --cert PEM --fingerprint SHA256 [--endpoint IP:PORT] [--state-dir "
            "DIR]\n"
            "  beam peers [--state-dir DIR]\n"
@@ -54,7 +63,8 @@ void print_help() {
            "Received text is written verbatim to stdout; files require a receive folder.\n"
            "Text (including URLs): UTF-8, up to 64 KiB. Config: ~/.config/beam/config.\n"
            "Use -- before positional arguments that start with --.\n"
-           "Initialize an identity and explicitly pair certificates with verified fingerprints.\n"
+           "Use beam pairing, or approve public certificates with independently verified "
+           "fingerprints.\n"
            "Legacy --cert/--key/--ca transfers still require a dedicated private CA.\n"
            "The server certificate must match IP or --server-name. IPv6: [ADDRESS]:PORT.\n"
            "Progress goes to stderr; --no-progress disables it. Ctrl-C cancels cleanly.\n"
@@ -104,6 +114,153 @@ unsigned number(const std::string& text, unsigned maximum, const char* label) {
         throw std::invalid_argument(std::string("invalid ") + label);
     return value;
 }
+#ifdef BEAM_HAS_PAIRING
+std::string pairing_input(const char* prompt, const std::function<bool()>& active = {}) {
+    std::cerr << prompt << std::flush;
+    std::string result;
+    // Bound stdin and remain responsive to Ctrl-C while waiting for a line.
+    for (;;) {
+        if (interrupted)
+            throw beam::TransferError(beam::TransferErrorCode::cancelled, "Pairing cancelled");
+        if (active && !active())
+            throw std::runtime_error("Pairing no longer awaits approval");
+        pollfd input{STDIN_FILENO, POLLIN, 0};
+        const int ready = poll(&input, 1, 50);
+        if (ready < 0 && errno == EINTR)
+            continue;
+        if (ready < 0)
+            throw std::runtime_error("Read pairing input failed");
+        if (!ready)
+            continue;
+        char byte = 0;
+        if (read(STDIN_FILENO, &byte, 1) != 1)
+            throw std::runtime_error("Pairing input closed");
+        if (byte == '\n')
+            return result;
+        if (byte == '\r')
+            continue;
+        if (result.size() == 2048)
+            throw std::invalid_argument("Pairing input exceeds bounds");
+        result += byte;
+    }
+}
+void print_pairing_qr(const std::vector<std::string>& rows) {
+    const int size = static_cast<int>(rows.size());
+    const auto dark = [&](int x, int y) {
+        return x >= 0 && y >= 0 && x < size && y < size &&
+               rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] == '1';
+    };
+    for (int y = -4; y < size + 4; y += 2) {
+        std::cout << "\033[30;47m";
+        for (int x = -4; x < size + 4; ++x) {
+            const bool top = dark(x, y), bottom = dark(x, y + 1);
+            std::cout << (top ? (bottom ? "█" : "▀") : (bottom ? "▄" : " "));
+        }
+        std::cout << "\033[0m\n";
+    }
+}
+int pairing_command(int argc, char** argv) {
+    if (argc < 3)
+        throw std::invalid_argument("Use beam pairing host|nearby|join|forget");
+    const std::string command = argv[2];
+    if (command != "host" && command != "nearby" && command != "join" && command != "forget")
+        throw std::invalid_argument("Unknown pairing command");
+    beam::PairingOptions options{beam::default_state_directory()};
+    std::string endpoint;
+    bool qr = false;
+    std::map<std::string, bool> seen;
+    for (int index = 3; index < argc; ++index) {
+        const std::string key = argv[index];
+        if (!seen.emplace(key, true).second)
+            throw std::invalid_argument("Duplicate pairing option");
+        if (key == "--qr" && command == "host") {
+            qr = true;
+            continue;
+        }
+        if (++index >= argc)
+            throw std::invalid_argument("Missing pairing option value");
+        const std::string value = argv[index];
+        if (key == "--state-dir")
+            options.state_directory = value;
+        else if (key == "--name")
+            options.device_name = value;
+        else if (key == "--endpoint" && command == "join")
+            endpoint = value;
+        else if (key == "--port")
+            options.transfer_port =
+                static_cast<std::uint16_t>(number(value, 65535, "transfer port"));
+        else
+            throw std::invalid_argument("Unknown pairing option: " + key);
+    }
+    InterruptGuard interrupts;
+    beam::PairingSession session(options);
+    if (command == "forget") {
+        session.forget_incomplete();
+        return 0;
+    }
+    if (command == "host")
+        session.host();
+    else if (command == "join") {
+        if (endpoint.empty())
+            session.join(pairing_input("Paste invitation: "));
+        else
+            session.join_pin(endpoint,
+                             pairing_input("Enter the six-digit PIN shown on the other device: "));
+    } else if (command == "nearby") {
+        session.browse();
+        // Browse has a bounded three-second window; allow cancellation throughout.
+        for (unsigned i = 0; i < 70 && !interrupted; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (interrupted)
+            return 130;
+        for (const auto& device : session.snapshot().nearby)
+            std::cout << device.name << '\t' << device.endpoint << '\n';
+        return 0;
+    } else
+        throw std::invalid_argument("Unknown pairing command");
+    beam::PairingState previous = beam::PairingState::idle;
+    for (;;) {
+        if (interrupted) {
+            session.cancel();
+            return 130;
+        }
+        const auto snapshot = session.snapshot();
+        if (snapshot.state != previous) {
+            previous = snapshot.state;
+            std::cerr << beam::pairing_state_name(snapshot.state) << ": " << snapshot.message
+                      << '\n';
+            if (snapshot.state == beam::PairingState::hosting) {
+                // stdout is the explicit invitation output channel, never a log.
+                std::cout << snapshot.invitation << std::endl;
+                std::cout << "PIN: " << snapshot.pin << std::endl;
+                if (qr)
+                    print_pairing_qr(snapshot.qr);
+            }
+            if (snapshot.state == beam::PairingState::approval) {
+                const auto answer = pairing_input(
+                    ("Pair with " + snapshot.remote_name + " as " + snapshot.alias +
+                     "? Type yes, or a different alias; no rejects: ")
+                        .c_str(),
+                    [&] { return session.snapshot().state == beam::PairingState::approval; });
+                if (answer == "no") {
+                    session.reject();
+                    continue;
+                }
+                session.approve(answer == "yes" ? snapshot.alias : answer);
+            }
+            if (snapshot.state == beam::PairingState::paired)
+                return 0;
+            if (snapshot.state == beam::PairingState::failed ||
+                snapshot.state == beam::PairingState::expired ||
+                snapshot.state == beam::PairingState::incomplete ||
+                snapshot.state == beam::PairingState::cancelled ||
+                snapshot.state == beam::PairingState::rejected)
+                return 1;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+}
+#endif
 #ifdef BEAM_HAS_DISCOVERY
 int devices_command(int argc, char** argv) {
     beam::DiscoveryOptions options;
@@ -564,6 +721,13 @@ int main(int argc, char** argv) {
             return devices_command(argc, argv);
 #else
             throw std::runtime_error("LAN discovery is disabled in this build; see README.md");
+#endif
+        }
+        if (command == "pairing") {
+#ifdef BEAM_HAS_PAIRING
+            return pairing_command(argc, argv);
+#else
+            throw std::runtime_error("Network pairing is disabled in this build");
 #endif
         }
         if (command == "send" || command == "receive" || command == "text" || command == "check") {

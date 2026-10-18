@@ -70,6 +70,10 @@ typedef NS_ENUM(NSInteger, BeamTransferStage) {
                                                        error:(NSError**)error;
 - (nullable NSArray<BeamDesktopEvent*>*)eventsAndReturnError:(NSError**)error;
 - (void)shutdown;
+- (nullable NSArray<NSString*>*)pairingCommand:(NSString*)command
+                                     arguments:(NSArray<NSString*>*)arguments
+                                         error:(NSError**)error
+    NS_SWIFT_NAME(pairing(command:arguments:));
 + (nullable NSString*)selectedFileForURLs:(NSArray<NSURL*>*)urls
                                     error:(NSError**)error NS_SWIFT_NAME(selectedFile(urls:));
 + (BOOL)validateContent:(NSString*)content

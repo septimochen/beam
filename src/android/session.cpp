@@ -4,7 +4,12 @@
 namespace beam::android {
 Session::Session(const std::filesystem::path& directory, std::uint16_t port,
                  std::chrono::milliseconds timeout)
-    : state(directory), service({directory, port, false, timeout}) {
+    : state(directory), service({directory, port, false, timeout})
+#ifdef BEAM_HAS_PAIRING
+      ,
+      transfer_port(port)
+#endif
+{
     IdentityStore store(state, true);
     store.initialize();
 }
@@ -16,11 +21,15 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         expected = 4;
         break;
     case Command::endpoint:
+    case Command::pairing_pin:
         expected = 2;
         break;
     case Command::unpair:
     case Command::receive:
     case Command::check:
+    case Command::pairing_host:
+    case Command::pairing_join:
+    case Command::pairing_approve:
         expected = 1;
         break;
     default:
@@ -37,6 +46,64 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         const auto identity = IdentityStore(state).identity();
         return {identity.fingerprint, identity.tls_name, identity.certificate_pem};
     }
+#ifdef BEAM_HAS_PAIRING
+    case Command::pairing_host:
+        if (service.is_sending() || service.is_checking())
+            throw std::logic_error("Wait for the active transfer before pairing");
+        pairing =
+            std::make_unique<PairingSession>(PairingOptions{state, arguments[0], transfer_port});
+        pairing->host();
+        break;
+    case Command::pairing_join:
+    case Command::pairing_pin:
+    case Command::pairing_approve:
+    case Command::pairing_snapshot:
+    case Command::pairing_browse:
+    case Command::pairing_cancel:
+    case Command::pairing_forget:
+    case Command::pairing_reject:
+        if (!pairing) {
+            if (command == Command::pairing_cancel)
+                break;
+            pairing = std::make_unique<PairingSession>(
+                PairingOptions{state, "Beam Android", transfer_port});
+        }
+        if (command == Command::pairing_join)
+            pairing->join(arguments[0]);
+        else if (command == Command::pairing_pin)
+            pairing->join_pin(arguments[0], arguments[1]);
+        else if (command == Command::pairing_approve) {
+            if (service.is_sending() || service.is_checking())
+                throw std::logic_error("Wait for the active transfer before pairing");
+            service.stop_receiving();
+            pairing->approve(arguments[0]);
+        } else if (command == Command::pairing_browse)
+            pairing->browse();
+        else if (command == Command::pairing_cancel)
+            pairing->cancel();
+        else if (command == Command::pairing_forget)
+            pairing->forget_incomplete();
+        else if (command == Command::pairing_reject)
+            pairing->reject();
+        else {
+            const auto snapshot = pairing->snapshot();
+            std::string rows;
+            for (const auto& row : snapshot.qr)
+                rows += row + "\n";
+            std::vector<std::string> result{pairing_state_name(snapshot.state),
+                                            snapshot.message,
+                                            snapshot.invitation,
+                                            snapshot.pin,
+                                            snapshot.remote_name,
+                                            snapshot.alias,
+                                            std::to_string(snapshot.port),
+                                            rows};
+            for (const auto& device : snapshot.nearby)
+                result.insert(result.end(), {device.name, device.endpoint});
+            return result;
+        }
+        break;
+#endif
     case Command::peers: {
         std::vector<std::string> result;
         for (const auto& peer : IdentityStore(state).peers()) {

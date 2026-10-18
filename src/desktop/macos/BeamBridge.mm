@@ -3,6 +3,9 @@
 #include "beam/config.hpp"
 #include "beam/identity.hpp"
 #include "desktop/service.hpp"
+#ifdef BEAM_HAS_PAIRING
+#include "beam/pairing.hpp"
+#endif
 #include <csignal>
 #include <memory>
 
@@ -74,6 +77,9 @@ void report(NSError** output, const std::exception& error) {
 @implementation BeamDesktopBridge {
     beam::desktop::Config _config;
     std::unique_ptr<beam::desktop::Service> _service;
+#ifdef BEAM_HAS_PAIRING
+    std::unique_ptr<beam::PairingSession> _pairing;
+#endif
 }
 - (instancetype)initWithStateDirectory:(NSString*)directory
                                   port:(NSUInteger)port
@@ -120,6 +126,72 @@ void report(NSError** output, const std::exception& error) {
     if (!_service)
         throw std::logic_error("Beam has shut down");
     return *_service;
+}
+- (NSArray<NSString*>*)pairingCommand:(NSString*)command
+                            arguments:(NSArray<NSString*>*)arguments
+                                error:(NSError**)error {
+    try {
+#ifdef BEAM_HAS_PAIRING
+        auto& service = [self service];
+        const auto action = utf8(command);
+        const auto argument = [&](NSUInteger index) {
+            if (index >= arguments.count || [arguments[index] length] > 2048)
+                throw std::invalid_argument("Invalid pairing argument");
+            return utf8(arguments[index]);
+        };
+        if (action == "host") {
+            if (service.is_sending() || service.is_checking())
+                throw std::logic_error("Wait for the active transfer before pairing");
+            _pairing = std::make_unique<beam::PairingSession>(
+                beam::PairingOptions{_config.state_directory, argument(0), _config.port});
+            _pairing->host();
+        } else {
+            if (!_pairing) {
+                if (action == "cancel")
+                    return @[];
+                throw std::logic_error("Open Add device first");
+            }
+            if (action == "join")
+                _pairing->join(argument(0));
+            else if (action == "pin")
+                _pairing->join_pin(argument(0), argument(1));
+            else if (action == "approve") {
+                if (service.is_sending() || service.is_checking())
+                    throw std::logic_error("Wait for the active transfer before pairing");
+                service.stop_receiving();
+                _pairing->approve(argument(0));
+            } else if (action == "browse")
+                _pairing->browse();
+            else if (action == "reject")
+                _pairing->reject();
+            else if (action == "cancel")
+                _pairing->cancel();
+            else if (action == "forget")
+                _pairing->forget_incomplete();
+            else if (action != "snapshot")
+                throw std::invalid_argument("Unknown pairing action");
+        }
+        const auto snapshot = _pairing->snapshot();
+        std::string rows;
+        for (const auto& row : snapshot.qr)
+            rows += row + "\n";
+        NSMutableArray<NSString*>* values = [NSMutableArray arrayWithArray:@[
+            display(beam::pairing_state_name(snapshot.state)), display(snapshot.message),
+            display(snapshot.invitation), display(snapshot.pin), display(snapshot.remote_name),
+            display(snapshot.alias), display(std::to_string(snapshot.port)), display(rows)
+        ]];
+        for (const auto& device : snapshot.nearby) {
+            [values addObject:display(device.name)];
+            [values addObject:display(device.endpoint)];
+        }
+        return values;
+#else
+        throw std::runtime_error("Network pairing is disabled in this build");
+#endif
+    } catch (const std::exception& exception) {
+        report(error, exception);
+        return nil;
+    }
 }
 - (BOOL)sending {
     return _service && _service->is_sending();
@@ -216,6 +288,9 @@ void report(NSError** output, const std::exception& error) {
     }
 }
 - (void)shutdown {
+#ifdef BEAM_HAS_PAIRING
+    _pairing.reset();
+#endif
     _service.reset();
 }
 + (NSString*)selectedFileForURLs:(NSArray<NSURL*>*)urls error:(NSError**)error {

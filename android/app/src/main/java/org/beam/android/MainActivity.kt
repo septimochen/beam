@@ -29,6 +29,7 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.core.content.edit
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
@@ -65,6 +66,7 @@ class MainActivity : Activity() {
   private var requestingPermissions = false
   private var resumed = false
   private var receiveOnLaunchPending = true
+  private var resumeAfterPairing = false
 
   private val connection =
     object : ServiceConnection {
@@ -113,6 +115,24 @@ class MainActivity : Activity() {
     }
     scroll.addView(column)
     setContentView(scroll)
+    column.addView(
+      Button(this).apply {
+        text = "Add device"
+        setOnClickListener {
+          attempt {
+            withNetwork {
+              val core = checkNotNull(service) { "Beam is starting" }
+              check(!core.sending && !core.checking) {
+                "Wait for the active transfer before pairing"
+              }
+              resumeAfterPairing = core.receiving || core.receiveOnLaunchPending
+              core.stopReceiving()
+              startActivityForResult(Intent(this@MainActivity, PairingActivity::class.java), 140)
+            }
+          }
+        }
+      }
+    )
     if (Build.VERSION.SDK_INT >= 30) {
       val appearance =
         android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
@@ -361,7 +381,7 @@ class MainActivity : Activity() {
           PackageManager.PERMISSION_GRANTED
     ) {
       permissions += Manifest.permission.POST_NOTIFICATIONS
-      preferences.edit().putBoolean("notificationsRequested", true).apply()
+      preferences.edit { putBoolean("notificationsRequested", true) }
     }
     if (permissions.isNotEmpty()) {
       pendingNetwork = action
@@ -743,6 +763,19 @@ class MainActivity : Activity() {
   @Deprecated("Platform activity result callback")
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode == 140) {
+      if (resumeAfterPairing) {
+        receiveOnLaunchPending = true
+        pendingReceive = true
+        service?.receiveOnLaunchPending = true
+      }
+      attempt {
+        refreshPeers()
+        startPendingReceive()
+      }
+      resumeAfterPairing = false
+      return
+    }
     if (resultCode != RESULT_OK) return
     val value = data?.data ?: return
     attempt {

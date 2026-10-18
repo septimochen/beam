@@ -42,3 +42,12 @@ else()
         install(SCRIPT "${PROJECT_BINARY_DIR}/InstallDesktopEntry.cmake" COMPONENT desktop)
     endif()
 endif()
+
+if(BEAM_ENABLE_PAIRING)
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/third_party/licenses/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/beam" COMPONENT cli)
+    if(BEAM_ENABLE_DESKTOP AND NOT APPLE)
+        install(DIRECTORY "${PROJECT_SOURCE_DIR}/third_party/licenses/"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/beam" COMPONENT desktop)
+    endif()
+endif()

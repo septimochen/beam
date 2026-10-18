@@ -259,6 +259,7 @@ class TransferService : Service() {
     require(port in 1..65535 && timeout in 1..86400) { "Invalid port or timeout" }
   }
 
+  @android.annotation.SuppressLint("UseKtx") // Preserve the checked synchronous commit result.
   internal fun saveSettings(folder: String, port: Int, timeout: Int) {
     check(!sending && !receiving && !checking) {
       "Stop transfers and connectivity checks before editing settings"
