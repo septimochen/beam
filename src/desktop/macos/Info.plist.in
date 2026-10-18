@@ -3,8 +3,9 @@
 <plist version="1.0"><dict>
     <key>CFBundleExecutable</key>
     <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
-    <key>CFBundleIdentifier</key><string>org.beam.desktop</string>
+    <key>CFBundleIdentifier</key><string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
     <key>CFBundleName</key><string>Beam</string>
+    <key>CFBundleDisplayName</key><string>${BEAM_MACOS_DISPLAY_NAME}</string>
     <key>CFBundleIconFile</key><string>Beam.icns</string>
     <key>CFBundleIconName</key><string>Beam</string>
     <key>CFBundlePackageType</key><string>APPL</string>

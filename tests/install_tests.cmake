@@ -1,29 +1,45 @@
 cmake_minimum_required(VERSION 3.25)
-set(root "${BEAM_BUILD_DIR}/install smoke")
+set(root "${BEAM_BUILD_DIR}/.install smoke")
 file(REMOVE_RECURSE "${root}")
 file(REMOVE_RECURSE "${root} relocated")
 set(prefix "${root}/local")
 set(applications "${root}/Applications")
-execute_process(COMMAND "${CMAKE_COMMAND}" --install "${BEAM_BUILD_DIR}"
-    --config "${BEAM_CONFIG}" --prefix "${prefix}" --component cli
+set(install_prefix "${prefix}")
+set(staging_env --unset=DESTDIR)
+if(APPLE)
+    set(install_prefix /local)
+    set(staging_env "DESTDIR=${root}")
+endif()
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env ${staging_env} "${CMAKE_COMMAND}" --install "${BEAM_BUILD_DIR}"
+    --config "${BEAM_CONFIG}" --prefix "${install_prefix}" --component cli
     COMMAND_ERROR_IS_FATAL ANY)
 if(BEAM_HAS_DESKTOP)
     if(APPLE)
-        set(desktop_prefix "${applications}")
+        set(desktop_prefix /Applications)
+        if(BEAM_MACOS_BUNDLE_ID STREQUAL "org.beam.desktop.dev")
+            set(app_name "Beam Dev.app")
+        else()
+            set(app_name Beam.app)
+        endif()
     else()
         set(desktop_prefix "${prefix}")
     endif()
-    execute_process(COMMAND "${CMAKE_COMMAND}" --install "${BEAM_BUILD_DIR}"
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env ${staging_env} "${CMAKE_COMMAND}" --install "${BEAM_BUILD_DIR}"
         --config "${BEAM_CONFIG}" --prefix "${desktop_prefix}" --component desktop
         COMMAND_ERROR_IS_FATAL ANY)
     if(APPLE)
-        set(resources "${applications}/Beam.app/Contents/Resources")
+        set(resources "${applications}/${app_name}/Contents/Resources")
         foreach(icon IN ITEMS Assets.car Beam.icns BeamTemplate.pdf)
             if(NOT EXISTS "${resources}/${icon}")
                 message(FATAL_ERROR "Installed app is missing ${icon}")
             endif()
         endforeach()
-        set(plist "${applications}/Beam.app/Contents/Info.plist")
+        set(plist "${applications}/${app_name}/Contents/Info.plist")
+        execute_process(COMMAND /usr/bin/plutil -extract CFBundleIdentifier raw "${plist}"
+            OUTPUT_VARIABLE bundle_id OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+        if(NOT bundle_id STREQUAL BEAM_MACOS_BUNDLE_ID)
+            message(FATAL_ERROR "Installed bundle identity differs from the configured identity")
+        endif()
         execute_process(COMMAND /usr/bin/plutil -extract CFBundleIconFile raw "${plist}"
             OUTPUT_VARIABLE icon_file OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
         execute_process(COMMAND /usr/bin/plutil -extract LSMinimumSystemVersion raw "${plist}"
@@ -78,13 +94,17 @@ if(BEAM_HAS_DESKTOP)
 endif()
 # Moving the complete installation proves it has no runtime dependency on its
 # original prefix. Linux's system OpenSSL/Qt packages remain prerequisites.
+if(APPLE AND BEAM_HAS_DESKTOP)
+    execute_process(COMMAND "${CMAKE_CURRENT_LIST_DIR}/../scripts/cleanup-macos.sh"
+        --development --root "${root}" OUTPUT_QUIET ERROR_QUIET)
+endif()
 file(RENAME "${root}" "${root} relocated")
 set(root "${root} relocated")
 set(prefix "${root}/local")
 set(executables "${prefix}/bin/beam")
 if(BEAM_HAS_DESKTOP)
     if(APPLE)
-        list(APPEND executables "${root}/Applications/Beam.app/Contents/MacOS/beam-desktop")
+        list(APPEND executables "${root}/Applications/${app_name}/Contents/MacOS/beam-desktop")
     else()
         list(APPEND executables "${prefix}/bin/beam-desktop")
     endif()
@@ -109,11 +129,17 @@ foreach(executable IN LISTS executables)
     endif()
 endforeach()
 if(APPLE AND BEAM_HAS_DESKTOP)
-    execute_process(COMMAND /usr/bin/codesign --verify --deep "${root}/Applications/Beam.app"
+    execute_process(COMMAND /usr/bin/codesign --verify --deep "${root}/Applications/${app_name}"
         COMMAND_ERROR_IS_FATAL ANY)
 endif()
-execute_process(COMMAND "${CMAKE_COMMAND}" -E env --unset=DESTDIR
-    "${CMAKE_COMMAND}" "-DINSTALL_PREFIX=${prefix}" "-DAPPLICATIONS_DIR=${root}/Applications"
+# Staging never explicitly registers the app or requests notification permission.
+if(APPLE AND BEAM_HAS_DESKTOP)
+    execute_process(COMMAND "${CMAKE_CURRENT_LIST_DIR}/../scripts/cleanup-macos.sh"
+        --development --root "${root}" OUTPUT_QUIET ERROR_QUIET)
+endif()
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env "DESTDIR=${root}"
+    "${CMAKE_COMMAND}" -DINSTALL_PREFIX=/local -DAPPLICATIONS_DIR=/Applications
+    "-DBEAM_MACOS_BUNDLE_ID=${BEAM_MACOS_BUNDLE_ID}"
     "-DDESKTOP_ENTRY_DIR=share/applications" -P "${CMAKE_CURRENT_LIST_DIR}/../cmake/Uninstall.cmake"
     COMMAND_ERROR_IS_FATAL ANY)
 file(GLOB_RECURSE remaining LIST_DIRECTORIES FALSE "${root}/*")

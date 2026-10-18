@@ -54,6 +54,7 @@ struct LaunchOptions {
     Usage: beam-desktop [--state-dir DIR] [--output DIR] [--listen PORT] [--no-discovery]
     --help, -h       Show this help
     --version, -v    Show version
+    --clear-notifications  Clear this bundle's pending/delivered notifications and exit
     Receives on launch after pairing; the default folder is ~/Downloads.
     --output, configuration, and the remembered folder override that default.
     Closing hides the window. Use Quit Beam to cancel and join workers.

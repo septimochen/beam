@@ -116,14 +116,16 @@ Ninja (`brew install ninja`). Desktop builds target the selected macOS SDK
 version and always compile native icon appearances. See [Xcode setup](assets/icons/README.md#native-macos-appearances).
 Linux uses Qt 6 Widgets (`qt6-base-dev` and
 `qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
-`build-desktop/beam-desktop` on Linux or `open build-desktop-native/beam-desktop.app`
+`build-desktop/beam-desktop` on Linux or `open build/macos/dev/beam-desktop.app`
 on macOS. Choose **Add device** to pair, then choose a device, drop or select one
 file, then click **Send**. After pairing, reception starts automatically when the
 app opens. Files go to `~/Downloads` unless you configure or choose another folder;
 the app remembers folder selections.
 
 **Load clipboard text** captures a snapshot for review; sharing requires a
-separate **Send** click. Tray notifications report verified transfers, and
+separate **Send** click. Enable **Transfer notifications** in the macOS application
+menu to receive OS notifications. See [macOS install and cleanup](docs/macos-lifecycle.md)
+for development builds and stale registrations. Tray notifications report verified transfers, and
 **Quit Beam** stops workers. See [desktop setup and privacy](docs/desktop.md).
 
 ## Android sharing

@@ -154,13 +154,22 @@ if(BUILD_TESTING)
             "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/android-installer-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/android_install_tests.cmake")
-        add_test(NAME install COMMAND "${CMAKE_COMMAND}"
-            "-DBEAM_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        add_test(NAME install COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/install_smoke.sh"
+            "${CMAKE_COMMAND}" "${CMAKE_CURRENT_BINARY_DIR}"
             "-DBEAM_HAS_DESKTOP=${BEAM_ENABLE_DESKTOP}"
             "-DBEAM_HAS_QUIC=${BEAM_ENABLE_QUIC}"
             "-DBEAM_MACOS_VERSION=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+            "-DBEAM_MACOS_BUNDLE_ID=${BEAM_MACOS_BUNDLE_ID}"
             "-DBEAM_CONFIG=$<CONFIG>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/install_tests.cmake")
+        if(APPLE AND BEAM_ENABLE_DESKTOP)
+            add_test(NAME macos-bundle-identity COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/macos_bundle_identity.sh"
+                "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}")
+            set_tests_properties(macos-bundle-identity PROPERTIES TIMEOUT 90)
+            add_test(NAME macos-lifecycle COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/macos_lifecycle.sh"
+                "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}" "$<CONFIG>" "${BEAM_MACOS_BUNDLE_ID}")
+            set_tests_properties(macos-lifecycle PROPERTIES TIMEOUT 120)
+        endif()
     endif()
     add_executable(beam-core-tests tests/core_tests.cpp)
     target_link_libraries(beam-core-tests PRIVATE Beam::Core)

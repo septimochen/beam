@@ -10,9 +10,12 @@ if(APPLE)
     install(SCRIPT "${PROJECT_BINARY_DIR}/InstallMac.cmake" COMPONENT cli)
     if(BEAM_ENABLE_DESKTOP)
         install(DIRECTORY "$<TARGET_BUNDLE_DIR:beam-desktop>/"
-            DESTINATION Beam.app USE_SOURCE_PERMISSIONS COMPONENT desktop PATTERN "*.d" EXCLUDE)
-        install(CODE "set(beam_install_component desktop)" COMPONENT desktop)
-        install(SCRIPT "${PROJECT_BINARY_DIR}/InstallMac.cmake" COMPONENT desktop)
+            DESTINATION Beam.app USE_SOURCE_PERMISSIONS COMPONENT desktop-staging EXCLUDE_FROM_ALL PATTERN "*.d" EXCLUDE)
+        install(CODE "set(beam_install_component desktop)" COMPONENT desktop-staging EXCLUDE_FROM_ALL)
+        install(SCRIPT "${PROJECT_BINARY_DIR}/InstallMac.cmake" COMPONENT desktop-staging EXCLUDE_FROM_ALL)
+        configure_file("${PROJECT_SOURCE_DIR}/cmake/InstallMacDesktop.cmake.in"
+            "${PROJECT_BINARY_DIR}/InstallMacDesktop.cmake" @ONLY)
+        install(SCRIPT "${PROJECT_BINARY_DIR}/InstallMacDesktop.cmake" COMPONENT desktop)
     endif()
 else()
     file(RELATIVE_PATH beam_library_path "${CMAKE_INSTALL_FULL_BINDIR}"

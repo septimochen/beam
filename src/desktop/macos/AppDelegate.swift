@@ -69,15 +69,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
   private(set) var window: NSWindow?
   private var statusItem: NSStatusItem?
   private var timer: Timer?
+  private let notificationDefaults: UserDefaults
+  private(set) var notificationsEnabled: Bool
+  private var notificationsItem: NSMenuItem?
 
-  init(model: DesktopModel) { self.model = model }
+  init(model: DesktopModel, notificationDefaults: UserDefaults = .standard) {
+    self.model = model
+    self.notificationDefaults = notificationDefaults
+    notificationsEnabled = notificationDefaults.bool(forKey: "transferNotificationsEnabled")
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 660, height: 760),
       styleMask: [.titled, .closable, .miniaturizable, .resizable],
       backing: .buffered, defer: false)
-    window.title = "Beam"
+    window.title =
+      Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Beam"
     window.delegate = self
     window.isReleasedWhenClosed = false
     window.contentView = FileDropHostingView(model: model)
@@ -85,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     self.window = window
     installApplicationMenu()
     installStatusItem()
-    UNUserNotificationCenter.current().delegate = self
+    if notificationsEnabled { UNUserNotificationCenter.current().delegate = self }
     model.onNotification = { [weak self] message in self?.notify(message) }
     timer = Timer.scheduledTimer(
       timeInterval: 0.1, target: self, selector: #selector(poll), userInfo: nil, repeats: true)
@@ -99,6 +107,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
     let commands = NSMenu()
     commands.addItem(withTitle: "Open Beam", action: #selector(showWindow), keyEquivalent: "0")
       .target = self
+    let notifications = commands.addItem(
+      withTitle: "Transfer notifications", action: #selector(toggleNotifications), keyEquivalent: ""
+    )
+    notifications.target = self
+    notifications.state = notificationsEnabled ? .on : .off
+    notificationsItem = notifications
     commands.addItem(.separator())
     commands.addItem(
       withTitle: "Quit Beam", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -173,6 +187,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
 
   @objc private func poll() { model.poll() }
 
+  @objc private func toggleNotifications() {
+    notificationsEnabled.toggle()
+    notificationDefaults.set(notificationsEnabled, forKey: "transferNotificationsEnabled")
+    notificationsItem?.state = notificationsEnabled ? .on : .off
+    if notificationsEnabled {
+      let center = UNUserNotificationCenter.current()
+      center.delegate = self
+      center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+  }
+
   func windowShouldClose(_ sender: NSWindow) -> Bool {
     sender.orderOut(nil)
     return false
@@ -196,9 +221,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate,
   }
 
   private func notify(_ message: String) {
+    guard notificationsEnabled else { return }
     let center = UNUserNotificationCenter.current()
-    center.requestAuthorization(options: [.alert, .sound]) { allowed, _ in
-      guard allowed else { return }
+    center.getNotificationSettings { settings in
+      guard settings.authorizationStatus == .authorized else { return }
       let content = UNMutableNotificationContent()
       content.title = "Beam"
       content.body = message

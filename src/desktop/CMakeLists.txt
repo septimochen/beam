@@ -5,6 +5,24 @@ endif()
 add_library(beam-desktop-support ALIAS beam-app-support)
 
 if(APPLE)
+    # An explicit cache value also works for custom and multi-config builds.
+    set(beam_default_bundle_id org.beam.desktop.dev)
+    if(NOT CMAKE_CONFIGURATION_TYPES AND CMAKE_BUILD_TYPE STREQUAL "Release" AND
+       NOT "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_RELEASE} ${CMAKE_SWIFT_FLAGS} ${CMAKE_EXE_LINKER_FLAGS}" MATCHES "sanitize")
+        set(beam_default_bundle_id org.beam.desktop)
+    endif()
+    set(BEAM_MACOS_BUNDLE_ID "" CACHE STRING "macOS bundle identifier (empty: Release production, otherwise development)")
+    if(BEAM_MACOS_BUNDLE_ID STREQUAL "")
+        set(BEAM_MACOS_BUNDLE_ID "${beam_default_bundle_id}")
+    endif()
+    if(NOT BEAM_MACOS_BUNDLE_ID MATCHES "^org\\.beam\\.desktop(\\.[A-Za-z0-9-]+)*$")
+        message(FATAL_ERROR "BEAM_MACOS_BUNDLE_ID must be org.beam.desktop or a sub-identifier")
+    endif()
+    set(BEAM_MACOS_BUNDLE_ID "${BEAM_MACOS_BUNDLE_ID}" PARENT_SCOPE)
+    set(BEAM_MACOS_DISPLAY_NAME Beam)
+    if(BEAM_MACOS_BUNDLE_ID STREQUAL "org.beam.desktop.dev")
+        set(BEAM_MACOS_DISPLAY_NAME "Beam Dev")
+    endif()
     if(NOT CMAKE_GENERATOR MATCHES "Ninja|Xcode")
         message(FATAL_ERROR "Native macOS Swift builds require Ninja or Xcode; use make desktop or configure a fresh directory with -G Ninja")
     endif()
@@ -97,7 +115,7 @@ if(APPLE)
         add_dependencies(beam-desktop beam-desktop-resources)
     endif()
     set_target_properties(beam-desktop PROPERTIES
-        MACOSX_BUNDLE_GUI_IDENTIFIER "org.beam.desktop"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "${BEAM_MACOS_BUNDLE_ID}"
         MACOSX_BUNDLE_BUNDLE_NAME "Beam"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist.in")

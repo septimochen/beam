@@ -218,7 +218,11 @@ private func tests() throws {
   pasteboard.writeObjects([file as NSURL, link as NSURL])
   try require(hosting.droppedURLs(pasteboard).isEmpty, "Native drop accepted multiple items")
   try require(!editor.selectDrop(pasteboard), "Editor accepted multiple files")
-  let delegate = AppDelegate(model: empty)
+  let delegate = AppDelegate(model: empty, notificationDefaults: defaults)
+  try require(!delegate.notificationsEnabled, "Notifications should require explicit opt-in")
+  defaults.set(true, forKey: "transferNotificationsEnabled")
+  let optedIn = AppDelegate(model: empty, notificationDefaults: defaults)
+  try require(optedIn.notificationsEnabled, "Notification opt-in was not remembered")
   let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
   try require(!delegate.windowShouldClose(window), "Closing should hide the native window")
   try require(

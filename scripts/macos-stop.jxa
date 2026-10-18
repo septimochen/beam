@@ -1,0 +1,27 @@
+ObjC.import('AppKit');
+ObjC.import('Foundation');
+
+function run(args) {
+    if (args.length !== 2 && !(args.length === 3 && args[2] === '--check')) {
+        throw new Error('Expected a bundle path, identifier, and optional --check');
+    }
+    const path = ObjC.unwrap($(args[0]).stringByResolvingSymlinksInPath);
+    const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier($(args[1]));
+    const matching = [];
+    for (let i = 0; i < apps.count; ++i) {
+        const app = apps.objectAtIndex(i);
+        if (app.bundleURL.isNil()) continue;
+        if (ObjC.unwrap(app.bundleURL.path.stringByResolvingSymlinksInPath) === path) {
+            matching.push(app);
+        }
+    }
+    if (args[2] === '--check') return matching.filter(app => !app.isTerminated).length;
+    for (const app of matching) {
+        if (!app.terminate) throw new Error('Application refused to quit');
+    }
+    const deadline = Date.now() + 15000;
+    while (matching.some(app => !app.isTerminated)) {
+        if (Date.now() >= deadline) throw new Error('Application did not quit within 15 seconds');
+        $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.05));
+    }
+}

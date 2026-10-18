@@ -1,0 +1,11 @@
+# The public component uses the same validated replacement workflow as Make.
+set(staging_args)
+if(NOT "$ENV{DESTDIR}" STREQUAL "")
+    list(APPEND staging_args --staging)
+endif()
+execute_process(COMMAND "${CMAKE_COMMAND}" -E env "CMAKE=${CMAKE_COMMAND}"
+    "@PROJECT_SOURCE_DIR@/scripts/install-macos.sh"
+    --build-dir "@PROJECT_BINARY_DIR@" --config "${CMAKE_INSTALL_CONFIG_NAME}"
+    --bundle-id "@BEAM_MACOS_BUNDLE_ID@"
+    --applications-dir "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}" ${staging_args}
+    COMMAND_ERROR_IS_FATAL ANY)

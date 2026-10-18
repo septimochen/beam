@@ -33,13 +33,13 @@ make desktop
 # Linux:
 ./build-desktop/beam-desktop
 # macOS:
-open ./build-desktop-native/beam-desktop.app
+open ./build/macos/dev/beam-desktop.app
 # Or run the macOS bundle executable with options:
-./build-desktop-native/beam-desktop.app/Contents/MacOS/beam-desktop --output ./received
+./build/macos/dev/beam-desktop.app/Contents/MacOS/beam-desktop --output ./received
 ```
 
 For a custom Linux Qt prefix, pass `CMAKE_ARGS='-DCMAKE_PREFIX_PATH=/path/to/qt'`.
-`make desktop` uses `BUILD_DIR-desktop-native` on macOS with Ninja and
+`make desktop` uses `BUILD_DIR/macos/dev` on macOS with Ninja and
 `BUILD_DIR-desktop` on Linux. Override `DESKTOP_BUILD_DIR` to choose another
 directory. Existing macOS Qt build directories remain separate. Manual native
 configuration requires a fresh directory with `-G Ninja` (or the Xcode generator)
@@ -54,8 +54,11 @@ After installing the build prerequisites and running `make deps`, run:
 make install
 ```
 
-This builds the CLI and desktop app in a separate Release `build-install`
-directory. It installs without `sudo`:
+This builds the CLI and desktop app in a separate Release `build/macos/release`
+directory on macOS (`build-install` on Linux). See the
+[macOS lifecycle guide](macos-lifecycle.md) for development identities, presets,
+validated upgrades, optional data/notification cleanup, and stale registrations.
+It installs without `sudo`:
 
 | Platform | CLI | Desktop |
 | --- | --- | --- |
@@ -79,12 +82,13 @@ make install INSTALL_PREFIX="$HOME/Tools/beam" APPLICATIONS_DIR="$HOME/Applicati
 
 Running the command again updates the installation. It does not start Beam.
 For a prebuilt CMake tree, `cmake --install BUILD --prefix PREFIX` installs the
-CLI and, when enabled, the desktop app; the macOS bundle goes in `PREFIX/Beam.app`.
+CLI and, when enabled, the desktop app; the production macOS bundle goes in
+`PREFIX/Beam.app` (development uses `PREFIX/Beam Dev.app`).
 Components `cli` and `desktop` allow separate prefixes. The default Linux
 desktop entry follows `PREFIX/share/applications`; set `BEAM_DESKTOP_ENTRY_DIR`
 at configuration to override it.
 
-Quit Beam, then remove a Make installation with:
+Remove a Make installation with:
 
 ```sh
 make uninstall
@@ -158,9 +162,10 @@ while its bound listener exists. Advertisement failures leave direct transfers a
 Closing the macOS window hides it; use **Open Beam** from the native menu bar or
 the Dock to return. Linux hides to the tray when available, otherwise closing
 quits. **Quit Beam** cancels and joins workers on both platforms. The app stays
-visible at startup. Transfer results remain in the window. macOS requests OS
-notification authorization on the first transfer result; declining it leaves the
-in-app status available. Linux requests Qt tray notifications where supported.
+visible at startup. Transfer results remain in the window. macOS notifications
+default to off; enable **Transfer notifications** in the application menu to
+request OS authorization. Startup and transfer results never request permission.
+Linux requests Qt tray notifications where supported.
 Notification availability depends on the desktop and OS settings;
 see [Qt's tray documentation](https://doc.qt.io/qt-6/qsystemtrayicon.html).
 Completion notifications follow size/SHA-256 validation and acknowledgement,
@@ -217,7 +222,7 @@ notification metadata, repeated receiving, and joined shutdown. Linux tests use
 Qt's offscreen platform. They require no tray, discovery daemon, or public network;
 macOS clipboard tests need access to a desktop pasteboard session.
 
-Run complete macOS checks with `make check BUILD_DIR=build-desktop-native
+Run complete macOS checks with `make check BUILD_DIR=build/macos/dev
 CMAKE_ARGS='-G Ninja -DBEAM_ENABLE_DESKTOP=ON'`; use `BUILD_DIR=build-desktop` and
 omit `-G Ninja` for Linux. Linux main-branch CI enables the desktop
 build and runs its tests and static analysis; manual macOS/Linux builds do too.
