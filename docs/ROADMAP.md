@@ -185,6 +185,13 @@ First release targets LAN only. No rendezvous service, relay, account, or remote
 pairing infrastructure is added. See [pairing](pairing.md) for the authentication
 protocol, interruption recovery, and deployment limits.
 
+## Device management
+
+- [x] Shared transactional rename, direct/Tailscale route edits, and verified public certificate replacement.
+- [x] Portable public device backups with bounded validation, review, conflict rejection, and idempotent restore.
+- [x] CLI inspection, combined edits, backup export, import preview, and explicit restore approval.
+- [x] Native macOS Devices view and Linux/Android management screens with search, cards, pairing, connectivity, refresh, identity, and confirmed unpairing.
+
 ## Future usability enhancements
 
 These desktop (macOS/Linux) and Android enhancements are implemented in Beam 0.9.

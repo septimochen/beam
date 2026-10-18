@@ -33,6 +33,16 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   trust before restarting reception. It revokes only local trust; no unauthenticated
   remote message can revoke or restore a peer.
 
+- Certificate replacement requires an independently verified full SHA-256 pin;
+  reject duplicate/self identities and stale edit snapshots. Native apps join
+  workers before edits or import so old trust cannot survive the change.
+- Device backups carry public certificates/routes only. Bound and validate the
+  entire backup, preview before approval, reject conflicts without partial import,
+  and keep existing settings. Never treat the source fingerprint as a signature.
+  A backup cannot restore a lost private identity or authorize the new identity
+  on remote devices. Replay durable device transactions under the store lock
+  before exposing trust after interruption.
+
 ## Remote input and files
 
 - Treat all peer input as untrusted, including lengths, filenames, paths, MIME types,

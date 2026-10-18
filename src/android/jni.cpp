@@ -4,11 +4,11 @@
 
 namespace {
 using beam::android::Session;
-std::string bytes(JNIEnv* env, jbyteArray value) {
+std::string bytes(JNIEnv* env, jbyteArray value, std::size_t limit = beam::max_text_size) {
     if (!value)
         throw std::invalid_argument("Missing Android argument");
     const auto size = env->GetArrayLength(value);
-    if (size > static_cast<jsize>(beam::max_text_size))
+    if (size > static_cast<jsize>(limit))
         throw std::invalid_argument("Android argument exceeds bounds");
     std::string result(static_cast<std::size_t>(size), '\0');
     env->GetByteArrayRegion(value, 0, size, reinterpret_cast<jbyte*>(result.data()));
@@ -59,13 +59,17 @@ extern "C" JNIEXPORT void JNICALL Java_org_beam_android_Native_destroy(JNIEnv*, 
 extern "C" JNIEXPORT jobjectArray JNICALL Java_org_beam_android_Native_call(
     JNIEnv* env, jobject, jlong handle, jint command, jobjectArray arguments) {
     try {
-        if (!arguments || env->GetArrayLength(arguments) > 4)
+        if (!arguments || env->GetArrayLength(arguments) > 7)
             throw std::invalid_argument("Invalid Android argument count");
         std::vector<std::string> input;
         for (jsize i = 0; i < env->GetArrayLength(arguments); ++i) {
             auto value = static_cast<jbyteArray>(env->GetObjectArrayElement(arguments, i));
             try {
-                input.push_back(bytes(env, value));
+                const bool backup =
+                    command == static_cast<jint>(beam::android::Command::preview_devices) ||
+                    command == static_cast<jint>(beam::android::Command::import_devices);
+                input.push_back(
+                    bytes(env, value, backup ? beam::max_device_backup_size : beam::max_text_size));
             } catch (...) {
                 env->DeleteLocalRef(value);
                 throw;

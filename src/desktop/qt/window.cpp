@@ -1,8 +1,6 @@
 #include "window.hpp"
 #include "beam/identity.hpp"
-#ifdef BEAM_HAS_PAIRING
-#include "pairing_dialog.hpp"
-#endif
+#include "devices_dialog.hpp"
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -17,7 +15,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
-#include <QMessageBox>
 #include <QMimeData>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -97,23 +94,18 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     peer_row->addWidget(peer_label);
     peer_row->addWidget(peers, 1);
     peer_row->addWidget(refresh);
-    unpair_button = new QPushButton("Unpair device…", this);
-    unpair_button->setObjectName("unpairDevice");
-    peer_row->addWidget(unpair_button);
-    connect(unpair_button, &QPushButton::clicked, this, [this] { unpair_selected(); });
-#ifdef BEAM_HAS_PAIRING
-    auto* add_device = new QPushButton("Add device…", this);
-    add_device->setObjectName("addDevice");
-    peer_row->addWidget(add_device);
-    connect(add_device, &QPushButton::clicked, this, [this] {
-        try {
-            show_pairing_dialog(this, config, service);
-            refresh_peers();
-        } catch (const std::exception& error) {
-            send_status->setText(display(error.what()));
-        }
+    auto* manage = new QPushButton("Manage devices…", this);
+    manage->setObjectName("manageDevices");
+    peer_row->addWidget(manage);
+    connect(manage, &QPushButton::clicked, this, [this] {
+        show_devices_dialog(
+            this, config, service,
+            [this] {
+                poll();
+                refresh_peers();
+            },
+            connectivity_status);
     });
-#endif
     send_layout->addLayout(peer_row);
     check_button = new QPushButton("Check connectivity", this);
     check_button->setObjectName("checkConnectivity");
@@ -332,7 +324,6 @@ void Window::refresh_peers() {
         send_status->setText("Pairing setup needed: " + display(error.what()));
     }
     send_button->setEnabled(peers->count() > 0 && !service.is_sending());
-    unpair_button->setEnabled(peers->count() > 0);
     restart_receiving();
 }
 void Window::start_receiving_when_ready() {
@@ -344,26 +335,6 @@ void Window::start_receiving_when_ready() {
         return;
     }
     start_receiving();
-}
-void Window::unpair_selected() {
-    const auto name = peers->currentText();
-    if (name.isEmpty())
-        return;
-    if (QMessageBox::question(
-            this, "Unpair " + name + "?",
-            "Active transfers and connectivity checks will stop. This removes trust on this "
-            "device only. Pair again to reconnect.",
-            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
-        return;
-    try {
-        service.unpair(bytes(name));
-        poll();
-        connectivity_status->clear();
-        refresh_peers();
-        last_result->setText("Unpaired " + name + " on this device. Pair again to reconnect.");
-    } catch (const std::exception& error) {
-        last_result->setText(display(error.what()));
-    }
 }
 void Window::start_receiving() {
     try {
@@ -442,7 +413,6 @@ void Window::poll() {
         start_receiving_when_ready();
     }
     check_button->setEnabled(peers->count() > 0 && !service.is_checking());
-    unpair_button->setEnabled(peers->count() > 0);
     tray_send_status->setText("Send: " + send_status->text());
     tray_receive_status->setText("Receive: " + receive_status->text());
     for (const auto& pair : {std::pair{send_progress, tray_send_progress},

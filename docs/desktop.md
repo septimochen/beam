@@ -230,3 +230,14 @@ the tray, and quit during an active receive.
 `make desktop-live-test` additionally tests the desktop worker's own live LAN
 advertisement/withdrawal during repeated paired transfers. It requires Bonjour
 or a running Avahi daemon and local multicast access, and also runs in Linux CI.
+
+## Device management
+
+macOS has separate **Share** and **Devices** views; Linux opens **Manage devices**.
+The Devices view provides searchable cards, direct/Tailscale routes, individual
+connection checks, QR/PIN/invitation pairing, local rename/address edits,
+certificate inspection/replacement, and confirmed unpairing. **Backup & restore**
+exports public device records and previews imports before adding trust. Inline
+errors keep forms open for correction; saving cancels workers and reloads trust.
+See [device management and recovery](pairing.md#device-management) for name rules,
+verified certificate replacement, conflict handling, and identity recovery limits.

@@ -201,3 +201,9 @@ See [build setup](docs/development.md#build-setup) for formatter and lint tool s
 and [build options](docs/development.md#build-options) for Release and other configurations.
 For deeper implementation details, read [architecture](docs/architecture.md),
 [protocol](docs/protocol.md), and [security](docs/security.md).
+
+Manage paired devices with `beam peer NAME --rename NEW_NAME --endpoint IP:PORT`.
+Back up with `beam peers export devices.beam-backup`; preview recovery with
+`beam peers import devices.beam-backup`, then add `--approve` to restore.
+Native apps include a Devices management screen. See [device management](docs/pairing.md#device-management)
+for certificate replacement, public-only backups, and identity recovery limits.

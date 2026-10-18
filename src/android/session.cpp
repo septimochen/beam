@@ -16,6 +16,9 @@ Session::Session(const std::filesystem::path& directory, std::uint16_t port,
 std::vector<std::string> Session::call(Command command, const std::vector<std::string>& arguments) {
     std::size_t expected = 0;
     switch (command) {
+    case Command::edit_device:
+        expected = 7;
+        break;
     case Command::pair:
     case Command::send:
         expected = 4;
@@ -25,6 +28,8 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         expected = 2;
         break;
     case Command::unpair:
+    case Command::preview_devices:
+    case Command::import_devices:
     case Command::receive:
     case Command::check:
     case Command::pairing_host:
@@ -38,10 +43,42 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
     if (arguments.size() != expected)
         throw std::invalid_argument("Invalid Android command arguments");
     for (const auto& argument : arguments) {
-        if (argument.size() > max_text_size || argument.find('\0') != std::string::npos)
+        const auto limit = command == Command::preview_devices || command == Command::import_devices
+                               ? max_device_backup_size
+                               : max_text_size;
+        if (argument.size() > limit || argument.find('\0') != std::string::npos)
             throw std::invalid_argument("Android argument exceeds bounds or contains NUL");
     }
     switch (command) {
+    case Command::device_details: {
+        std::vector<std::string> result;
+        for (const auto& peer : IdentityStore(state).peers())
+            result.insert(result.end(), {peer.name, peer.endpoint, peer.tailscale_endpoint,
+                                         peer.identity.fingerprint, peer.identity.certificate_pem});
+        return result;
+    }
+    case Command::edit_device:
+#ifdef BEAM_HAS_PAIRING
+        if (pairing)
+            pairing->cancel();
+#endif
+        service.edit_peer(arguments[0], {arguments[1], arguments[2], arguments[3], arguments[4],
+                                         arguments[5], arguments[6]});
+        break;
+    case Command::export_devices:
+        return {IdentityStore(state).export_devices()};
+    case Command::preview_devices:
+    case Command::import_devices: {
+        const auto result = command == Command::preview_devices
+                                ? IdentityStore(state).preview_import(arguments[0])
+                                : service.import_devices(arguments[0]);
+        std::vector<std::string> values{result.source_fingerprint, std::to_string(result.added),
+                                        std::to_string(result.existing)};
+        for (const auto& peer : result.peers)
+            values.insert(values.end(), {peer.name, peer.endpoint, peer.tailscale_endpoint,
+                                         peer.identity.fingerprint});
+        return values;
+    }
     case Command::identity: {
         const auto identity = IdentityStore(state).identity();
         return {identity.fingerprint, identity.tls_name, identity.certificate_pem};
@@ -112,9 +149,7 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         return result;
     }
     case Command::pair:
-        if (service.is_receiving() || service.is_sending() || service.is_checking())
-            throw std::logic_error("Stop transfers before editing paired devices");
-        IdentityStore(state).pair(arguments[0], arguments[1], arguments[2], arguments[3]);
+        service.pair_peer(arguments[0], arguments[1], arguments[2], arguments[3]);
         break;
     case Command::unpair:
         service.unpair(arguments[0]);

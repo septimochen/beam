@@ -1,5 +1,6 @@
 #pragma once
 
+#include "beam/identity.hpp"
 #include "beam/transfer.hpp"
 #include <atomic>
 #include <deque>
@@ -56,6 +57,10 @@ class Service {
     // Joins workers before removing trust, so no old credential snapshot survives.
     // The frontend may restart reception for the remaining peers afterwards.
     void unpair(const std::string& peer);
+    TrustedPeer pair_peer(const std::string& name, const std::filesystem::path& certificate,
+                          const std::string& fingerprint, const std::string& endpoint);
+    TrustedPeer edit_peer(const std::string& peer, const PeerEdit& edit);
+    DeviceBackup import_devices(const std::string& contents);
     [[nodiscard]] bool is_sending() const noexcept;
     [[nodiscard]] bool is_receiving() const noexcept;
     [[nodiscard]] bool is_checking() const noexcept;

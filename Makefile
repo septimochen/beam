@@ -29,7 +29,7 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall android-install android-install-apk android android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -119,6 +119,9 @@ desktop-live-test: desktop
 pairing-test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^(identity|pairing-localhost|seamless-pairing)$$'
 
+devices-test: build
+	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^device-management(-cli)?$$'
+
 content-test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^content(-localhost)?$$'
 
@@ -162,6 +165,7 @@ help:
 	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"
 	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"
+	@echo "devices-test: device edits, certificate replacement, backup restore and CLI checks"
 	@echo "content-test: text and connectivity validation and paired localhost transfers (requires QUIC build)"
 	@echo "routing-test: Tailscale discovery fixtures, route selection and safe localhost fallback"
 	@echo "desktop: native Swift macOS (BUILD_DIR-desktop-native) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"

@@ -22,7 +22,7 @@ if(APPLE)
 
     # A shared source list keeps the headless model/bridge tests on the same code
     # as the app, without distributing an extra Swift framework or Xcode project.
-    set(native_ui_sources macos/DesktopModel.swift macos/BeamView.swift macos/PairingView.swift macos/ReviewTextEditor.swift macos/LaunchOptions.swift macos/AppDelegate.swift)
+    set(native_ui_sources macos/DesktopModel.swift macos/BeamView.swift macos/DevicesView.swift macos/PairingView.swift macos/ReviewTextEditor.swift macos/LaunchOptions.swift macos/AppDelegate.swift)
     set(native_arch "${CMAKE_SYSTEM_PROCESSOR}")
     if(CMAKE_OSX_ARCHITECTURES)
         list(LENGTH CMAKE_OSX_ARCHITECTURES native_arch_count)
@@ -103,7 +103,7 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist.in")
 else()
     find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
-    add_library(beam-desktop-ui STATIC qt/window.cpp)
+    add_library(beam-desktop-ui STATIC qt/window.cpp qt/devices_dialog.cpp)
     if(BEAM_ENABLE_PAIRING)
         target_sources(beam-desktop-ui PRIVATE qt/pairing_dialog.cpp)
     endif()

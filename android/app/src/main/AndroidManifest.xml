@@ -24,6 +24,7 @@
         </activity>
         <service android:name=".TransferService" android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+        <activity android:name=".DevicesActivity" android:exported="false" />
         <activity android:name=".PairingActivity" android:exported="false" />
     </application>
 </manifest>

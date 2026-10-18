@@ -13,9 +13,23 @@ enum ContentSelection: String, CaseIterable, Identifiable {
   }
 }
 
+struct ManagedDevice: Identifiable, Equatable {
+  let name: String
+  let endpoint: String
+  let tailscale: String
+  let fingerprint: String
+  let certificate: String
+  var id: String { name }
+}
+
 @MainActor
 final class DesktopModel: ObservableObject {
   @Published var peers: [String] = []
+  @Published var devices: [ManagedDevice] = []
+  @Published var deviceStatus = ""
+  @Published var deviceError = ""
+  @Published var deviceChecks: [String: String] = [:]
+  private var checkedDevice = ""
   @Published var peer = ""
   @Published var kind: ContentSelection = .file
   @Published var file = ""
@@ -63,13 +77,21 @@ final class DesktopModel: ObservableObject {
 
   func refreshPeers() {
     do {
-      peers = try bridge.peers()
+      let values = try bridge.devices(command: "details", arguments: [])
+      devices = stride(from: 0, to: values.count, by: 5).map {
+        ManagedDevice(
+          name: values[$0], endpoint: values[$0 + 1], tailscale: values[$0 + 2],
+          fingerprint: values[$0 + 3], certificate: values[$0 + 4])
+      }
+      peers = devices.map(\.name)
       if !peers.contains(peer) { peer = peers.first ?? "" }
       if peers.isEmpty {
         sendStatus = "No paired devices. Choose Add device to pair."
       }
     } catch {
+      devices = []
       peers = []
+      deviceError = error.localizedDescription
       peer = ""
       sendStatus = "Pairing setup needed: \(error.localizedDescription)"
     }
@@ -93,9 +115,50 @@ final class DesktopModel: ObservableObject {
       connectivityStatus = ""
       refreshPeers()
       lastResult = "Unpaired \(name) on this device. Pair again to reconnect."
+      deviceStatus = lastResult
+      deviceChecks.removeValue(forKey: name)
     } catch {
       lastResult = error.localizedDescription
+      deviceError = error.localizedDescription
     }
+  }
+
+  func saveDevice(
+    _ device: ManagedDevice, name: String, endpoint: String, tailscale: String,
+    certificate: String, fingerprint: String
+  ) throws {
+    defer { refreshPeers() }
+    _ = try bridge.devices(
+      command: "edit",
+      arguments: [
+        device.name, name, endpoint, tailscale,
+        certificate, fingerprint, device.fingerprint,
+      ])
+    poll()
+    deviceChecks.removeValue(forKey: device.name)
+    peer = name
+    deviceStatus = "Saved \(name)."
+    deviceError = ""
+  }
+
+  func exportDevices() {
+    let panel = NSSavePanel()
+    panel.title = "Export paired devices"
+    panel.nameFieldStringValue = "beam-devices.beam-backup"
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    do {
+      _ = try bridge.devices(command: "save", arguments: [url.path])
+      deviceStatus = "Backup saved. It contains public certificates and connection settings."
+      deviceError = ""
+    } catch { deviceError = error.localizedDescription }
+  }
+
+  func restoreDevices(_ contents: String) throws {
+    defer { refreshPeers() }
+    let result = try bridge.devices(command: "import", arguments: [contents])
+    poll()
+    deviceStatus = "Restored \(result[1]) devices. Kept \(result[2]) existing devices."
+    deviceError = ""
   }
 
   func selectReceiveFolder(_ directory: String) {
@@ -173,11 +236,15 @@ final class DesktopModel: ObservableObject {
     }
   }
 
-  func checkConnectivity() {
+  func checkConnectivity() { checkDevice(peer) }
+
+  func checkDevice(_ name: String) {
     do {
-      try bridge.checkPeer(peer)
+      try bridge.checkPeer(name)
+      checkedDevice = name
+      deviceChecks[name] = "Checking…"
       checking = bridge.checking
-      connectivityStatus = "Checking \(peer)…"
+      connectivityStatus = "Checking \(name)…"
     } catch { connectivityStatus = error.localizedDescription }
   }
 
@@ -220,6 +287,7 @@ final class DesktopModel: ObservableObject {
   private func report(_ event: BeamDesktopEvent) {
     if event.checking {
       connectivityStatus = event.message
+      deviceChecks[checkedDevice] = event.message
       return
     }
     var status: String

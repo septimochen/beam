@@ -24,7 +24,7 @@ class Window : public QWidget {
     QLabel *send_status{}, *receive_status{}, *last_result{};
     QProgressBar *send_progress{}, *receive_progress{};
     QPushButton *send_button{}, *cancel_button{};
-    QPushButton *check_button{}, *unpair_button{};
+    QPushButton* check_button{};
     QLabel* connectivity_status{};
     QLabel *tray_send_status{}, *tray_receive_status{};
     QProgressBar *tray_send_progress{}, *tray_receive_progress{};
@@ -35,7 +35,6 @@ class Window : public QWidget {
     void start_receiving();
     void restart_receiving();
     void refresh_peers();
-    void unpair_selected();
     void load_clipboard();
     void send_selection();
     void poll();

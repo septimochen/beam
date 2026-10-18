@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import SwiftUI
 
 private func require(_ condition: @autoclosure () -> Bool, _ message: String) throws {
   if !condition() {
@@ -63,6 +64,40 @@ private func waitUntil(_ condition: () throws -> Bool) throws {
   throw NSError(
     domain: "BeamTests", code: 1,
     userInfo: [NSLocalizedDescriptionKey: "Native desktop event timed out"])
+}
+
+@MainActor
+private func renderDevices(_ model: DesktopModel) throws {
+  guard let directory = ProcessInfo.processInfo.environment["BEAM_UI_PREVIEW_DIRECTORY"] else {
+    return
+  }
+  try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+  for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+    let hosting = NSHostingView(
+      rootView: DevicesView(model: model)
+        .environment(\.colorScheme, appearance == .aqua ? .light : .dark)
+        .background(Color(nsColor: .windowBackgroundColor)))
+    hosting.appearance = NSAppearance(named: appearance)
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 720, height: 940),
+      styleMask: [.borderless], backing: .buffered, defer: false)
+    window.appearance = NSAppearance(named: appearance)
+    window.contentView = hosting
+    hosting.frame = NSRect(x: 0, y: 0, width: 720, height: 940)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    hosting.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+      throw NSError(domain: "BeamTests", code: 1)
+    }
+    hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+    guard let data = bitmap.representation(using: .png, properties: [:]) else {
+      throw NSError(domain: "BeamTests", code: 2)
+    }
+    try data.write(
+      to: URL(fileURLWithPath: directory).appendingPathComponent(
+        "devices-\(appearance == .aqua ? "light" : "dark").png"))
+  }
 }
 
 @MainActor
@@ -387,6 +422,27 @@ private func tests() throws {
   }
   invalid.unpair("missing")
   try require(invalid.receiving && invalid.peers == ["left"], "Invalid unpair stopped reception")
+  try renderDevices(invalid)
+  let deviceBackupPath = root.appendingPathComponent("devices.beam-backup").path
+  _ = try invalidBridge.devices(command: "save", arguments: [deviceBackupPath])
+  let deviceBackup = try invalidBridge.devices(command: "read", arguments: [deviceBackupPath])[0]
+  let preview = try invalidBridge.devices(command: "preview", arguments: [deviceBackup])
+  try require(preview[1] == "0" && preview[2] == "1", "Backup preview lost existing devices")
+  let device = invalid.devices[0]
+  try invalid.saveDevice(
+    device, name: "work-mac", endpoint: "127.0.0.1:4269", tailscale: "",
+    certificate: "", fingerprint: "")
+  try waitUntil {
+    invalid.poll()
+    return invalid.receiving && invalid.peers == ["work-mac"]
+  }
+  try require(invalid.peer == "work-mac", "Rename lost selected device")
+  invalid.unpair("work-mac")
+  try invalid.restoreDevices(deviceBackup)
+  try waitUntil {
+    invalid.poll()
+    return invalid.receiving && invalid.peers == ["left"]
+  }
   invalid.unpair("left")
   try waitUntil {
     invalid.poll()

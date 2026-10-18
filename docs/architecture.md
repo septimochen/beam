@@ -181,3 +181,14 @@ the C++ core. QR modules come from the vendored MIT Nayuki encoder; Android's
 CameraX/ZXing scanner is platform UI and never authorizes trust itself. Pairing
 listeners and secrets exist only for the bounded Add device window. No persistent
 control connection, cloud rendezvous, relay, or account is introduced.
+
+## Device edits and portable backups
+
+`IdentityStore` owns validation, local edits, the bounded versioned public backup
+codec, conflict checks, and durable multi-record changes. `devices.transaction`
+is a desired snapshot published atomically; each opener replays it under the store
+lock before reading trust. Existing `.peer` records remain the steady-state format.
+`Service` joins send/receive/check workers before edits/import and the frontends
+reload selection and reception. Kotlin passes bounded UTF-8 backup bytes through
+JNI; Swift receives value snapshots through Objective-C++. Platform document APIs
+own file pickers, while certificate approval and all trust rules stay in C++.

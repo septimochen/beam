@@ -54,4 +54,9 @@ internal object Command {
   const val PAIRING_CANCEL = 18
   const val PAIRING_FORGET = 19
   const val PAIRING_REJECT = 20
+  const val DEVICE_DETAILS = 21
+  const val EDIT_DEVICE = 22
+  const val EXPORT_DEVICES = 23
+  const val PREVIEW_DEVICES = 24
+  const val IMPORT_DEVICES = 25
 }

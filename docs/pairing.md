@@ -128,7 +128,7 @@ to the device's TLS identity or its advertised LAN name.
 
 Pairing rejects invalid or expired certificates, private-key imports, fingerprint
 mismatches, self-pairing, duplicate aliases, and duplicate identities. Replacing a
-peer requires explicit removal first. Pairing on one device does not authorize
+peer requires either explicit removal or the verified certificate replacement described below. Pairing on one device does not authorize
 it on the other: both devices must approve each other's certificates.
 
 ## Transfer and manage peers
@@ -185,11 +185,87 @@ keeps your identity, other paired devices, settings, and received files. The oth
 device keeps its own record until you unpair there too. Reconnecting requires
 pairing again.
 
-CLI removal denies new transfers when credentials are next loaded. A separately
-running transfer or listener retains its original trust snapshot; stop and restart
-those processes to apply CLI revocation immediately. To replace a device, remove
-its old identity on each peer,
-verify the replacement fingerprint independently, and pair again.
+CLI removal or certificate edits deny new transfers when credentials are next loaded.
+A separately running CLI transfer or listener retains its original trust snapshot;
+stop and restart those processes to apply changes immediately. Native apps cancel
+and join workers before edits, then reload trust and resume reception. Android
+keeps an explicit receiving Stop in effect.
+
+## Device management
+
+Open **Devices** in macOS, or **Manage devices** in Linux/Android. Search by device
+name or address. Each card shows saved direct/Tailscale routes and a separate
+**Check connection** action. Checks use authenticated QUIC/TLS, transfer no content,
+and show the result of that check; refreshing the saved list does not imply a
+connectivity check. **Add device** keeps the QR, nearby PIN, and invitation flows.
+**My identity** exposes only your public certificate and full SHA-256 fingerprint.
+
+**Edit** changes the local name and IP/port together. Names retain the CLI alias
+rules (lowercase, 1–63 characters, starting with a letter); the remote device's
+name is unaffected. Use `IP:PORT` or `[IPv6]:PORT`. Leave a route blank to remove
+it. Tailscale routes must use an address in the supported Tailscale ranges.
+Renaming preserves the certificate and does not require pairing again.
+
+```sh
+beam peer laptop                              # inspect saved details
+beam peer laptop --rename work-mac --endpoint 192.168.1.60:4269
+beam peer work-mac --tailscale-endpoint 100.64.0.2:4269
+beam peer work-mac --clear-endpoint --clear-tailscale
+beam check work-mac                           # authenticated, bounded check
+beam peers                                    # refresh the saved list
+beam devices                                  # discover untrusted LAN hints
+```
+
+For a renewed/replaced remote identity, enable **Replace certificate** in Edit,
+choose/paste its exported public PEM, and enter the full independently verified
+64-character lowercase SHA-256 fingerprint. **Save & trust certificate** (macOS)
+or saving with replacement enabled (Linux/Android) explicitly changes local trust.
+Invalid, expired, self, duplicate, mismatched, private-key, or stale replacements
+leave records unchanged. Verify and approve this device on the remote device too
+if its trust was reset. Do not import a local private key as a device certificate.
+
+```sh
+beam peer work-mac --cert replacement-public.pem --fingerprint VERIFIED_NEW_SHA256
+```
+
+### Back up and restore paired devices
+
+**Export backup** writes a portable `.beam-backup` file containing local aliases,
+direct/Tailscale endpoints, public certificates, their exact fingerprints, and the
+exporting device's fingerprint. It contains **no private key**, received content,
+settings, or pending pairing approvals. The CLI/desktop exporter creates a new
+owner-only file and refuses to overwrite existing paths. Android uses the system
+Create document picker; the selected provider controls its destination/access.
+
+**Import backup** first validates the entire file and shows names, routes, full
+fingerprints, and counts. Review it, then choose **Restore devices**. Restore only
+a backup whose source you trust: this readable format is not encrypted or signed,
+and approval adds the included certificates to local trust. At most 128 devices
+and 2 MiB per backup are accepted; individual records retain the 16 KiB limit.
+Unknown versions, trailing/truncated data, duplicate names/identities, malformed
+routes, invalid certificates, and conflicts fail before changing trust. No entries
+are silently replaced. Existing name/certificate matches keep their current
+settings, so repeated restoration is safe. Rename or unpair conflicting records
+explicitly before importing again.
+
+```sh
+beam peers export beam-devices.beam-backup
+beam peers import beam-devices.beam-backup            # preview only
+beam peers import beam-devices.beam-backup --approve  # restore after review
+```
+
+All these commands support `--state-dir DIR`. A backup restores peer records on
+the original device while its persistent identity is intact. Reinstalling Android,
+losing `identity.pem`, or moving the backup to a new identity requires approving
+that new identity on the other devices before transfers can work. The import
+screen warns when the source fingerprint differs. A device-list backup does not
+recover a lost private identity or bypass reciprocal pairing.
+
+Edits and imports use one locked, durable desired-state transaction. Every store
+opener completes an interrupted transaction before exposing peers/credentials;
+no partial set becomes visible to a running Beam client. A failed disk operation
+can leave `devices.transaction`; preserve it and retry after fixing storage.
+Finish or explicitly forget interrupted pairing before editing/restoring devices.
 
 ## Storage and recovery
 
@@ -208,7 +284,8 @@ symlink/hardlink records; a process lock serializes initialization and mutations
 Writes use exclusive temporary files, flush them, publish atomically, and flush
 the directory. A crash may leave a `.pending-*` file; these never become identities
 or peers and may be removed while Beam is stopped. At most 128 peers are stored;
-individual input/state files are limited to 16 KiB.
+individual identity/peer/pairing files are limited to 16 KiB. The bounded
+`devices.transaction` may be up to 2 MiB.
 
 `init` never silently replaces an expired or corrupt identity. If the identity
 is missing while peer records remain, it refuses to generate a replacement.

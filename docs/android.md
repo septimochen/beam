@@ -101,7 +101,7 @@ The following manual PEM workflow remains available under **Manage devices and
 identity**:
 
 
-1. Open **Manage devices and identity → Show / export my public certificate**.
+1. Open **Manage devices → Show / export my public certificate**.
    Save `beam-android.pem` through the system document picker and transfer it to
    the desktop. Never export/copy Android's private identity store.
 2. On the desktop, run `beam identity init`, `beam identity show`, and
@@ -233,3 +233,20 @@ ABIs, checks Kotlin/lint/JUnit, runs x86-64 emulator tests, and uploads the debu
 Physical-device LAN/Tailscale interoperability, OEM background policy, notification
 delivery, and third-party document-provider behavior require device checks; emulator
 and host tests do not establish those behaviors.
+
+## Device management
+
+**Manage devices** opens a native screen with search, device cards, saved routes,
+connection checks, refresh, Add device, and My identity. Edit a device's local name,
+IP/port, and optional Tailscale route together. Enable **Replace certificate** to
+choose/paste a new public certificate and verify its full SHA-256 fingerprint.
+Invalid edits keep the form open. **More** shows the certificate or confirms unpair.
+
+**Export backup** uses the system Create document picker. **Import backup** reads
+at most 2 MiB through a bounded provider stream, validates in C++, and previews all
+entries before **Restore devices** adds trust. Backup files contain no private keys.
+An Android reinstall changes the local identity: importing the device list then
+requires pairing the new identity on the other devices too. Existing devices keep
+their current settings. The service invalidates staged outgoing sends and joins
+native workers for management changes; reception resumes if it was enabled, while
+an explicit Stop remains in effect. See [pairing](pairing.md#device-management).

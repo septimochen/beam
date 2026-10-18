@@ -8,11 +8,13 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
 #include <fcntl.h>
+#include <set>
 #include <sys/file.h> // NOLINT(misc-include-cleaner): declares flock on macOS and Linux.
 #include <sys/stat.h>
 #include <unistd.h>
@@ -164,7 +166,7 @@ void validate_file(int fd, bool private_file) {
             (!private_file || (status.st_uid == getuid() && (status.st_mode & 0777) == 0600)),
         "identity store files must be owned by you, regular, unlinked elsewhere, and mode 0600");
 }
-std::string read_file(int fd, bool private_file) {
+std::string read_file(int fd, bool private_file, std::size_t limit = max_certificate) {
     validate_file(fd, private_file);
     std::string text;
     std::array<char, 4096> buffer{};
@@ -176,7 +178,7 @@ std::string read_file(int fd, bool private_file) {
         if (!count)
             break;
         text.append(buffer.data(), static_cast<std::size_t>(count));
-        checked(text.size() <= max_certificate, "identity store file is too large");
+        checked(text.size() <= limit, "identity store file is too large");
     }
     return text;
 }
@@ -184,6 +186,84 @@ void validate_endpoint(const std::string& text) {
     if (text.empty())
         return;
     static_cast<void>(numeric_endpoint(text));
+}
+bool fingerprint_valid(std::string_view value) {
+    return value.size() == 64 && std::all_of(value.begin(), value.end(), [](char c) {
+               return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+           });
+}
+std::string peer_record(const TrustedPeer& peer) {
+    const auto result = "beam-peer-v2\n" + peer.endpoint + "\n" + peer.tailscale_endpoint + "\n" +
+                        peer.identity.certificate_pem;
+    checked(result.size() <= max_certificate, "device record is too large");
+    return result;
+}
+std::string backup_text(const DeviceBackup& backup) {
+    std::string result = "beam-devices-backup-v1\n" + backup.source_fingerprint + "\n" +
+                         std::to_string(backup.peers.size()) + "\n";
+    for (const auto& peer : backup.peers)
+        result += peer.name + "\n" + peer.endpoint + "\n" + peer.tailscale_endpoint + "\n" +
+                  peer.identity.fingerprint + "\n" +
+                  std::to_string(peer.identity.certificate_pem.size()) + "\n" +
+                  peer.identity.certificate_pem;
+    checked(result.size() <= max_device_backup_size, "device backup exceeds 2 MiB");
+    return result;
+}
+DeviceBackup parse_backup(const std::string& contents, bool check_validity = true) {
+    checked(contents.size() <= max_device_backup_size && contents.find('\0') == std::string::npos,
+            "invalid device backup size or NUL byte");
+    std::string_view remaining(contents);
+    const auto line = [&]() {
+        const auto end = remaining.find('\n');
+        checked(end != std::string_view::npos && end <= max_certificate, "invalid device backup");
+        std::string value(remaining.substr(0, end));
+        remaining.remove_prefix(end + 1);
+        return value;
+    };
+    const auto count = [&](std::size_t maximum) {
+        const auto value = line();
+        std::size_t number = 0;
+        const auto parsed = std::from_chars(value.data(), value.data() + value.size(), number);
+        checked(parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size() &&
+                    number <= maximum,
+                "invalid device backup length");
+        return number;
+    };
+    checked(line() == "beam-devices-backup-v1", "unsupported device backup version");
+    DeviceBackup result;
+    result.source_fingerprint = line();
+    checked(fingerprint_valid(result.source_fingerprint), "invalid backup source fingerprint");
+    const auto size = count(max_peers);
+    std::set<std::string> names, fingerprints;
+    for (std::size_t i = 0; i < size; ++i) {
+        TrustedPeer peer;
+        peer.name = line();
+        checked(is_peer_name(peer.name) && names.insert(peer.name).second,
+                "invalid or duplicate device name in backup");
+        peer.endpoint = line();
+        peer.tailscale_endpoint = line();
+        validate_endpoint(peer.endpoint);
+        validate_endpoint(peer.tailscale_endpoint);
+        checked(peer.tailscale_endpoint.empty() ||
+                    is_tailscale_address(numeric_endpoint(peer.tailscale_endpoint).host),
+                "invalid Tailscale endpoint in backup");
+        const auto fingerprint = line();
+        const auto length = count(max_certificate);
+        checked(length > 0 && length <= remaining.size(), "truncated device backup");
+        const std::string pem(remaining.substr(0, length));
+        remaining.remove_prefix(length);
+        checked(pem.find("PRIVATE KEY") == std::string::npos,
+                "private keys are not device backups");
+        auto certificate = parse_certificate(pem);
+        peer.identity = describe(certificate.get(), check_validity);
+        checked(peer.identity.certificate_pem == pem && peer.identity.fingerprint == fingerprint &&
+                    fingerprints.insert(fingerprint).second,
+                "invalid, duplicate or mismatched backup certificate");
+        static_cast<void>(peer_record(peer));
+        result.peers.push_back(std::move(peer));
+    }
+    checked(remaining.empty(), "unexpected trailing data in device backup");
+    return result;
 }
 int open_directory(const std::filesystem::path& path, bool create) {
     if (path.empty())
@@ -251,12 +331,14 @@ struct IdentityStore::Impl {
           root(open_directory(path, create)), lock(open_lock(root.descriptor), "open state lock") {
         validate_file(lock.descriptor, true);
         checked(flock(lock.descriptor, LOCK_EX) == 0, "lock identity store failed");
+        recover_devices();
     }
     std::string read(const std::string& name) const {
         File file(
             openat(root.descriptor, name.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
             "read " + name);
-        return read_file(file.descriptor, true);
+        return read_file(file.descriptor, true,
+                         name == "devices.transaction" ? max_device_backup_size : max_certificate);
     }
     bool exists(const std::string& name) const {
         struct stat status{};
@@ -266,7 +348,9 @@ struct IdentityStore::Impl {
         return false;
     }
     void write(const std::string& name, const std::string& contents, bool replace = false) const {
-        checked(contents.size() <= max_certificate, "identity store record is too large");
+        checked(contents.size() <=
+                    (name == "devices.transaction" ? max_device_backup_size : max_certificate),
+                "identity store record is too large");
         std::array<unsigned char, 16> random{};
         checked(RAND_bytes(random.data(), static_cast<int>(random.size())) == 1,
                 "generate state temporary name failed");
@@ -300,7 +384,87 @@ struct IdentityStore::Impl {
             throw;
         }
     }
+    std::vector<std::string> device_files() const {
+        File cursor(openat(root.descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+        const int scan = dup(cursor.descriptor);
+        checked(scan >= 0, "scan devices failed");
+        DIR* raw = fdopendir(scan);
+        if (!raw) {
+            close(scan);
+            throw std::runtime_error("scan devices failed");
+        }
+        std::unique_ptr<DIR, decltype(&closedir)> directory(raw, closedir);
+        std::vector<std::string> result;
+        for (;;) {
+            errno = 0;
+            const auto* entry = readdir(directory.get());
+            if (!entry) {
+                checked(errno == 0, "scan devices failed");
+                break;
+            }
+            const std::string name(entry->d_name);
+            if (!name.ends_with(".peer"))
+                continue;
+            checked(is_peer_name(name.substr(0, name.size() - 5)) && result.size() < 256,
+                    "invalid device file in store");
+            static_cast<void>(read(name));
+            result.push_back(name);
+        }
+        return result;
+    }
+    void recover_devices() const {
+        if (!exists("devices.transaction"))
+            return;
+        // A durable desired snapshot is the commit point. Every opener completes
+        // replay under the store lock before exposing any peer or credentials.
+        const auto snapshot = parse_backup(read("devices.transaction"), false);
+        const auto previous = device_files();
+        for (const auto& peer : snapshot.peers) {
+            const auto name = peer.name + ".peer";
+            write(name, peer_record(peer), exists(name));
+        }
+        for (const auto& name : previous) {
+            if (std::none_of(snapshot.peers.begin(), snapshot.peers.end(),
+                             [&](const auto& peer) { return name == peer.name + ".peer"; }))
+                checked(unlinkat(root.descriptor, name.c_str(), 0) == 0,
+                        "remove old device failed");
+        }
+        checked(fsync(root.descriptor) == 0, "flush restored devices failed");
+        checked(unlinkat(root.descriptor, "devices.transaction", 0) == 0 &&
+                    fsync(root.descriptor) == 0,
+                "finish device transaction failed");
+    }
+    void save_devices(const DeviceBackup& snapshot) const {
+        static_cast<void>(device_files());
+        write("devices.transaction", backup_text(snapshot));
+        recover_devices();
+    }
 };
+std::string read_device_backup(const std::filesystem::path& path) {
+    File file(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC),
+              "open device backup");
+    return read_file(file.descriptor, false, max_device_backup_size);
+}
+void write_device_backup(const std::filesystem::path& path, const std::string& contents) {
+    checked(contents.size() <= max_device_backup_size, "device backup exceeds 2 MiB");
+    File file(open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600),
+              "create backup (choose a new filename)");
+    try {
+        std::size_t offset = 0;
+        while (offset < contents.size()) {
+            const auto count =
+                ::write(file.descriptor, contents.data() + offset, contents.size() - offset);
+            if (count < 0 && errno == EINTR)
+                continue;
+            checked(count > 0, "write device backup failed");
+            offset += static_cast<std::size_t>(count);
+        }
+        checked(fsync(file.descriptor) == 0, "flush device backup failed");
+    } catch (...) {
+        unlink(path.c_str());
+        throw;
+    }
+}
 std::filesystem::path default_state_directory() {
     if (const auto* config = std::getenv("XDG_CONFIG_HOME"); config && *config) {
         if (!std::filesystem::path(config).is_absolute())
@@ -461,6 +625,94 @@ void IdentityStore::set_tailscale_endpoint(const std::string& name, const std::s
                           "beam-peer-v2\n" + saved.endpoint + "\n" + endpoint + "\n" +
                               saved.identity.certificate_pem,
                           true);
+}
+TrustedPeer IdentityStore::edit_peer(const std::string& name, const PeerEdit& edit) {
+    auto saved = peer(name);
+    checked(edit.expected_fingerprint.empty() ||
+                edit.expected_fingerprint == saved.identity.fingerprint,
+            "device certificate changed since opening; refresh and try again");
+    checked(!has_incomplete_pairing(),
+            "finish or forget incomplete pairing before editing devices");
+    const auto local = identity();
+    if (edit.name)
+        saved.name = *edit.name;
+    checked(is_peer_name(saved.name),
+            "use 1-63 lowercase letters, digits, '-' or '_', starting with a letter");
+    if (edit.endpoint)
+        saved.endpoint = *edit.endpoint;
+    if (edit.tailscale_endpoint)
+        saved.tailscale_endpoint = *edit.tailscale_endpoint;
+    validate_endpoint(saved.endpoint);
+    validate_endpoint(saved.tailscale_endpoint);
+    checked(saved.tailscale_endpoint.empty() ||
+                is_tailscale_address(numeric_endpoint(saved.tailscale_endpoint).host),
+            "Tailscale endpoint must use a Tailscale IP address");
+    if (!edit.certificate_pem.empty()) {
+        saved.identity = validate_public_certificate(edit.certificate_pem);
+        checked(fingerprint_valid(edit.verified_fingerprint) &&
+                    saved.identity.fingerprint == edit.verified_fingerprint,
+                "replacement requires the full independently verified SHA-256 fingerprint");
+        checked(saved.identity.fingerprint != local.fingerprint,
+                "cannot pair this device with itself");
+    } else
+        checked(edit.verified_fingerprint.empty(),
+                "provide a public certificate with its fingerprint");
+    auto current = peers();
+    for (auto& peer : current) {
+        if (peer.name == name)
+            peer = saved;
+        else
+            checked(peer.name != saved.name &&
+                        peer.identity.fingerprint != saved.identity.fingerprint,
+                    "another device already uses that name or certificate");
+    }
+    implementation->save_devices({local.fingerprint, current});
+    return saved;
+}
+std::string IdentityStore::export_devices() const {
+    return backup_text({identity().fingerprint, peers()});
+}
+DeviceBackup IdentityStore::preview_import(const std::string& contents) const {
+    auto result = parse_backup(contents);
+    const auto local = identity();
+    const auto current = peers();
+    checked(!has_incomplete_pairing(),
+            "finish or forget incomplete pairing before restoring devices");
+    for (const auto& imported : result.peers) {
+        checked(imported.identity.fingerprint != local.fingerprint,
+                "backup contains this device's own certificate");
+        bool exists = false;
+        for (const auto& saved : current) {
+            if (saved.name == imported.name &&
+                saved.identity.fingerprint == imported.identity.fingerprint) {
+                exists = true;
+                continue;
+            }
+            checked(saved.name != imported.name &&
+                        saved.identity.fingerprint != imported.identity.fingerprint,
+                    ("backup conflicts with paired device " + saved.name +
+                     "; rename or unpair it explicitly first")
+                        .c_str());
+        }
+        if (exists)
+            ++result.existing;
+        else
+            ++result.added;
+    }
+    checked(current.size() + result.added <= max_peers,
+            "restoring backup exceeds the 128 device limit");
+    return result;
+}
+DeviceBackup IdentityStore::import_devices(const std::string& contents) {
+    const auto result = preview_import(contents);
+    auto current = peers();
+    for (const auto& imported : result.peers)
+        if (std::none_of(current.begin(), current.end(),
+                         [&](const auto& saved) { return saved.name == imported.name; }))
+            current.push_back(imported);
+    if (result.added)
+        implementation->save_devices({identity().fingerprint, current});
+    return result;
 }
 Credentials IdentityStore::credentials(const std::string& name) const {
     static_cast<void>(identity());

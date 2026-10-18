@@ -30,7 +30,6 @@ import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.content.edit
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -59,7 +58,6 @@ class MainActivity : Activity() {
   private lateinit var outgoingHeader: LinearLayout
   private var uri: Uri? = null
   private var peerNames = emptyList<String>()
-  private var export: ByteArray? = null
   private var exportFile: File? = null
   private val io = Executors.newSingleThreadExecutor()
   private val kindIds = listOf(R.id.kind_file, R.id.kind_text)
@@ -191,7 +189,7 @@ class MainActivity : Activity() {
           peerNames.getOrNull(devices.selectedItemPosition) ?: error("Choose a paired device")
         )
       }
-    button("Manage devices and identity") { manage() }
+    button("Manage devices") { manage() }
     button("Settings") { settings() }
     checkConnectivity =
       button("Check connectivity") {
@@ -301,7 +299,6 @@ class MainActivity : Activity() {
       filename.setText(savedInstanceState.getString("filename", ""))
       review.setText(savedInstanceState.getString("text", ""))
       kinds.check(savedInstanceState.getInt("kind", R.id.kind_file))
-      export = savedInstanceState.getByteArray("export")
       exportFile =
         savedInstanceState.getString("exportName")?.let { name ->
           File(
@@ -356,7 +353,6 @@ class MainActivity : Activity() {
     outState.putString("filename", filename.text.toString())
     outState.putString("text", review.text.toString())
     outState.putInt("kind", kinds.checkedRadioButtonId)
-    outState.putByteArray("export", export)
     outState.putString("exportName", exportFile?.name)
     outState.putBoolean("pendingReceive", pendingReceive)
     outState.putBoolean("requestingPermissions", requestingPermissions)
@@ -419,7 +415,7 @@ class MainActivity : Activity() {
     }
     if (pendingReceive || requestingPermissions) return
     if (peerNames.isEmpty()) {
-      report("Pair a device in Manage devices and identity to start receiving automatically")
+      report("Pair a device in Manage devices to start receiving automatically")
       return
     }
     requestReceiving()
@@ -556,27 +552,9 @@ class MainActivity : Activity() {
     )
   }
 
+  @Suppress("DEPRECATION")
   private fun manage() {
-    AlertDialog.Builder(this)
-      .setTitle("Devices and identity")
-      .setItems(
-        arrayOf(
-          "Show / export my public certificate",
-          "Pair a device",
-          "Update device address",
-          "Unpair device",
-        )
-      ) { _, which ->
-        attempt {
-          when (which) {
-            0 -> identity()
-            1 -> pairDialog()
-            2 -> choosePeer(false)
-            3 -> choosePeer(true)
-          }
-        }
-      }
-      .show()
+    startActivityForResult(Intent(this, DevicesActivity::class.java), 141)
   }
 
   private fun settings() {
@@ -621,119 +599,6 @@ class MainActivity : Activity() {
       }
     }
     dialog.show()
-  }
-
-  private fun identity() {
-    val identity = checkNotNull(service).call(Command.IDENTITY)
-    val text =
-      TextView(this).apply {
-        setPadding(32, 24, 32, 24)
-        setTextIsSelectable(true)
-        this.text =
-          "My SHA-256 fingerprint\n${identity[0]}\n\nVerify full fingerprints independently and pair on both devices. Export shares only the public certificate."
-      }
-    AlertDialog.Builder(this)
-      .setTitle("Beam identity")
-      .setView(text)
-      .setNegativeButton("Close", null)
-      .setPositiveButton("Export public certificate") { _, _ ->
-        export = identity[2].toByteArray(Charsets.UTF_8)
-        createDocument("beam-android.pem", "application/x-pem-file", EXPORT_CERT)
-      }
-      .show()
-  }
-
-  private fun pairDialog(certificate: String = "") {
-    val form =
-      LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(32, 0, 32, 0)
-      }
-    fun field(hint: String, limit: Int, multiline: Boolean = false) =
-      EditText(this).apply {
-        this.hint = hint
-        contentDescription = hint
-        setSingleLine(!multiline)
-        filters = arrayOf(InputFilter.LengthFilter(limit))
-        form.addView(this)
-      }
-    val alias = field("Local alias (e.g. laptop)", 63)
-    val address = field("Numeric IP:4269 (optional)", 256)
-    val fingerprint = field("Independently verified full SHA-256", 64)
-    val pem =
-      field("Peer public certificate PEM", Selection.MAX_CERTIFICATE, true).apply {
-        setText(certificate)
-        maxLines = 5
-      }
-    val dialog =
-      AlertDialog.Builder(this)
-        .setTitle("Pair a device")
-        .setView(form)
-        .setMessage(
-          "Compare all 64 fingerprint characters on the other device through an independent channel. Then pair Android on that device too."
-        )
-        .setNegativeButton("Cancel", null)
-        .setNeutralButton("Import certificate") { _, _ -> openDocument(IMPORT_CERT) }
-        .setPositiveButton("Pair", null)
-        .create()
-    dialog.setOnShowListener {
-      dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-        attempt {
-          val file = File.createTempFile("peer-", ".pem", cacheDir)
-          try {
-            require(
-              pem.text.toString().toByteArray(Charsets.UTF_8).size <= Selection.MAX_CERTIFICATE
-            ) {
-              "Certificate exceeds 16 KiB"
-            }
-            file.writeText(pem.text.toString())
-            checkNotNull(service)
-              .call(
-                Command.PAIR,
-                alias.text.toString(),
-                file.canonicalPath,
-                fingerprint.text.toString(),
-                address.text.toString(),
-              )
-            refreshPeers()
-            report("Paired ${alias.text}; approve Android on that device too")
-            dialog.dismiss()
-          } finally {
-            file.delete()
-          }
-        }
-      }
-    }
-    dialog.show()
-  }
-
-  private fun choosePeer(remove: Boolean) {
-    require(peerNames.isNotEmpty()) { "No paired devices" }
-    AlertDialog.Builder(this)
-      .setTitle(if (remove) "Unpair device" else "Update address")
-      .setItems(peerNames.toTypedArray()) { _, index ->
-        val peer = peerNames[index]
-        if (remove) confirmUnpair(peer)
-        else {
-          val field =
-            EditText(this).apply {
-              hint = "192.168.1.20:4269 or [IPv6]:4269"
-              setSingleLine()
-            }
-          AlertDialog.Builder(this)
-            .setTitle("Address for $peer")
-            .setView(field)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Save") { _, _ ->
-              attempt {
-                checkNotNull(service).call(Command.ENDPOINT, peer, field.text.toString())
-                refreshPeers()
-              }
-            }
-            .show()
-        }
-      }
-      .show()
   }
 
   private fun confirmUnpair(peer: String) {
@@ -785,6 +650,13 @@ class MainActivity : Activity() {
   @Deprecated("Platform activity result callback")
   override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
     super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode == 141) {
+      attempt {
+        refreshPeers()
+        startPendingReceive()
+      }
+      return
+    }
     if (requestCode == 140) {
       if (resumeAfterPairing) {
         receiveOnLaunchPending = true
@@ -806,33 +678,19 @@ class MainActivity : Activity() {
         selectFile(value)
         return@attempt
       }
-      val publicCertificate = export
       val received = exportFile
-      export = null
       exportFile = null
       io.submit {
         try {
-          if (requestCode == IMPORT_CERT) {
-            val buffer = ByteArrayOutputStream()
-            contentResolver.openInputStream(value).use { source ->
-              Selection.copy(checkNotNull(source), buffer, Selection.MAX_CERTIFICATE.toLong()) {
+          contentResolver.openOutputStream(value, "w").use { output ->
+            checkNotNull(output) { "Cannot open destination document" }
+            checkNotNull(received).inputStream().use { source ->
+              Selection.copy(source, output, Selection.MAX_FILE) {
                 Thread.currentThread().isInterrupted
               }
             }
-            runOnUiThread { if (!isDestroyed) pairDialog(buffer.toString(Charsets.UTF_8.name())) }
-          } else {
-            contentResolver.openOutputStream(value, "w").use { output ->
-              checkNotNull(output) { "Cannot open destination document" }
-              if (requestCode == EXPORT_CERT) output.write(checkNotNull(publicCertificate))
-              else
-                checkNotNull(received).inputStream().use { source ->
-                  Selection.copy(source, output, Selection.MAX_FILE) {
-                    Thread.currentThread().isInterrupted
-                  }
-                }
-            }
-            runOnUiThread { if (!isDestroyed) report("Saved selected document") }
           }
+          runOnUiThread { if (!isDestroyed) report("Saved selected document") }
         } catch (error: Exception) {
           runOnUiThread { if (!isDestroyed) report(error.message ?: "Document operation failed") }
         }
@@ -843,8 +701,6 @@ class MainActivity : Activity() {
   companion object {
     private val processSession = UUID.randomUUID().toString()
     private const val PICK_FILE = 1
-    private const val IMPORT_CERT = 2
-    private const val EXPORT_CERT = 3
     private const val EXPORT_FILE = 4
   }
 }

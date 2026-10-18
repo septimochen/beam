@@ -365,11 +365,18 @@ class TransferService : Service() {
 
   internal fun unpair(peer: String) {
     require(call(Command.PEERS).chunked(3).any { it[0] == peer }) { "Device is no longer paired" }
+    mutateDevices(Command.UNPAIR, peer)
+    report("Unpaired $peer on this device. Pair again to reconnect.")
+  }
+
+  internal fun mutateDevices(command: Int, vararg arguments: String): List<String> {
+    require(
+      command in listOf(Command.EDIT_DEVICE, Command.IMPORT_DEVICES, Command.PAIR, Command.UNPAIR)
+    )
     val resume = receiving || receiveOnLaunchPending
-    // Invalidate document staging too, so a late provider read cannot start a send.
     cancelSend()
     try {
-      call(Command.UNPAIR, peer) // Cancels and joins all native workers before revocation.
+      return call(command, *arguments)
     } finally {
       val busy = call(Command.BUSY)
       sending = busy[0] == "1"
@@ -377,10 +384,9 @@ class TransferService : Service() {
       checking = busy[2] == "1"
       if (!sending) cleanupStaged()
       receiveOnLaunchPending = resume
+      connectivityStatus = ""
       finishIdle()
     }
-    connectivityStatus = ""
-    report("Unpaired $peer on this device. Pair again to reconnect.")
   }
 
   private fun cleanupStaged() {

@@ -2,10 +2,22 @@ import SwiftUI
 
 struct BeamView: View {
   @ObservedObject var model: DesktopModel
-  @State private var showUnpair = false
-  @State private var unpairTarget = ""
+  @State private var page = "Share"
 
   var body: some View {
+    VStack(spacing: 0) {
+      Picker("Workspace", selection: $page) {
+        Text("Share").tag("Share")
+        Text("Devices").tag("Devices")
+      }.pickerStyle(.segmented).frame(width: 240).padding(.top, 16)
+      if page == "Devices" { DevicesView(model: model) } else { shareView }
+    }.frame(minWidth: 680, minHeight: 640)
+      .sheet(isPresented: $model.showPairing, onDismiss: model.closePairing) {
+        PairingView(model: model)
+      }
+  }
+
+  private var shareView: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
         HStack(spacing: 12) {
@@ -25,17 +37,13 @@ struct BeamView: View {
                 if model.peers.isEmpty { Text("No paired devices").tag("") }
                 ForEach(model.peers, id: \.self) { Text($0).tag($0) }
               }
-              Button("Refresh devices", action: model.refreshPeers)
+              Button("Manage devices") { page = "Devices" }
               Button("Add device…", action: model.openPairing)
                 .disabled(model.sending || model.checking)
             }
             HStack {
               Button("Check connectivity", action: model.checkConnectivity)
                 .disabled(model.peers.isEmpty || model.checking)
-              Button("Unpair device…") {
-                unpairTarget = model.peer
-                showUnpair = true
-              }.disabled(model.peer.isEmpty)
               Text(model.connectivityStatus).textSelection(.enabled)
             }
             Picker("Content type", selection: $model.kind) {
@@ -107,20 +115,7 @@ struct BeamView: View {
         Text("Use Add device to pair over your local network.")
           .font(.caption).foregroundStyle(.secondary)
       }.padding(24)
-    }.frame(minWidth: 600, minHeight: 640)
-      .sheet(isPresented: $model.showPairing, onDismiss: model.closePairing) {
-        PairingView(model: model)
-      }
-      .confirmationDialog(
-        "Unpair \(unpairTarget)?", isPresented: $showUnpair, titleVisibility: .visible
-      ) {
-        Button("Unpair", role: .destructive) { model.unpair(unpairTarget) }
-        Button("Cancel", role: .cancel) {}
-      } message: {
-        Text(
-          "Active transfers and connectivity checks will stop. This removes trust on this device only. Pair again to reconnect."
-        )
-      }
+    }
   }
 
   @ViewBuilder private func transferProgress(_ value: Double?, label: String) -> some View {

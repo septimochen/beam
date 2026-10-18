@@ -51,6 +51,23 @@ void Service::unpair(const std::string& name) {
     stop_workers();
     IdentityStore(config.state_directory).unpair(name);
 }
+TrustedPeer Service::pair_peer(const std::string& name, const std::filesystem::path& certificate,
+                               const std::string& fingerprint, const std::string& endpoint) {
+    stop_workers();
+    return IdentityStore(config.state_directory).pair(name, certificate, fingerprint, endpoint);
+}
+TrustedPeer Service::edit_peer(const std::string& name, const PeerEdit& edit) {
+    stop_workers();
+    return IdentityStore(config.state_directory).edit_peer(name, edit);
+}
+DeviceBackup Service::import_devices(const std::string& contents) {
+    {
+        IdentityStore store(config.state_directory);
+        static_cast<void>(store.preview_import(contents));
+    }
+    stop_workers();
+    return IdentityStore(config.state_directory).import_devices(contents);
+}
 void Service::publish(Event event) {
     std::lock_guard lock(mutex);
     auto& latest = event.direction == Direction::send ? send_progress : receive_progress;

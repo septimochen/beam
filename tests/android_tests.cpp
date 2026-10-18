@@ -88,6 +88,16 @@ void tests() {
     desktop.call(Command::pair, {"phone", phone_cert.string(), phone[0],
                                  "127.0.0.1:" + std::to_string(receiver_port)});
     require(android.call(Command::peers, {})[2] == laptop[0], "Android trust not retained");
+    const auto backup = android.call(Command::export_devices, {})[0];
+    require(android.call(Command::preview_devices, {backup})[2] == "1",
+            "Android backup preview failed");
+    android.call(Command::edit_device,
+                 {"laptop", "work-mac", "[::1]:5000", "100.64.0.1:5000", "", "", laptop[0]});
+    require(android.call(Command::device_details, {})[0] == "work-mac", "Android rename failed");
+    rejects([&] { android.call(Command::import_devices, {backup}); });
+    android.call(Command::unpair, {"work-mac"});
+    require(android.call(Command::import_devices, {backup})[1] == "1",
+            "Android backup restore failed");
     rejects([&] { android.call(Command::send, {"laptop", "unknown", "", ""}); });
     rejects([&] { android.call(Command::send, {"laptop", "text", "", std::string(65537, 'a')}); });
     rejects([&] { android.call(Command::send, {"laptop", "text", "", std::string("a\0b", 3)}); });

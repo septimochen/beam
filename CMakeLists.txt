@@ -206,6 +206,11 @@ if(BUILD_TESTING)
         target_link_libraries(beam-identity-tests PRIVATE Beam::Core OpenSSL::Crypto)
         beam_enable_warnings(beam-identity-tests)
         add_test(NAME identity COMMAND beam-identity-tests)
+        add_executable(beam-device-management-tests tests/device_management_tests.cpp)
+        target_link_libraries(beam-device-management-tests PRIVATE Beam::Core)
+        beam_enable_warnings(beam-device-management-tests)
+        add_test(NAME device-management COMMAND beam-device-management-tests)
+
         set_tests_properties(identity PROPERTIES TIMEOUT 15)
         add_executable(beam-transfer-tests tests/transfer_tests.cpp)
         target_include_directories(beam-transfer-tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -241,6 +246,8 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/content_integration.sh"
             "$<TARGET_FILE:beam>" "$<TARGET_FILE:beam-content-tests>")
         set_tests_properties(content-localhost PROPERTIES TIMEOUT 90)
+        add_test(NAME device-management-cli COMMAND "${BASH_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/device_management_cli.sh" "$<TARGET_FILE:beam>")
         add_test(NAME pairing-localhost COMMAND "${BASH_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/pairing_integration.sh" "$<TARGET_FILE:beam>" "${OPENSSL_EXECUTABLE}")
         set_tests_properties(pairing-localhost PROPERTIES TIMEOUT 45)

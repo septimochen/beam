@@ -29,7 +29,12 @@ enum class Command {
     pairing_browse,
     pairing_cancel,
     pairing_forget,
-    pairing_reject
+    pairing_reject,
+    device_details,
+    edit_device,
+    export_devices,
+    preview_devices,
+    import_devices
 };
 class Session {
     std::filesystem::path state;

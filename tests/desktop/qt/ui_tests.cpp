@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDialog>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -103,8 +104,8 @@ void tests() {
             "unset receive folder did not default to Downloads");
     require(content->toPlainText().isEmpty(), "startup read the clipboard");
     require(!send->isEnabled(), "unpaired send enabled");
-    require(!window.findChild<QPushButton*>("unpairDevice")->isEnabled(),
-            "unpair enabled without a selected device");
+    require(window.findChild<QPushButton*>("manageDevices") != nullptr,
+            "device management is missing");
     load->click();
     require(content->toPlainText().contains("private clipboard") && kind->currentIndex() == 1,
             "explicit clipboard load failed");
@@ -222,16 +223,29 @@ void tests() {
         await([&] {
             return invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
         });
-        auto* unpair = invalid.findChild<QPushButton*>("unpairDevice");
+        auto* manage = invalid.findChild<QPushButton*>("manageDevices");
         auto* devices = invalid.findChild<QComboBox*>("peers");
         devices->setCurrentText("left");
         const auto confirm = [&](QMessageBox::StandardButton answer) {
-            QTimer::singleShot(0, &invalid, [&, answer] {
-                auto* dialog = invalid.findChild<QMessageBox*>();
-                require(dialog != nullptr, "unpair skipped confirmation");
-                dialog->button(answer)->click();
+            const auto selected = devices->currentText();
+            QTimer::singleShot(0, &invalid, [&, answer, selected] {
+                auto* manager = invalid.findChild<QDialog*>("devicesDialog");
+                require(manager != nullptr, "device manager did not open");
+                require(manager->findChild<QPushButton*>("exportDevices") &&
+                            manager->findChild<QPushButton*>("importDevices"),
+                        "backup actions missing");
+                manager->findChild<QLineEdit*>("deviceSearch")->setText(selected);
+                QTimer::singleShot(0, manager, [&, answer, manager] {
+                    auto* dialog = manager->findChild<QMessageBox*>();
+                    require(dialog != nullptr, "unpair skipped confirmation");
+                    dialog->button(answer)->click();
+                });
+                auto* unpair = manager->findChild<QPushButton*>("unpairDevice-" + selected);
+                require(unpair != nullptr, "device card lacks unpair");
+                unpair->click();
+                manager->accept();
             });
-            unpair->click();
+            manage->click();
         };
         confirm(QMessageBox::Cancel);
         require(beam::IdentityStore(right).peers().size() == 2, "cancelled unpair changed trust");
@@ -248,8 +262,7 @@ void tests() {
         await([&] {
             return invalid.findChild<QLabel*>("receiveStatus")->text().contains("pair a device");
         });
-        require(devices->count() == 0 && !unpair->isEnabled() &&
-                    !invalid.findChild<QPushButton*>("send")->isEnabled(),
+        require(devices->count() == 0 && !invalid.findChild<QPushButton*>("send")->isEnabled(),
                 "last-device unpair left stale controls");
     }
 }

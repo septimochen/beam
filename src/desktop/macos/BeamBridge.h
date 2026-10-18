@@ -56,6 +56,10 @@ typedef NS_ENUM(NSInteger, BeamTransferStage) {
 @property(nonatomic, readonly) BOOL checking;
 @property(nonatomic, readonly, copy) NSString* version;
 - (nullable NSArray<NSString*>*)peersAndReturnError:(NSError**)error;
+- (nullable NSArray<NSString*>*)deviceCommand:(NSString*)command
+                                    arguments:(NSArray<NSString*>*)arguments
+                                        error:(NSError**)error
+    NS_SWIFT_NAME(devices(command:arguments:));
 - (BOOL)unpairPeer:(NSString*)peer error:(NSError**)error;
 - (BOOL)sendToPeer:(NSString*)peer
               kind:(BeamContentKind)kind

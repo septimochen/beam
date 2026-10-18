@@ -40,6 +40,10 @@ void print_help() {
            "  beam pair NAME --cert PEM --fingerprint SHA256 [--endpoint IP:PORT] [--state-dir "
            "DIR]\n"
            "  beam peers [--state-dir DIR]\n"
+           "  beam peers export FILE [--state-dir DIR]\n"
+           "  beam peers import FILE [--approve] [--state-dir DIR]\n"
+           "  beam peer NAME [--rename NAME] [--endpoint IP:PORT | --clear-endpoint]\n"
+           "  beam peer NAME --cert PEM --fingerprint VERIFIED_SHA256 [--state-dir DIR]\n"
            "  beam unpair NAME [--state-dir DIR]\n"
            "  beam peer NAME --endpoint IP:PORT [--state-dir DIR]\n"
            "  beam peer NAME --tailscale-endpoint IP:PORT [--state-dir DIR]\n"
@@ -346,7 +350,9 @@ int identity_command(int argc, char** argv) {
             positional.push_back(argument);
             continue;
         }
-        if (command == "peer" && argument == "--clear-tailscale") {
+        if ((command == "peer" &&
+             (argument == "--clear-tailscale" || argument == "--clear-endpoint")) ||
+            (command == "peers" && argument == "--approve")) {
             if (!options.emplace(argument, "").second)
                 throw std::invalid_argument("duplicate option: " + argument);
             continue;
@@ -355,7 +361,8 @@ int identity_command(int argc, char** argv) {
             !(command == "pair" &&
               (argument == "--cert" || argument == "--fingerprint" || argument == "--endpoint")) &&
             !(command == "peer" &&
-              (argument == "--endpoint" || argument == "--tailscale-endpoint")))
+              (argument == "--endpoint" || argument == "--tailscale-endpoint" ||
+               argument == "--rename" || argument == "--cert" || argument == "--fingerprint")))
             throw std::invalid_argument("unknown option: " + argument);
         if (++index == argc || std::string_view(argv[index]).starts_with("--"))
             throw std::invalid_argument("missing value for " + argument);
@@ -381,9 +388,44 @@ int identity_command(int argc, char** argv) {
         return 0;
     }
     if (command == "peers") {
-        if (!positional.empty())
-            throw std::invalid_argument("peers takes no positional arguments");
+        if ((!positional.empty() && (positional.size() != 2 ||
+                                     (positional[0] != "export" && positional[0] != "import"))) ||
+            (options.contains("--approve") && (positional.empty() || positional[0] != "import")))
+            throw std::invalid_argument(
+                "use peers, peers export FILE, or peers import FILE [--approve]");
         beam::IdentityStore store(state_directory(options));
+        if (positional.size() == 2 && positional[0] == "export") {
+            if (options.contains("--approve"))
+                throw std::invalid_argument("--approve is for import only");
+            beam::write_device_backup(positional[1], store.export_devices());
+            std::cout << "Saved device backup to " << positional[1]
+                      << " (public certificates only).\n";
+            return 0;
+        }
+        if (positional.size() == 2 && positional[0] == "import") {
+            const auto contents = beam::read_device_backup(positional[1]);
+            const auto backup = store.preview_import(contents);
+            std::cout << "Backup source: " << backup.source_fingerprint << "\n";
+            for (const auto& peer : backup.peers)
+                std::cout << peer.name << '\t' << peer.endpoint << '\t' << peer.tailscale_endpoint
+                          << '\t' << peer.identity.fingerprint << '\n';
+            std::cout << backup.added << " to restore, " << backup.existing
+                      << " already paired (current settings kept).\n";
+            if (backup.source_fingerprint != store.identity().fingerprint)
+                std::cout << "This backup came from another identity. Other devices must pair with "
+                             "this device before transfers work.\n";
+            if (!options.contains("--approve")) {
+                std::cout << "Review these fingerprints and trust the backup source. Run again "
+                             "with --approve to restore.\n";
+                return 0;
+            }
+            const auto result = store.import_devices(contents);
+            std::cout << "Restored " << result.added << " devices.\n";
+            return 0;
+        }
+        if (!positional.empty() || options.contains("--approve"))
+            throw std::invalid_argument(
+                "use peers, peers export FILE, or peers import FILE [--approve]");
         std::cout << "NAME\tENDPOINT\tTAILSCALE\tFINGERPRINT\n";
         for (const auto& peer : store.peers())
             std::cout << peer.name << '\t' << (peer.endpoint.empty() ? "(unset)" : peer.endpoint)
@@ -407,22 +449,34 @@ int identity_command(int argc, char** argv) {
         store.unpair(positional[0]);
         std::cout << "Unpaired " << positional[0] << " on this device. Pair again to reconnect.\n";
     } else {
-        const auto choices = static_cast<unsigned>(options.contains("--endpoint")) +
-                             static_cast<unsigned>(options.contains("--tailscale-endpoint")) +
-                             static_cast<unsigned>(options.contains("--clear-tailscale"));
-        if (choices == 0)
-            throw std::invalid_argument(
-                "missing required option --endpoint or --tailscale-endpoint");
-        if (choices != 1)
-            throw std::invalid_argument("choose one endpoint update at a time");
+        if ((options.contains("--endpoint") && options.contains("--clear-endpoint")) ||
+            (options.contains("--tailscale-endpoint") && options.contains("--clear-tailscale")))
+            throw std::invalid_argument("choose a route value or clear it");
+        if (options.contains("--cert") != options.contains("--fingerprint"))
+            throw std::invalid_argument("certificate replacement needs --cert and --fingerprint");
         beam::IdentityStore store(state_directory(options));
+        beam::PeerEdit edit;
+        if (options.contains("--rename"))
+            edit.name = required("--rename");
         if (options.contains("--endpoint"))
-            store.set_endpoint(positional[0], required("--endpoint"));
-        else
-            store.set_tailscale_endpoint(positional[0], options.contains("--clear-tailscale")
-                                                            ? ""
-                                                            : required("--tailscale-endpoint"));
-        std::cout << "Updated endpoint for " << positional[0] << '\n';
+            edit.endpoint = required("--endpoint");
+        if (options.contains("--clear-endpoint"))
+            edit.endpoint = "";
+        if (options.contains("--tailscale-endpoint"))
+            edit.tailscale_endpoint = required("--tailscale-endpoint");
+        if (options.contains("--clear-tailscale"))
+            edit.tailscale_endpoint = "";
+        if (options.contains("--cert")) {
+            edit.certificate_pem = beam::read_device_backup(required("--cert"));
+            edit.verified_fingerprint = required("--fingerprint");
+        }
+        const bool changed =
+            edit.name || edit.endpoint || edit.tailscale_endpoint || !edit.certificate_pem.empty();
+        const auto peer =
+            changed ? store.edit_peer(positional[0], edit) : store.peer(positional[0]);
+        std::cout << (changed ? "Updated " : "Device ") << peer.name
+                  << "\nEndpoint: " << peer.endpoint << "\nTailscale: " << peer.tailscale_endpoint
+                  << "\nFingerprint: " << peer.identity.fingerprint << '\n';
     }
     return 0;
 }

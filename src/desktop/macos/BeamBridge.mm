@@ -242,6 +242,79 @@ void report(NSError** output, const std::exception& error) {
         return nil;
     }
 }
+- (NSArray<NSString*>*)deviceCommand:(NSString*)command
+                           arguments:(NSArray<NSString*>*)arguments
+                               error:(NSError**)error {
+    try {
+        auto& service = [self service];
+        const auto action = utf8(command);
+        const auto expected =
+            action == "edit" ? 7U
+            : action == "save" || action == "read" || action == "preview" || action == "import"
+                ? 1U
+                : 0U;
+        if (arguments.count != expected)
+            throw std::invalid_argument("Invalid device command arguments");
+        const auto argument = [&](NSUInteger i) {
+            if (arguments[i].length > beam::max_device_backup_size)
+                throw std::invalid_argument("Device argument too large");
+            auto result = utf8(arguments[i]);
+            if (result.size() > beam::max_device_backup_size ||
+                result.find('\0') != std::string::npos)
+                throw std::invalid_argument("Invalid device argument");
+            return result;
+        };
+        NSMutableArray<NSString*>* values = [NSMutableArray array];
+        if (action == "details") {
+            for (const auto& peer : beam::IdentityStore(_config.state_directory).peers())
+                [values addObjectsFromArray:@[
+                    display(peer.name), display(peer.endpoint), display(peer.tailscale_endpoint),
+                    display(peer.identity.fingerprint), display(peer.identity.certificate_pem)
+                ]];
+        } else if (action == "edit") {
+#ifdef BEAM_HAS_PAIRING
+            if (_pairing)
+                _pairing->cancel();
+#endif
+            service.edit_peer(argument(0), {argument(1), argument(2), argument(3), argument(4),
+                                            argument(5), argument(6)});
+        } else if (action == "save") {
+            beam::write_device_backup(
+                argument(0), beam::IdentityStore(_config.state_directory).export_devices());
+        } else if (action == "read") {
+            [values addObject:display(beam::read_device_backup(argument(0)))];
+        } else if (action == "identity") {
+            const auto identity = beam::IdentityStore(_config.state_directory).identity();
+            [values addObjectsFromArray:@[
+                display(identity.fingerprint), display(identity.tls_name),
+                display(identity.certificate_pem)
+            ]];
+        } else if (action == "preview" || action == "import") {
+            const auto result =
+                action == "preview"
+                    ? beam::IdentityStore(_config.state_directory).preview_import(argument(0))
+                    : service.import_devices(argument(0));
+            [values addObjectsFromArray:@[
+                display(result.source_fingerprint), display(std::to_string(result.added)),
+                display(std::to_string(result.existing)),
+                result.source_fingerprint ==
+                        beam::IdentityStore(_config.state_directory).identity().fingerprint
+                    ? @"1"
+                    : @"0"
+            ]];
+            for (const auto& peer : result.peers)
+                [values addObjectsFromArray:@[
+                    display(peer.name), display(peer.endpoint), display(peer.tailscale_endpoint),
+                    display(peer.identity.fingerprint)
+                ]];
+        } else
+            throw std::invalid_argument("Unknown device command");
+        return values;
+    } catch (const std::exception& exception) {
+        report(error, exception);
+        return nil;
+    }
+}
 - (BOOL)unpairPeer:(NSString*)peer error:(NSError**)error {
     try {
         [self service].unpair(utf8(peer));

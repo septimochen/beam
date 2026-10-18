@@ -2,6 +2,7 @@
 
 #include "beam/transfer.hpp"
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -17,6 +18,19 @@ struct TrustedPeer {
     DeviceIdentity identity;
     std::string tailscale_endpoint{};
 };
+struct PeerEdit {
+    std::optional<std::string> name, endpoint, tailscale_endpoint;
+    std::string certificate_pem, verified_fingerprint, expected_fingerprint;
+};
+struct DeviceBackup {
+    std::string source_fingerprint;
+    std::vector<TrustedPeer> peers;
+    std::size_t added{}, existing{};
+};
+inline constexpr std::size_t max_device_backup_size = 2 * 1024 * 1024;
+// Public certificates only. Export creates a new file and never overwrites one.
+[[nodiscard]] std::string read_device_backup(const std::filesystem::path& path);
+void write_device_backup(const std::filesystem::path& path, const std::string& contents);
 [[nodiscard]] std::filesystem::path default_state_directory();
 [[nodiscard]] bool is_peer_name(std::string_view name) noexcept;
 // The private store is locked for this object's lifetime. Pairing requires the
@@ -49,6 +63,10 @@ class IdentityStore {
     void set_endpoint(const std::string& name, const std::string& endpoint);
     // An empty string explicitly removes the optional Tailscale route.
     void set_tailscale_endpoint(const std::string& name, const std::string& endpoint);
+    TrustedPeer edit_peer(const std::string& name, const PeerEdit& edit);
+    [[nodiscard]] std::string export_devices() const;
+    [[nodiscard]] DeviceBackup preview_import(const std::string& contents) const;
+    DeviceBackup import_devices(const std::string& contents);
     // Empty name authorizes all currently paired peers (receiver); a sender
     // authorizes exactly one peer. An empty trust set always fails closed.
     [[nodiscard]] Credentials credentials(const std::string& name = {}) const;
