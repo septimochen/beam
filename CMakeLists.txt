@@ -142,6 +142,10 @@ if(BUILD_TESTING)
     beam_enable_warnings(beam-config-tests)
     add_test(NAME config COMMAND beam-config-tests)
     if(UNIX)
+        add_test(NAME dependency-download COMMAND "${CMAKE_COMMAND}"
+            "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/dependency-download-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/dependency_download_tests.cmake")
         add_test(NAME android-tools COMMAND "${CMAKE_COMMAND}"
             "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/android-tools-test"

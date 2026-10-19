@@ -8,16 +8,14 @@ if(NOT BEAM_DEPS_DIR)
 endif()
 set(archive "${BEAM_DEPS_DIR}/mbedtls-4.2.0.tar.bz2")
 set(source "${BEAM_DEPS_DIR}/mbedtls-4.2.0")
-file(MAKE_DIRECTORY "${BEAM_DEPS_DIR}")
-if(NOT EXISTS "${archive}")
-    file(DOWNLOAD "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-4.2.0/mbedtls-4.2.0.tar.bz2"
-        "${archive}" EXPECTED_HASH SHA256=2bed9d713b4668f76553b097e72b8aa30bc8f112a940d7ae228d524bbde6ffea TLS_VERIFY ON)
-endif()
-file(SHA256 "${archive}" actual)
-if(NOT actual STREQUAL "2bed9d713b4668f76553b097e72b8aa30bc8f112a940d7ae228d524bbde6ffea")
-    message(FATAL_ERROR "Mbed TLS archive checksum mismatch")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/DownloadVerified.cmake")
+beam_download_verified(
+    "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-4.2.0/mbedtls-4.2.0.tar.bz2"
+    "${archive}" 2bed9d713b4668f76553b097e72b8aa30bc8f112a940d7ae228d524bbde6ffea
+    "${CMAKE_CURRENT_LIST_DIR}/../build/deps/mbedtls-4.2.0.tar.bz2"
+    "${CMAKE_CURRENT_LIST_DIR}/../build/android-deps/pairing/mbedtls-4.2.0.tar.bz2")
 if(NOT EXISTS "${source}/CMakeLists.txt")
+    message(STATUS "Extracting Mbed TLS 4.2.0")
     file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${BEAM_DEPS_DIR}")
 endif()
 set(build "${BEAM_DEPS_DIR}/pairing-build")
@@ -32,11 +30,14 @@ if(ANDROID_ABI)
     list(APPEND extra "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake"
         "-DANDROID_ABI=${ANDROID_ABI}" -DANDROID_PLATFORM=android-29)
 endif()
+message(STATUS "Configuring Mbed TLS 4.2.0 (${ANDROID_ABI})")
 execute_process(COMMAND "${CMAKE_COMMAND}" -S "${source}" -B "${build}"
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     -DCMAKE_INSTALL_PREFIX=${install} -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF
     -DMBEDTLS_USER_CONFIG_FILE=${CMAKE_CURRENT_LIST_DIR}/PairingMbedConfig.h ${extra}
     -DTF_PSA_CRYPTO_USER_CONFIG_FILE=${CMAKE_CURRENT_LIST_DIR}/PairingCryptoConfig.h
     COMMAND_ERROR_IS_FATAL ANY)
+message(STATUS "Building Mbed TLS 4.2.0")
 execute_process(COMMAND "${CMAKE_COMMAND}" --build "${build}" --parallel 4 COMMAND_ERROR_IS_FATAL ANY)
+message(STATUS "Installing Mbed TLS 4.2.0")
 execute_process(COMMAND "${CMAKE_COMMAND}" --install "${build}" COMMAND_ERROR_IS_FATAL ANY)

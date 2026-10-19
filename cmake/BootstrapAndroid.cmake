@@ -45,8 +45,10 @@ run("${CMAKE_COMMAND}" -G Ninja -S "${source}" -B "${build}"
     -DQUIC_BUILD_TOOLS=OFF -DQUIC_BUILD_TEST=OFF -DQUIC_BUILD_PERF=OFF
     -DQUIC_ENABLE_LOGGING=OFF -DQUIC_USE_SYSTEM_LIBCRYPTO=OFF)
 run("${CMAKE_COMMAND}" --build "${build}" --parallel 4)
+message(STATUS "Installing Android MsQuic (${ANDROID_ABI})")
 run("${CMAKE_COMMAND}" --install "${build}")
 # Reuse the same pinned TLS implementation for Beam's EVP/X.509 operations.
 set(crypto "${build}/_deps/opensslquic-build/quictls")
 file(COPY "${crypto}/include/" DESTINATION "${output}/install/include")
 file(COPY "${crypto}/lib/libssl.a" "${crypto}/lib/libcrypto.a" DESTINATION "${output}/install/lib")
+message(STATUS "Android MsQuic and quictls are ready (${ANDROID_ABI})")

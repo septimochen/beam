@@ -94,6 +94,38 @@ make android
 override or `GRADLE_USER_HOME` is needed for the default build. These terminal
 settings do not configure terminals outside VS Code or Android Studio's Gradle JDK.
 
+### Slow or failed dependency downloads
+
+The last MsQuic install line is followed by Mbed TLS preparation in
+`make android-deps`. Archive preparation now identifies the stage, reuses a
+checksum-verified archive from the desktop/Android cache when available, and
+shows download progress otherwise. Network downloads stop after 30 seconds of
+inactivity or five minutes total. Failed transfers are removed, and an incomplete
+archive from an earlier run is replaced automatically. Retry `make android-deps`;
+completed native builds are reused. Run `make android` after dependency setup
+succeeds.
+
+If Gradle reports `SSLHandshakeException` or `Remote host terminated the
+handshake` on a network that requires a proxy, configure the proxy in your local
+`~/.gradle/gradle.properties`. Java uses JVM proxy settings; shell `https_proxy`
+alone does not configure Gradle's HTTPS connections. For a local HTTP proxy on
+port 7897, for example:
+
+```properties
+systemProp.http.proxyHost=127.0.0.1
+systemProp.http.proxyPort=7897
+systemProp.https.proxyHost=127.0.0.1
+systemProp.https.proxyPort=7897
+systemProp.http.nonProxyHosts=localhost|127.*
+```
+
+Use the address/port of your own running proxy and remove these local settings
+when it is no longer needed. Keep proxy credentials out of the repository.
+See [Gradle's proxy documentation](https://docs.gradle.org/current/userguide/networking.html#sec:accessing_the_web_via_a_proxy).
+The wrapper retries transient distribution-download failures three times with a
+30-second network timeout. TLS verification and the pinned distribution SHA-256
+remain enabled.
+
 The checked-in Gradle wrapper validates its distribution SHA-256; AGP provides
 built-in Kotlin. These tested build dependencies retain explicit versions.
 `make android-deps` explicitly downloads MsQuic v2.6.2 at commit

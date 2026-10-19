@@ -1,0 +1,52 @@
+cmake_minimum_required(VERSION 3.25)
+include("${BEAM_SOURCE_DIR}/cmake/DownloadVerified.cmake")
+file(REMOVE_RECURSE "${TEST_DIR}")
+file(MAKE_DIRECTORY "${TEST_DIR}")
+set(source "${TEST_DIR}/source with spaces.bin")
+set(archive "${TEST_DIR}/cache/archive.bin")
+file(WRITE "${source}" "verified dependency contents\n")
+file(SHA256 "${source}" sha256)
+string(REPLACE " " "%20" source_url "file://${source}")
+
+# Real file transfers exercise checksum verification without external networking.
+beam_download_verified("${source_url}" "${archive}" "${sha256}")
+file(SHA256 "${archive}" actual)
+if(NOT actual STREQUAL sha256)
+    message(FATAL_ERROR "Downloaded bytes were not verified")
+endif()
+beam_download_verified("file://${TEST_DIR}/missing" "${archive}" "${sha256}")
+
+# A failed old download must recover, including from another verified cache.
+file(WRITE "${archive}" "truncated")
+beam_download_verified("file://${TEST_DIR}/missing" "${archive}" "${sha256}" "${source}")
+file(WRITE "${archive}" "truncated again")
+set(invalid_cache "${TEST_DIR}/invalid.bin")
+file(WRITE "${invalid_cache}" "wrong cache contents")
+beam_download_verified("${source_url}" "${archive}" "${sha256}" "${invalid_cache}")
+file(SHA256 "${archive}" actual)
+if(NOT actual STREQUAL sha256)
+    message(FATAL_ERROR "An incomplete archive or invalid cache was accepted")
+endif()
+
+file(WRITE "${TEST_DIR}/failure.cmake" [=[
+include("${BEAM_SOURCE_DIR}/cmake/DownloadVerified.cmake")
+beam_download_verified("${URL}" "${ARCHIVE}" "${SHA256}")
+]=])
+function(expect_failure url expected_message)
+    set(output "${TEST_DIR}/failure/archive.bin")
+    execute_process(COMMAND "${CMAKE_COMMAND}" "-DBEAM_SOURCE_DIR=${BEAM_SOURCE_DIR}"
+        "-DURL=${url}" "-DARCHIVE=${output}" "-DSHA256=${sha256}"
+        -P "${TEST_DIR}/failure.cmake" RESULT_VARIABLE result
+        OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr)
+    if(result EQUAL 0 OR NOT "${stderr}" MATCHES "${expected_message}")
+        message(FATAL_ERROR "Unexpected download result: ${result}\n${stdout}\n${stderr}")
+    endif()
+    file(GLOB partials "${output}.*.part")
+    if(EXISTS "${output}" OR partials)
+        message(FATAL_ERROR "Failed download left a published or partial archive")
+    endif()
+endfunction()
+expect_failure("file://${TEST_DIR}/missing" "Dependency download failed")
+string(REPLACE " " "%20" invalid_url "file://${invalid_cache}")
+expect_failure("${invalid_url}" "SHA-256 mismatch")
+file(REMOVE_RECURSE "${TEST_DIR}")
