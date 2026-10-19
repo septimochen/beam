@@ -39,7 +39,6 @@ class Window : public QWidget {
     void send_selection();
     void poll();
     void report(const Event& event);
-    void show_window();
 
   protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -48,6 +47,7 @@ class Window : public QWidget {
 
   public:
     explicit Window(Config configuration, const std::filesystem::path& receive_directory = {});
+    void show_window();
     void select_receive_directory(const std::filesystem::path& directory);
 };
 } // namespace beam::desktop

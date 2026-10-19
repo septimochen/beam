@@ -1,6 +1,7 @@
 #include "beam/beam.hpp"
 #include "beam/config.hpp"
 #include "beam/identity.hpp"
+#include "single_instance.hpp"
 #include "window.hpp"
 #include <QApplication>
 #include <QCommandLineParser>
@@ -27,6 +28,9 @@ int main(int argc, char** argv) {
         return 1;
     }
     try {
+        beam::desktop::SingleInstance instance;
+        if (instance.activate_existing())
+            return 0;
         bool valid = false;
         const auto defaults = beam::load_config(beam::default_config_file());
         const auto port =
@@ -47,6 +51,8 @@ int main(int argc, char** argv) {
             config, parser.isSet("output")
                         ? std::filesystem::path(parser.value("output").toUtf8().toStdString())
                         : defaults.receive_folder);
+        QObject::connect(&instance, &beam::desktop::SingleInstance::activation_requested, &window,
+                         &beam::desktop::Window::show_window);
         window.show();
         return app.exec();
     } catch (const std::exception& error) {

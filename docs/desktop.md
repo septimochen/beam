@@ -167,6 +167,13 @@ devices cancels an active incoming transfer before restarting. Empty trust, unsa
 output, and startup failures stop the receiver. LAN advertisement exists only
 while its bound listener exists. Advertisement failures leave direct transfers available.
 
+Linux runs one desktop instance per user desktop session. Launching Beam again
+restores and focuses the existing window, including when hidden in the tray or
+minimized, without creating another tray icon or receiver. Options on later launches
+do not reconfigure the running app; quit first to change launch options. This uses
+Qt D-Bus (part of Qt 6 base) and requires the desktop session bus. If activation
+fails, the new process reports an error instead of opening a duplicate.
+
 Closing the macOS window hides it; use **Open Beam** from the native menu bar or
 the Dock to return. Linux hides to the tray when available, otherwise closing
 quits. **Quit Beam** cancels and joins workers on both platforms. The app stays
@@ -229,7 +236,10 @@ validation, explicit clipboard snapshots, size limits, plain-text status, and
 unpaired sends. Native macOS tests additionally exercise error translation,
 CLI option validation, paired file/text transfers through the bridge,
 notification metadata, repeated receiving, and joined shutdown. Linux tests use
-Qt's offscreen platform. They require no tray, discovery daemon, or public network;
+Qt's offscreen platform. Single-instance tests use `dbus-run-session` (the `dbus`
+package) to isolate repeated/concurrent launches, hidden/minimized window restoration,
+and restart after exit or process termination. They require no tray, discovery
+daemon, or public network;
 macOS clipboard tests need access to a desktop pasteboard session.
 
 Run complete macOS checks with `make check BUILD_DIR=build/macos/dev
@@ -240,7 +250,8 @@ Windows remains the CLI scaffold. Automated tests cannot confirm native menu bar
 drag gestures, clipboard permissions, or OS notification delivery. To check these
 on a desktop, pair two devices, send a file by dropping it, send a reviewed
 clipboard snapshot, receive repeated items, cancel a transfer, hide/reopen from
-the tray, and quit during an active receive.
+the tray, relaunch Beam while its window is hidden or minimized and confirm it
+receives focus without adding a tray icon, and quit during an active receive.
 
 `make desktop-live-test` additionally tests the desktop worker's own live LAN
 advertisement/withdrawal during repeated paired transfers. It requires Bonjour
