@@ -140,6 +140,41 @@ void tests() {
                 window.findChild<QLineEdit*>("file")->text().endsWith("hello.txt"),
             "drop did not select file");
     require(!send->isEnabled(), "drop automatically enabled unpaired send");
+    QDragEnterEvent move_only(QPoint(20, 20), Qt::MoveAction, &mime, Qt::LeftButton,
+                              Qt::NoModifier);
+    QApplication::sendEvent(&window, &move_only);
+    require(!move_only.isAccepted(), "move-only drag could delete the source file");
+    QDropEvent move_drop(QPointF(20, 20), Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&window, &move_drop);
+    require(!move_drop.isAccepted(), "move-only drop was accepted");
+    QDragEnterEvent mixed(QPoint(20, 20), Qt::CopyAction | Qt::MoveAction, &mime, Qt::LeftButton,
+                          Qt::ShiftModifier);
+    QApplication::sendEvent(&window, &mixed);
+    QDropEvent mixed_drop(QPointF(20, 20), Qt::CopyAction | Qt::MoveAction, &mime, Qt::LeftButton,
+                          Qt::ShiftModifier);
+    QApplication::sendEvent(&window, &mixed_drop);
+    require(mixed.isAccepted() && mixed.dropAction() == Qt::CopyAction && mixed_drop.isAccepted() &&
+                mixed_drop.dropAction() == Qt::CopyAction,
+            "mixed drag did not negotiate a copy");
+    kind->setCurrentIndex(1);
+    content->setPlainText("reviewed text");
+    window.findChild<QLineEdit*>("file")->clear();
+    QApplication::processEvents();
+    QDragEnterEvent editor_enter(QPoint(20, 20), Qt::CopyAction, &mime, Qt::LeftButton,
+                                 Qt::NoModifier);
+    QApplication::sendEvent(content->viewport(), &editor_enter);
+    QDropEvent editor_drop(QPointF(20, 20), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(content->viewport(), &editor_drop);
+    require(content->toPlainText() == "reviewed text" && kind->currentIndex() == 0 &&
+                window.findChild<QLineEdit*>("file")->text().endsWith("hello.txt"),
+            "editor drop bypassed the window's file selection");
+    kind->setCurrentIndex(1);
+    mime.setUrls({QUrl("https://example.com/one"), QUrl("https://example.com/two")});
+    QDragEnterEvent remote_enter(QPoint(20, 20), Qt::CopyAction, &mime, Qt::LeftButton,
+                                 Qt::NoModifier);
+    QApplication::sendEvent(content->viewport(), &remote_enter);
+    require(!remote_enter.isAccepted() && content->toPlainText() == "reviewed text",
+            "editor accepted remote URLs as a file drop");
 
     const auto left = root / "left", right = root / "right", output = root / "received";
     std::filesystem::create_directory(output);

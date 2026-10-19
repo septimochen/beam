@@ -143,8 +143,9 @@ configuration and the remembered folder for that launch. Use `--help` for usage.
 Choose a paired device. Click **Choose file** or drop one local regular file
 into the window, then click **Send**. A drop selects the file; it does not send it.
 Directories, symlinks, remote URLs, network file URLs, multiple-file drops, and
-unsupported filenames are rejected. Native macOS drops negotiate copy only and
-use the same file selection policy even over the text editor. There is one active sender; **Cancel send**
+unsupported filenames are rejected. Both frontends negotiate copy-only drops and
+route file drops over the text editor through the same validation. There is one
+active sender; **Cancel send**
 requests core cancellation, including during blocked network waits.
 
 Reception stays enabled while the app runs, with no Start/Stop receiving buttons
@@ -203,9 +204,11 @@ device, then click **Send**. URLs use the same Text selection and 64 KiB UTF-8
 limit as other text. An unchanged clipboard snapshot preserves its original line endings;
 editing uses the text editor's line endings.
 
-The app does not watch clipboard changes, read it at startup, use the X11 primary
-selection, send automatically, or write received data to the clipboard automatically. A later
-clipboard change does not change the loaded snapshot. Only text is supported;
+The app does not watch clipboard changes, read it at startup, send automatically,
+or write received data to the clipboard automatically. On Linux/X11, the stock Qt
+text editor still uses PRIMARY for selection and middle-click paste; explicit
+Load/Copy actions use the regular clipboard. A later clipboard change does not
+change the loaded snapshot. Only text is supported;
 use file selection for images and other binary content. Received text stays in
 memory in a selectable text area. **Copy to clipboard** buttons at the top right
 of outgoing/received text areas write only when clicked. No text files or history
@@ -218,7 +221,7 @@ service handles all network work; neither frontend has a separate transfer engin
 
 `make desktop-test` builds the app and runs shared worker/controller integration
 plus platform UI tests, including automatic reception, first-run folder setup,
-remembered folders, startup failures, and explicit Stop. The controller tests
+remembered folders, startup failures, and worker shutdown. The controller tests
 exercise authenticated file/text
 transfers, repeated receiving, idle timeout, rejection recovery, unchanged output,
 changed trust, cancellation, and worker shutdown. UI tests check local drop

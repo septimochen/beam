@@ -78,9 +78,13 @@ if ! wait_receiver; then cat receiver.log; exit 1; fi
 grep -q "Trying $fallback" sender.log
 rm -f output/*
 # Explicit endpoint and route selection retain the same TLS identity.
-for option in direct override; do
+for option in direct override mapped; do
     start_receiver
-    if [[ "$option" == direct ]]; then route=(--route direct); else route=(--endpoint "$fallback"); fi
+    case "$option" in
+        direct) route=(--route direct) ;;
+        override) route=(--endpoint "$fallback") ;;
+        mapped) route=(--endpoint "[::ffff:127.0.0.1]:$port") ;;
+    esac
     if ! "$beam" send sample.txt bob --state-dir "$root/alice" --timeout 3 "${route[@]}" >sender.log 2>&1; then cat sender.log receiver.log; exit 1; fi
     if ! wait_receiver; then cat receiver.log; exit 1; fi
     cmp sample.txt output/sample.txt

@@ -203,7 +203,6 @@ help:
 	@echo "content-test: text and connectivity validation and paired localhost transfers (requires QUIC build)"
 	@echo "routing-test: Tailscale discovery fixtures, route selection and safe localhost fallback"
 	@echo "desktop: native Swift macOS (BUILD_DIR/macos/dev) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"
-	@echo "macos-cleanup: inspect Beam build registrations; MACOS_CLEANUP_ARGS=--development requests targeted unregistration"
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"
 	@echo "android-setup: install latest stable SDK/NDK/CMake tools; android-toolchain: show selected installed versions"
 	@echo "android-deps: pinned native dependencies for ARM64; android: ARM64 debug APK"

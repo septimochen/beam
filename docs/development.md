@@ -217,23 +217,19 @@ local filesystem details.
 
 ## Testing and completion
 
-`make routing-test` checks Tailscale status fixtures and subprocess cleanup,
-CLI output/Ctrl-C, pure route selection, stored-route updates, and safe authenticated
-localhost fallback for files/text/URLs. It verifies that identity failures,
-receiver rejection, cancellation, callback exceptions, and post-payload failures
-cannot cause a replay. It requires no Tailscale daemon or account. See [Tailscale](tailscale.md).
+Focused checks (also included in `make check`):
 
-`make content-test` runs bounded UTF-8/HTTP(S) validation, typed protocol parsing,
-and paired localhost text/URL transfers. It covers byte preservation, boundaries,
-malformed input, integrity failures, collisions, file-only receiver rejection,
-cancellation, callback errors, and publication. These tests are also in `make check`
-and CI; they require no discovery daemon. See [content](content.md).
+| Command | Coverage |
+| --- | --- |
+| `make pairing-test` | Identity storage, exact certificate pins, LAN pairing and recovery |
+| `make devices-test` | Device edits, certificate replacement, backup restore and CLI |
+| `make content-test` | Bounded UTF-8 text, integrity and paired localhost transfers |
+| `make routing-test` | Route ordering, authenticated fallback and subprocess cleanup |
+| `make desktop-test` | Shared workers and platform UI; see [desktop verification](desktop.md#verification) |
 
-`make pairing-test` runs the identity/store checks and authenticated paired
-localhost transfers. These cover fingerprint approval, restart/concurrent
-initialization, unsafe state files, address changes, exact leaf pinning, and
-revocation. They also run as part of `make check` and Linux CI; no discovery daemon
-is needed. See [pairing](pairing.md) for the user workflow.
+Localhost integration checks require socket access, but no public network or
+discovery daemon. Live LAN checks are separate: `make discovery-test` and
+`make desktop-live-test` require Bonjour/Avahi and multicast access.
 
 Run `make check` before completing code changes. Add focused tests for changes to
 protocol parsing, transfer states, input validation, or integrity checks. Cover:
@@ -275,27 +271,23 @@ clang-tidy integrations should use the same configuration and compilation databa
 Static analysis complements the focused integration/UI tests: it cannot prove
 correct callback lifetimes, deadlock freedom, or platform clipboard/drop policy.
 The full three-platform build/test matrix can be triggered manually in GitHub Actions.
+CI caches pinned native dependencies and Gradle downloads, and cancels superseded
+runs on the same ref/event. Native cache keys include provisioning/configuration
+inputs and Android's selected NDK/CMake versions; host caches also track the runner
+image. Provisioning remains explicit, and all build/test categories are retained.
 Commit completed work with a descriptive message and push when a remote is configured;
 leave unrelated changes unstaged.
 
-## Pairing dependencies and checks
+## Pairing dependencies
 
-`make deps` and `make deps-source` also run `make pairing-deps`. The explicit
-provisioning script pins Mbed TLS 4.2.0's official archive and SHA-256, includes its matching TF-PSA-Crypto,
-and enables EC-JPAKE plus the required pthread locking. Libraries are linked
-statically, separately from MsQuic/quictls. Normal configuration never downloads.
-`BEAM_PAIRING_ROOT` selects that provisioned prefix; `BEAM_ENABLE_PAIRING=OFF`
-removes this dependency and the network pairing implementation. Manual pairing
-and normal transfers remain available. The MIT Nayuki QR encoder v1.8.0 is vendored
-under `third_party/qrcodegen` with its license retained. Android additionally pins
-CameraX, AndroidX Activity, and the offline Apache-licensed ZXing core.
+`make deps` / `make deps-source` also run `make pairing-deps`, provisioning
+checksum-pinned Mbed TLS 4.2.0 and its matching TF-PSA-Crypto with EC-JPAKE and
+pthread locking. These static libraries are separate from MsQuic/quictls.
+`BEAM_PAIRING_ROOT` selects the installed prefix. `BEAM_ENABLE_PAIRING=OFF`
+removes network pairing and this dependency; manual PEM pairing and transfers
+remain available. Normal configuration never downloads dependencies.
 
-`make android-deps` provisions ARM64 Mbed TLS too; Android builds support only ARM64.
-`make android-setup` installs the latest stable tools, and `make android-toolchain`
-shows the shared Make/Gradle selection. See [tool overrides](android.md#build).
-`make pairing-test` includes the seamless-pairing test: invitation bounds, PIN
-failure/success, reciprocal approval, certificate substitution/key proof, expiry,
-replay, attempt limits, IPv4/IPv6, journal idempotency, and real QUIC transfers.
-Android JVM tests exercise QR decoding; emulator JNI tests decode a QR produced
-by the C++ encoder and persist both full certificate pins across restart.
-Physical cameras and LAN interoperability still need device validation.
+The MIT Nayuki QR encoder v1.8.0 is vendored with its license. Android's pinned
+CameraX, AndroidX Activity and ZXing dependencies, tool selection, APK packaging,
+and checks are documented in [Android](android.md). Pairing authentication,
+recovery and validation are documented in [pairing](pairing.md).

@@ -138,6 +138,14 @@ for mode in checksum truncated oversized wrong-id interrupted invalid-name inval
     if [[ -e output/attack.bin || -e evil ]]; then echo "published invalid $mode transfer"; exit 1; fi
     if compgen -G 'output/.beam-*' >/dev/null; then echo "temporary file leaked for $mode"; exit 1; fi
 done
+# A second payload stream after restored stream credit must not deadlock teardown.
+start_receiver
+"$attacker" duplicate-stream "127.0.0.1:$port" client.pem client.key ca.pem unused >attacker.log 2>&1 || { cat attacker.log receiver.log; exit 1; }
+if wait_receiver; then echo 'receiver accepted duplicate stream'; exit 1; fi
+grep -q 'connection failed' receiver.log
+printf abc >expected.bin
+cmp expected.bin output/attack.bin
+rm output/attack.bin
 # A listener with no sender expires instead of hanging indefinitely.
 "$beam" receive --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 --no-discovery >receiver.log 2>&1 && exit 1
 if "$beam" receive --listen "$port" --output missing-directory --cert server.pem --key server.key --ca ca.pem --timeout 1 >receiver.log 2>&1; then exit 1; fi

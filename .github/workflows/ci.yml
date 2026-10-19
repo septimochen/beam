@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
   android:
     name: Android APK and checks
@@ -21,13 +25,29 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle.kts
+            android/gradle/wrapper/gradle-wrapper.properties
       - uses: android-actions/setup-android@v4.0.4
       - name: Install Android build prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build perl pkgconf
           make android-setup
+      - name: Record selected Android toolchain
+        id: android-tools
+        run: cmake -DBEAM_ANDROID_ACTION=properties -P cmake/AndroidTools.cmake >> "$GITHUB_OUTPUT"
+      - name: Cache installed Android native dependencies
+        id: android-native
+        uses: actions/cache@v5
+        with:
+          path: |
+            build/android-deps/arm64-v8a/install
+            build/android-deps/pairing/pairing-arm64-v8a/install
+          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ steps.android-tools.outputs.ndkVersion }}-${{ steps.android-tools.outputs.cmake }}-${{ hashFiles('cmake/AndroidTools.cmake', 'cmake/BootstrapAndroid.cmake', 'cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
       - name: Build pinned Android native dependencies
+        if: steps.android-native.outputs.cache-hit != 'true'
         run: make android-deps 2>&1 | tee android-native-deps.log
       - name: Format, lint, test, and package Android
         run: |
@@ -85,6 +105,16 @@ jobs:
           clang-tidy-23 --version
       - name: Check formatting
         run: make format-check
+      - name: Record runner image for native caches
+        id: host-tools
+        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Cache host pairing dependency
+        uses: actions/cache@v5
+        with:
+          path: |
+            build/deps/mbedtls-4.2.0*
+            build/deps/pairing-build
+          key: pairing-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
       - name: Validate system MsQuic and provision pairing
         run: make deps
       - name: Lint and static analysis
@@ -122,6 +152,19 @@ jobs:
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'
         run: brew install libmsquic openssl@3 nlohmann-json ninja
+      - name: Record runner image for native caches
+        if: runner.os != 'Windows'
+        id: host-tools
+        shell: bash
+        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Cache host pairing dependency
+        if: runner.os != 'Windows'
+        uses: actions/cache@v5
+        with:
+          path: |
+            build/deps/mbedtls-4.2.0*
+            build/deps/pairing-build
+          key: pairing-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
       - name: Validate system MsQuic and provision pairing
         if: runner.os != 'Windows'
         run: make deps
@@ -158,6 +201,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev perl
+      - name: Record runner image for native caches
+        id: host-tools
+        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+      - name: Cache source fallback dependencies
+        uses: actions/cache@v5
+        with:
+          path: build/deps
+          key: source-fallback-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapMsQuic.cmake', 'cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
       - name: Provision pinned dependencies explicitly
         run: make deps-source
       - name: Test private runtime installation and authenticated transfers

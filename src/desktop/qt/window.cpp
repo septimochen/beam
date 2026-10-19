@@ -152,6 +152,8 @@ Window::Window(Config configuration, const std::filesystem::path& receive_direct
     text->setPlaceholderText("Review the text or URL before sending");
     text->setAccessibleName("Content to send");
     text->setMaximumHeight(100);
+    text->setAcceptDrops(false);
+    text->viewport()->setAcceptDrops(false);
     text->hide();
     connect(text, &QPlainTextEdit::textChanged, this, [this] { clipboard_snapshot.reset(); });
     send_layout->addWidget(text);
@@ -491,18 +493,28 @@ void Window::report(const Event& event) {
 }
 void Window::dragEnterEvent(QDragEnterEvent* event) {
     try {
+        if (!(event->possibleActions() & Qt::CopyAction)) {
+            event->ignore();
+            return;
+        }
         static_cast<void>(dropped_file(*event->mimeData()));
-        event->acceptProposedAction();
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
     } catch (const std::exception&) {
         event->ignore();
     }
 }
 void Window::dropEvent(QDropEvent* event) {
     try {
+        if (!(event->possibleActions() & Qt::CopyAction)) {
+            event->ignore();
+            return;
+        }
         file->setText(display(dropped_file(*event->mimeData()).string()));
         kind->setCurrentIndex(0);
         send_status->setText("File selected. Choose a device, then Send.");
-        event->acceptProposedAction();
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
     } catch (const std::exception& error) {
         send_status->setText(display(error.what()));
         event->ignore();

@@ -464,8 +464,12 @@ class QuicConnection final : public Connection {
             case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED: {
                 const bool uni =
                     (event->PEER_STREAM_STARTED.Flags & QUIC_STREAM_OPEN_FLAG_UNIDIRECTIONAL) != 0;
-                auto stream = std::make_unique<QuicStream>(self.runtime.api, uni, self.options,
-                                                           self.close_code);
+                // Retain every callback context until application-thread teardown.
+                // Even IMMEDIATE shutdown may queue callbacks; destroying a stream
+                // here would wait for the worker that is executing this callback.
+                self.incoming.push_back(std::make_unique<QuicStream>(
+                    self.runtime.api, uni, self.options, self.close_code));
+                auto& stream = self.incoming.back();
                 stream->handle = event->PEER_STREAM_STARTED.Stream;
                 stream->connection_handle = self.handle;
                 stream->started = true;
@@ -476,11 +480,8 @@ class QuicConnection final : public Connection {
                     self.failed = true;
                     self.runtime.api->ConnectionShutdown(self.handle,
                                                          QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 1);
-                    // Already on the connection worker: immediate abort drains this
-                    // stream's callback before its local owner is destroyed.
                 } else {
                     seen = true;
-                    self.incoming.push_back(std::move(stream));
                 }
                 break;
             }

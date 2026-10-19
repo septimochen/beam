@@ -77,6 +77,17 @@ int attack(int argc, char** argv) {
         payload->send(data);
         payload->finish();
         const auto result = beam::protocol::read(*control);
+        if (mode == "duplicate-stream") {
+            if (result.type != beam::protocol::Type::complete)
+                throw std::logic_error("initial payload did not complete");
+            // Closing the first stream restores its credit. The receiver is
+            // still waiting for our acknowledgement when the second arrives.
+            payload.reset();
+            auto duplicate = connection->open(true);
+            duplicate->send(beam::protocol::encode_id(42));
+            static_cast<void>(beam::protocol::read(*control));
+            throw std::logic_error("duplicate stream was accepted");
+        }
         if (result.type == beam::protocol::Type::complete)
             throw std::logic_error("malicious transfer was accepted");
         if (result.type != beam::protocol::Type::failed)

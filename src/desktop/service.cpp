@@ -253,8 +253,7 @@ void Service::receive_loop(std::stop_token stop, const std::filesystem::path& di
             const auto result = receive_content(config.port, directory, options);
             if (result.connectivity_check)
                 continue;
-            if (!result.connectivity_check)
-                publish({Direction::receive, EventKind::completed, {}, result});
+            publish({Direction::receive, EventKind::completed, {}, result});
         } catch (const TransferError& error) {
             if (stop.stop_requested())
                 break;

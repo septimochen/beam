@@ -44,6 +44,14 @@ void unit_tests() {
     require(beam::peer_endpoints(peer).size() == 1, "equivalent routes were not deduplicated");
     require(beam::peer_endpoints(peer, RoutePreference::direct).empty(),
             "Tailscale route classified as direct");
+    peer.endpoint = "100.64.0.20:4269";
+    peer.tailscale_endpoint = "[::ffff:100.64.0.20]:4269";
+    endpoints = beam::peer_endpoints(peer);
+    require(endpoints.size() == 1 && endpoints.front().host == "100.64.0.20",
+            "mapped IPv4 route was not normalized and deduplicated");
+    require(beam::endpoint_string(beam::numeric_endpoint("[::ffff:127.0.0.1]:4269")) ==
+                "127.0.0.1:4269",
+            "mapped loopback was not normalized");
     peer.endpoint.clear();
     peer.tailscale_endpoint.clear();
     require(beam::peer_endpoints(peer).empty(), "empty peer invented a route");

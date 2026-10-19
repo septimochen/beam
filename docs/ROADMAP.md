@@ -80,6 +80,10 @@ before the direct transfer path is reliable on macOS and Linux.
 
 ## Phase 5 implementation
 
+This section records the original v3 milestone. Current Beam uses v4: URLs are
+ordinary UTF-8 text received in memory, and the separate URL command/kind is
+retired. See [current content behavior](content.md).
+
 - [x] Explicit file, UTF-8 text/plain, and single HTTP(S) text/uri-list content kinds.
 - [x] Paired `beam text TEXT PEER` / `beam url URL PEER` and reusable core APIs.
 - [x] Bound text/URL sizes and validate UTF-8, controls, URL syntax, and metadata.

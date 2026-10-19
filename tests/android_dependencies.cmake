@@ -18,19 +18,18 @@ execute_process(COMMAND ${environment} "${PKG_CONFIG_EXECUTABLE}" --static --lib
 if(NOT status STREQUAL "0" OR NOT libraries MATCHES "jitterentropy" OR NOT libraries MATCHES "zstd")
     message(FATAL_ERROR "Host metadata fixture is not active: ${libraries}${error}")
 endif()
-foreach(abi arm64-v8a)
-    set(build "${output}/${abi}")
-    execute_process(COMMAND ${environment} "${CMAKE_COMMAND}" --fresh
-        -G Ninja -S "${BEAM_SOURCE_DIR}/android/native" -B "${build}"
-        "-DCMAKE_MAKE_PROGRAM=${NINJA_EXECUTABLE}"
-        "-DPKG_CONFIG_EXECUTABLE=${PKG_CONFIG_EXECUTABLE}"
-        "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake"
-        "-DBEAM_ANDROID_DEPS=${BEAM_ANDROID_DEPS}" "-DANDROID_ABI=${abi}"
-        -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Debug
-        COMMAND_ERROR_IS_FATAL ANY)
-    file(READ "${build}/build.ninja" graph)
-    if(graph MATCHES "jitterentropy|zstd")
-        message(FATAL_ERROR "${abi} Android linkage inherited host OpenSSL dependencies")
-    endif()
-    message(STATUS "${abi}: Android link graph excludes incompatible host dependencies")
-endforeach()
+set(abi arm64-v8a)
+set(build "${output}/${abi}")
+execute_process(COMMAND ${environment} "${CMAKE_COMMAND}" --fresh
+    -G Ninja -S "${BEAM_SOURCE_DIR}/android/native" -B "${build}"
+    "-DCMAKE_MAKE_PROGRAM=${NINJA_EXECUTABLE}"
+    "-DPKG_CONFIG_EXECUTABLE=${PKG_CONFIG_EXECUTABLE}"
+    "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK}/build/cmake/android.toolchain.cmake"
+    "-DBEAM_ANDROID_DEPS=${BEAM_ANDROID_DEPS}" "-DANDROID_ABI=${abi}"
+    -DANDROID_PLATFORM=android-29 -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Debug
+    COMMAND_ERROR_IS_FATAL ANY)
+file(READ "${build}/build.ninja" graph)
+if(graph MATCHES "jitterentropy|zstd")
+    message(FATAL_ERROR "${abi} Android linkage inherited host OpenSSL dependencies")
+endif()
+message(STATUS "${abi}: Android link graph excludes incompatible host dependencies")

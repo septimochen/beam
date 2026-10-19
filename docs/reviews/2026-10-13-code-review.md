@@ -3,7 +3,9 @@
 Reviewed revision: `25cba43a7e65b3c2f110628a3361f2a6be864f97` (Phase 7).
 Scope: current CLI, core transfer/protocol/storage, identity/TLS, discovery/routing,
 desktop implementation, and associated tests. This report records findings;
-implementation fixes are pending.
+see the [2026-10-19 follow-up](2026-10-19-code-review.md) for current status.
+Findings 1, 2, 3 and 5 are addressed there. Finding 4 remains a Linux/X11
+limitation and is now stated accurately in the desktop documentation.
 
 ## Findings
 
