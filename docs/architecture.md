@@ -43,7 +43,7 @@ See [content](content.md) for bounds and API semantics.
 
 The transfer implementation targets macOS/Linux/Android. Windows still builds the portable filename/core scaffold;
 Windows exclusive storage and credential provisioning remain future work. Native builds
-use system MsQuic 2.x packages (2.6.2+), validated by `make deps` and CMake.
+use system MsQuic 2.x packages (2.4+), validated by `make deps` and CMake.
 Runtime-only Linux packages use vendored public API headers; the implementation
 remains in the installed library. Android and the explicit `make deps-source`
 fallback pin v2.6.2. Regular CMake configuration discovers

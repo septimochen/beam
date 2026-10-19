@@ -22,7 +22,6 @@ int main() {
         return 2;
     }
     std::printf("%u.%u.%u\n", version[0], version[1], version[2]);
-    const bool supported =
-        version[0] == 2 && (version[1] > 6 || (version[1] == 6 && version[2] >= 2));
+    const bool supported = version[0] == 2 && version[1] >= 4;
     return supported ? 0 : 3;
 }

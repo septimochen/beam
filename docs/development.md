@@ -10,7 +10,7 @@ Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL develo
 headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy 23.
 Optional Tailscale CLI discovery uses header-only nlohmann_json 3.11+ for bounded
 JSON parsing; it adds no runtime service or shared library.
-Install an OpenSSL-backed MsQuic 2.x runtime, version 2.6.2 or newer, through your
+Install an OpenSSL-backed MsQuic 2.x runtime, version 2.4.0 or newer, through your
 system package manager. Beam also uses installed OpenSSL libcrypto for hashing,
 certificate verification, and random transfer IDs.
 
@@ -51,9 +51,8 @@ sudo dnf install libmsquic
 See [upstream distribution support](https://github.com/microsoft/msquic/blob/main/docs/Release.md)
 before choosing a repository. On Arch, install normal build prerequisites with
 `pacman`; MsQuic is available through the [msquic AUR package](https://aur.archlinux.org/packages/msquic),
-not the default repositories. As checked on 2026-10-19, that package is 2.4.11,
-below Beam's minimum. Use an updated compatible package or the explicit source
-fallback below. Beam does not install an AUR helper or add package repositories.
+not the default repositories. MsQuic 2.4.0 and newer 2.x releases are accepted.
+Beam does not install an AUR helper or add package repositories.
 
 From the repository root:
 

@@ -14,5 +14,5 @@ The upstream MIT license is retained in `LICENSE` and in
 Beam prefers installed SDK headers. These headers support Linux runtime-only
 packages, which omit development headers. Beam still links the installed runtime;
 no MsQuic or TLS implementation is built from this directory. Native configuration
-validates API compatibility and requires MsQuic 2.x, version 2.6.2 or newer.
+validates API compatibility and requires MsQuic 2.x, version 2.4.0 or newer.
 Android uses its own pinned per-ABI headers and archives.

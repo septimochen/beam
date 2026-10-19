@@ -6,12 +6,12 @@ endif()
 
 function(beam_msquic_error reason)
     message(FATAL_ERROR "${reason}\n"
-        "Beam requires an OpenSSL-backed MsQuic 2.x runtime, version 2.6.2 or newer.\n"
+        "Beam requires an OpenSSL-backed MsQuic 2.x runtime, version 2.4.0 or newer.\n"
         "macOS: brew install libmsquic\n"
         "Debian/Ubuntu: sudo apt install libmsquic\n"
         "Fedora/RHEL: sudo dnf install libmsquic\n"
         "APT/DNF may need Microsoft's repository: https://learn.microsoft.com/en-us/linux/packages\n"
-        "Arch: install an updated msquic AUR package (2.6.2+); older packages are unsupported.\n"
+        "Arch: install the msquic AUR package (2.4+).\n"
         "For a custom installation, set MSQUIC_ROOT or MSQUIC_INCLUDE_DIR/MSQUIC_LIBRARY.\n"
         "Source fallback: make deps-source, then explicitly select build/deps/install with MSQUIC_ROOT.\n"
         "Use a fresh build directory when changing dependency sources.")
