@@ -8,6 +8,8 @@
 !/CMakeLists.txt
 !/Makefile
 !/CMakePresets.json
+!/.vscode/
+!/.vscode/settings.json
 !/scripts/
 !/scripts/*.sh
 !/scripts/*.jxa

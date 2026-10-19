@@ -60,6 +60,40 @@ NDK selection. SDK discovery uses `ANDROID_HOME`, `ANDROID_SDK_ROOT`,
 Gradle still needs the standard SDK environment or `sdk.dir` configuration.
 Changing NDKs uses separate native build caches; rerun `android-deps` after a change.
 
+### VS Code terminals on macOS
+
+The workspace's `.vscode/settings.json` sets `JAVA_HOME`, `ANDROID_HOME`, and
+`PATH` for new integrated terminals on Apple Silicon Macs. It uses Homebrew's
+JDK 17 at `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` and
+the SDK at `~/Library/Android/sdk`. SDK tools installed through Android Studio
+or Homebrew are included on `PATH`. These locations stay outside disposable
+project build directories. Change the paths for an Intel Mac or another install.
+The settings configure paths; they do not install a toolchain.
+
+If the tools are not installed yet, install the prerequisites:
+
+```sh
+brew install openjdk@17
+brew install --cask android-commandlinetools
+```
+
+Then close existing VS Code terminals and open a new one so it picks up the
+workspace environment. Create the SDK directory and review its licenses:
+
+```sh
+mkdir -p "$ANDROID_HOME"
+sdkmanager --sdk_root="$ANDROID_HOME" --licenses
+java -version
+make android-setup
+make android-toolchain
+make android-deps
+make android
+```
+
+`ANDROID_SDK_ROOT` is deprecated; `ANDROID_HOME` is sufficient. No NDK/version
+override or `GRADLE_USER_HOME` is needed for the default build. These terminal
+settings do not configure terminals outside VS Code or Android Studio's Gradle JDK.
+
 The checked-in Gradle wrapper validates its distribution SHA-256; AGP provides
 built-in Kotlin. These tested build dependencies retain explicit versions.
 `make android-deps` explicitly downloads MsQuic v2.6.2 at commit
