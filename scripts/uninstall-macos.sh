@@ -61,6 +61,7 @@ if $purge; then
         [[ $answer == DELETE ]] || fail 'Data removal cancelled.'
     fi
 fi
+if ! $staging; then cleanup_build_apps; fi
 if ! $staging && [[ ! -L $app ]]; then
     stop_app "$app" "$expected"
     if $clear && [[ -d $app && ! -L $app ]]; then

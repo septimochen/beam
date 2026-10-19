@@ -33,9 +33,9 @@ make desktop
 # Linux:
 ./build-desktop/beam-desktop
 # macOS:
-open ./build/macos/dev/beam-desktop.app
+open ./build/macos/dev/apps.noindex/beam-desktop.app
 # Or run the macOS bundle executable with options:
-./build/macos/dev/beam-desktop.app/Contents/MacOS/beam-desktop --output ./received
+./build/macos/dev/apps.noindex/beam-desktop.app/Contents/MacOS/beam-desktop --output ./received
 ```
 
 For a custom Linux Qt prefix, pass `CMAKE_ARGS='-DCMAKE_PREFIX_PATH=/path/to/qt'`.
@@ -45,6 +45,9 @@ directory. Existing macOS Qt build directories remain separate. Manual native
 configuration requires a fresh directory with `-G Ninja` (or the Xcode generator)
 and `-DBEAM_ENABLE_DESKTOP=ON`. The app requires the
 macOS/Linux QUIC core; discovery and Tailscale CLI discovery remain optional.
+On macOS the application bundle is always generated inside `apps.noindex`,
+including with a custom build directory, so Spotlight does not index a second
+launchable copy. `make install` publishes the searchable `Beam.app`.
 
 ## Install for your user
 

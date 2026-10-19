@@ -175,6 +175,7 @@ help:
 	@echo "icons: regenerate shared icon exports on macOS; icons-native: compile native appearances with Xcode actool"
 	@echo "install: Release CLI to ~/.local/bin, plus Linux launcher or macOS ~/Applications/Beam.app (no sudo)"
 	@echo "uninstall: remove installed Beam binaries, runtime and app/launcher; keep settings, pairing and received files"
+	@echo "macos-cleanup: inspect app registrations; MACOS_CLEANUP_ARGS=--remove-build-apps removes obsolete generated app bundles"
 	@echo "android-install: build and install debug APK with ADB; android-install-apk: install existing APK; ANDROID_SERIAL selects a device"
 	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format, lint, and tests"
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"

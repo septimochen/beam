@@ -18,8 +18,9 @@ configure_identity() {
         cat "$root/configure.log" >&2
         return 1
     fi
-    [[ $(plutil -extract CFBundleIdentifier raw -o - "$root/configure/beam-desktop.app/Contents/Info.plist") == "$expected" ]]
-    unregister_app "$root/configure/beam-desktop.app" >/dev/null 2>&1
+    [[ $(plutil -extract CFBundleIdentifier raw -o - "$root/configure/apps.noindex/beam-desktop.app/Contents/Info.plist") == "$expected" ]]
+    [[ ! -e $root/configure/beam-desktop.app ]]
+    unregister_app "$root/configure/apps.noindex/beam-desktop.app" >/dev/null 2>&1
 }
 configure_identity Debug '' '' org.beam.desktop.dev
 configure_identity Release '' '' org.beam.desktop
@@ -32,7 +33,7 @@ if ! cmake -S "$source_dir" -B "$root/multi" -G 'Ninja Multi-Config' -DBEAM_ENAB
     exit 1
 fi
 for configuration in Debug Release; do
-    plist="$root/multi/$configuration/beam-desktop.app/Contents/Info.plist"
+    plist="$root/multi/apps.noindex/$configuration/beam-desktop.app/Contents/Info.plist"
     [[ $(plutil -extract CFBundleIdentifier raw -o - "$plist") == org.beam.desktop.dev ]]
 done
 if cmake -S "$source_dir" -B "$root/configure" -DBEAM_MACOS_BUNDLE_ID=org.other.app > "$root/invalid.log" 2>&1; then

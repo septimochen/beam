@@ -135,6 +135,11 @@ else()
 endif()
 
 set_target_properties(beam-desktop PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
+if(APPLE)
+    # Spotlight must not treat a compiler output as another installed app.
+    # Keep this on the target so custom build directories and Xcode also work.
+    set_target_properties(beam-desktop PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/apps.noindex")
+endif()
 
 if(BUILD_TESTING)
     add_executable(beam-desktop-tests "${PROJECT_SOURCE_DIR}/tests/desktop_tests.cpp")

@@ -110,13 +110,16 @@ and the desktop app. Linux gets an application-menu entry; macOS gets
 is required. See [installation options](docs/desktop.md#install-for-your-user).
 Use `make uninstall` to remove the installed programs and runtime while retaining
 pairing, settings, and received files.
+On macOS, build bundles stay in `apps.noindex`; install/uninstall also clean
+obsolete Beam bundles from this checkout's old CMake build directories, so they
+do not remain as extra application search results.
 
 macOS uses a native SwiftUI/AppKit app; install and select full Xcode and install
 Ninja (`brew install ninja`). Desktop builds target the selected macOS SDK
 version and always compile native icon appearances. See [Xcode setup](assets/icons/README.md#native-macos-appearances).
 Linux uses Qt 6 Widgets (`qt6-base-dev` and
 `qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
-`build-desktop/beam-desktop` on Linux or `open build/macos/dev/beam-desktop.app`
+`build-desktop/beam-desktop` on Linux or `open build/macos/dev/apps.noindex/beam-desktop.app`
 on macOS. Choose **Add device** to pair, then choose a device, drop or select one
 file, then click **Send**. After pairing, reception starts automatically when the
 app opens. Files go to `~/Downloads` unless you configure or choose another folder;

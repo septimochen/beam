@@ -11,7 +11,7 @@ After `make deps`, with full Xcode selected and Ninja installed:
 
 ```sh
 make desktop                          # Debug: build/macos/dev
-open build/macos/dev/beam-desktop.app
+open build/macos/dev/apps.noindex/beam-desktop.app
 
 cmake --preset macos-dev
 cmake --build --preset macos-dev
@@ -25,6 +25,14 @@ make install                          # Release CLI and ~/Applications/Beam.app
 ```
 
 `DESKTOP_BUILD_DIR` and `INSTALL_BUILD_DIR` still override Make's build paths.
+Application bundles are generated under each build directory's `apps.noindex`
+subdirectory, including custom build paths and multi-config generators. This
+keeps compiler output out of Spotlight's application results, consistent with
+[Apple's guidance on `.noindex` paths](https://developer.apple.com/documentation/xcode/locating-a-missing-debug-symbol-file).
+Only the installed
+`Beam.app` is published in Applications. An explicitly installed `Beam Dev.app`
+is still a separate, intentional installation.
+
 Old build directories are not moved or deleted. `make clean
 BUILD_DIR=build/macos/dev` cleans compiled targets in that tree, preserving project
 data. CLI and Linux build defaults are unchanged.
@@ -46,7 +54,14 @@ distribution packages. The internal `desktop-staging` component only prepares
 the bundle. Its executable permissions and finished signatures survive the move.
 Upgrades validate the old app's exact identifier and executable and gracefully
 stop that copy before replacement. Obsolete files disappear with the old tree.
-Other copies and registrations are left alone. Failed preparation retains the
+Normal install/uninstall also unregister generated build bundles in this checkout
+and remove obsolete bundles outside `apps.noindex`. Removal requires the exact
+production/development identifier, expected bundle metadata, a recognized CMake
+output path, and a nonsymlink CMake cache naming this source directory and the
+Beam desktop project. This includes incomplete bundles left by configuration.
+Build caches, other compiled files, installed apps, unrelated projects, and user
+data remain. Do not rebuild old directories with old source revisions: that can
+create searchable bundles again. Failed preparation retains the
 old app; failed publication attempts rollback and retains a recovery copy if
 rollback fails. Successful installs remove temporary copies.
 
@@ -80,7 +95,10 @@ login items, or background helpers. Transfer workers join when the app quits;
 unrelated login items and launch agents are left alone. Targeted Launch Services
 unregistration is attempted before removing the selected app. Repeating removal,
 including after deletion of the app, is safe. Bundle symlinks are unlinked without
-following their targets. Development bundles are preserved by production removal.
+following their targets. Separately installed development apps are preserved by
+production removal.
+Generated development outputs are unregistered by the build cleanup above;
+obsolete generated development bundles are removed.
 
 By default, preferences, caches, configuration, private identities, paired devices,
 and received files are retained. Optional data removal requires a typed `DELETE`
@@ -122,7 +140,7 @@ Notifications entry. macOS may retain that entry after uninstall; Launch Service
 unregistration does not reset notification settings. No Notification Center
 database, other app's notifications, or system service is modified.
 
-### Remove a retained entry or stale notification icon
+### Remove a retained entry
 
 macOS provides a manual reset in System Settings even though apps cannot invoke
 an equivalent public API:
@@ -138,13 +156,15 @@ will have to request notification permission again if you later enable its
 **Transfer notifications** feature. This is a user action, not something the
 uninstaller automates.
 
-If an installed Beam shows an old icon, first inspect and unregister old build
-copies with `./scripts/cleanup-macos.sh --development`, then install the current
+If an installed Beam shows an old icon, first inspect old build copies with
+`./scripts/cleanup-macos.sh --dry-run`, then install the current
 production build with `make install`. Installation validates the icon resources
 and requests registration of that exact installed bundle. If the notification
-icon remains stale, reset Beam's entry using the steps above. Build copies can be
-rediscovered, and macOS controls its icon caches; re-registration alone does not
-guarantee a refresh. Uninstall does not delete old build directories.
+icon remains stale, resetting its notification entry does not guarantee an icon
+refresh, including after a fresh install. The reproduced blank production icon
+remains unresolved even though the packaged icon resolves through AppKit and
+fresh temporary notification identities display it correctly. Do not change the
+production identifier to work around this: upgrades must keep the same identity.
 
 ## Inspect development registrations
 
@@ -153,6 +173,8 @@ make macos-cleanup                     # inspection only
 ./scripts/cleanup-macos.sh --dry-run
 ./scripts/cleanup-macos.sh --development
 ./scripts/cleanup-macos.sh --development --root "/absolute/build directory"
+./scripts/cleanup-macos.sh --remove-build-apps --dry-run
+./scripts/cleanup-macos.sh --remove-build-apps
 ```
 
 Inspection lists bundles with the exact production/development identifiers inside
@@ -167,6 +189,25 @@ stale record disappears. Existing bundles can be rediscovered by macOS; director
 layout alone cannot prevent discovery. Remove unwanted build directories yourself
 only after reviewing their contents.
 
+`--remove-build-apps` performs the validated obsolete-bundle removal used by
+normal install/uninstall. It retains new `apps.noindex` output, unregistering its
+exact paths, and ignores unrecognized app locations and other projects. `--dry-run`
+always prevents changes, regardless of option order. Existing search results may
+take a short time to disappear after macOS observes the file removals. The command
+does not rebuild the Spotlight index, reset global Launch Services state, or
+modify the app-launcher's internal databases.
+
+To check the app results after a normal install or uninstall:
+
+```sh
+mdfind 'kMDItemCFBundleIdentifier == "org.beam.desktop*"cd'
+```
+
+With only production installed, the result should be `~/Applications/Beam.app`.
+After uninstall, no Beam app should be indexed unless a separate installation
+was intentionally retained. Source files and documents mentioning Beam can still
+appear in general file searches.
+
 ## Verification
 
 `make check BUILD_DIR=build/macos/dev CMAKE_ARGS='-G Ninja -DBEAM_ENABLE_DESKTOP=ON'`
@@ -177,7 +218,9 @@ matching, and missing-bundle records. Install smoke tests use `DESTDIR` and an e
 trap, so failed assertions also remove temporary bundles. Fixtures use hidden
 directories and attempt targeted unregistration before deletion: macOS may still
 discover test bundles even without explicit registration. UI tests check notification
-opt-in. Existing native icon, signature,
+opt-in. Cleanup tests also cover obsolete and incomplete build bundles, protected
+`apps.noindex` output, a different CMake project, manually placed apps, and linked
+build caches. Existing native icon, signature,
 relocation, CLI, and core checks still run.
 The bundle-identity check also configures real Debug, Release, RelWithDebInfo,
 sanitizer, and custom-identifier fixtures, then removes those build directories.

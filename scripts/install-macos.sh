@@ -52,6 +52,7 @@ trap cleanup EXIT
 env -u DESTDIR "${CMAKE:-cmake}" --install "$build_dir" --config "$config" --prefix "$stage" --component desktop-staging
 validate_bundle "$stage/Beam.app" "$expected"
 codesign --verify --deep --strict "$stage/Beam.app"
+if ! $staging; then cleanup_build_apps; fi
 if [[ -e $destination ]]; then
     if ! $staging; then stop_app "$destination" "$expected"; fi
     mv -- "$destination" "$stage/previous.app"

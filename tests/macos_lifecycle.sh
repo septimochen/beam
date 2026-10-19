@@ -101,4 +101,55 @@ grep -Fx "$missing" "$BEAM_TEST_LOG"
 [[ $(wc -l < "$BEAM_TEST_LOG" | tr -d ' ') == 2 ]]
 [[ -f $apps/$other_name/Contents/Info.plist && -f $apps/Other.app/protected ]]
 "$scripts/cleanup-macos.sh" --root "$root" --development
+
+# Only obsolete bundles in this project's verified CMake output are removable.
+fixture="$root/generated build"
+mkdir -p "$fixture"
+cat > "$fixture/CMakeCache.txt" <<EOF
+CMAKE_HOME_DIRECTORY:INTERNAL=$source_dir
+CMAKE_PROJECT_NAME:STATIC=Beam
+BEAM_ENABLE_DESKTOP:BOOL=ON
+EOF
+make_bundle() {
+    mkdir -p "$1/Contents"
+    cp "$apps/$other_name/Contents/Info.plist" "$1/Contents/Info.plist"
+}
+legacy="$fixture/beam-desktop.app"
+partial="$fixture/src/desktop/beam-desktop.app"
+protected="$fixture/apps.noindex/beam-desktop.app"
+manual="$fixture/Beam.app"
+for app in "$legacy" "$partial" "$protected" "$manual"; do make_bundle "$app"; done
+echo keep > "$fixture/build-data"
+elsewhere="$root/another project"
+mkdir -p "$elsewhere"
+sed 's/CMAKE_PROJECT_NAME:STATIC=Beam/CMAKE_PROJECT_NAME:STATIC=Other/' \
+    "$fixture/CMakeCache.txt" > "$elsewhere/CMakeCache.txt"
+make_bundle "$elsewhere/beam-desktop.app"
+linked="$root/symlink build"
+mkdir -p "$linked"
+ln -s "$fixture/CMakeCache.txt" "$linked/CMakeCache.txt"
+make_bundle "$linked/beam-desktop.app"
+ln -s "$elsewhere" "$root/build alias"
+cat > "$BEAM_TEST_RECORDS" <<EOF
+--------------------------------------------------------------------------------
+bundle id: Registered build output (0x127)
+path: $protected (0xabd1)
+identifier: $other
+--------------------------------------------------------------------------------
+EOF
+: > "$BEAM_TEST_LOG"
+"$scripts/cleanup-macos.sh" --root "$root" --remove-build-apps --dry-run > /dev/null
+[[ -e $legacy && -e $partial && ! -s $BEAM_TEST_LOG ]]
+"$scripts/cleanup-macos.sh" --root "$root" --remove-build-apps
+[[ ! -e $legacy && ! -e $partial && -f $fixture/build-data ]]
+[[ -f $protected/Contents/Info.plist && -f $manual/Contents/Info.plist ]]
+[[ -f $elsewhere/beam-desktop.app/Contents/Info.plist && -f $linked/beam-desktop.app/Contents/Info.plist ]]
+[[ $(wc -l < "$BEAM_TEST_LOG" | tr -d ' ') == 3 ]]
+grep -Fx "$protected" "$BEAM_TEST_LOG"
+"$scripts/cleanup-macos.sh" --root "$root" --remove-build-apps > /dev/null
+# Unindexed bundles with no record require no unregistration attempt.
+: > "$BEAM_TEST_RECORDS"
+: > "$BEAM_TEST_LOG"
+"$scripts/cleanup-macos.sh" --root "$root" --remove-build-apps > /dev/null
+[[ ! -s $BEAM_TEST_LOG ]]
 echo 'macOS lifecycle tests passed.'

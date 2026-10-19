@@ -45,6 +45,36 @@ unregister_app() {
         warn 'Launch Services utility is unavailable'
     fi
 }
+generated_build_root() {
+    # Recognize only CMake's known Beam output paths. An installed Beam.app
+    # inside the repository, or an app from another project, is not disposable.
+    local app=$1 parent relative cache
+    [[ $app == */beam-desktop.app && ! -L $app && ! -L $app/Contents && ! -L $app/Contents/Info.plist ]] || return 1
+    has_symlink_ancestor "$app" && return 1
+    parent=$(dirname -- "$app")
+    while [[ $parent == "$beam_source/"* ]]; do
+        cache="$parent/CMakeCache.txt"
+        if [[ -f $cache && ! -L $cache ]]; then
+            /usr/bin/grep -Fxq "CMAKE_HOME_DIRECTORY:INTERNAL=$beam_source" "$cache" || return 1
+            /usr/bin/grep -Fxq 'CMAKE_PROJECT_NAME:STATIC=Beam' "$cache" || return 1
+            /usr/bin/grep -Fxq 'BEAM_ENABLE_DESKTOP:BOOL=ON' "$cache" || return 1
+            relative=${app#"$parent/"}
+            case $relative in
+                beam-desktop.app|src/desktop/beam-desktop.app|Debug/beam-desktop.app|Release/beam-desktop.app|RelWithDebInfo/beam-desktop.app|MinSizeRel/beam-desktop.app|apps.noindex/beam-desktop.app|apps.noindex/*/beam-desktop.app) ;;
+                *) return 1 ;;
+            esac
+            [[ $(plutil -extract CFBundleExecutable raw -o - "$app/Contents/Info.plist" 2>/dev/null) == beam-desktop &&
+               $(plutil -extract CFBundleName raw -o - "$app/Contents/Info.plist" 2>/dev/null) == Beam ]] || return 1
+            printf '%s\n' "$parent"
+            return 0
+        fi
+        parent=$(dirname -- "$parent")
+    done
+    return 1
+}
+cleanup_build_apps() {
+    "$beam_scripts/cleanup-macos.sh" --remove-build-apps
+}
 notification_note() {
     echo 'macOS may retain Beam in System Settings > Notifications. Notification authorization and other apps are unchanged.'
     echo 'To remove a retained entry: Control-click Beam (or Beam Dev) in that list > Reset Notifications. This resets only that app; it must request permission again.'
