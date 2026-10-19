@@ -55,8 +55,11 @@
 !/tests/**/*.sh
 !/tests/**/*.swift
 !/cmake/
+!/cmake/**/
 !/cmake/**/*.cmake
 !/cmake/**/*.cmake.in
+!/cmake/**/CMakeLists.txt
+!/cmake/**/*.cpp
 !/cmake/PairingMbedConfig.h
 !/cmake/PairingCryptoConfig.h
 !/third_party/
@@ -85,3 +88,8 @@
 
 !/third_party/licenses/
 !/third_party/licenses/*.md
+!/third_party/msquic/
+!/third_party/msquic/include/
+!/third_party/msquic/include/*.h
+!/third_party/msquic/README.md
+!/third_party/msquic/LICENSE

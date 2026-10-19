@@ -5,7 +5,7 @@ CTEST ?= ctest
 CLANG_FORMAT ?= clang-format
 CLANG_TIDY ?= clang-tidy
 CLANG_TIDY_CHECKS ?=
-CXX_SOURCES := $(shell find include src tests -name "*.cpp" -o -name "*.hpp" -o -name "*.mm" -o -name "*.h")
+CXX_SOURCES := $(shell find include src tests cmake -name "*.cpp" -o -name "*.hpp" -o -name "*.mm" -o -name "*.h")
 SWIFT_SOURCES := $(shell find src tests tools -name "*.swift")
 JAVA_SOURCES := $(shell find android/app/src -name "*.java")
 SWIFT_FORMAT ?= xcrun swift-format
@@ -39,10 +39,14 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-release android-release-unsigned android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps deps-source pairing-deps configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-release android-release-unsigned android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
+	$(CMAKE) --fresh -S cmake/msquic-check -B "$(BUILD_DIR)/msquic-check" $(CMAKE_ARGS)
+	$(MAKE) pairing-deps
+
+deps-source:
 	$(CMAKE) -DBEAM_DEPS_DIR="$(abspath build/deps)" -P cmake/BootstrapMsQuic.cmake
 	$(MAKE) pairing-deps
 
@@ -187,7 +191,8 @@ help:
 	@echo "uninstall: remove installed Beam binaries, runtime and app/launcher; keep settings, pairing and received files"
 	@echo "macos-cleanup: inspect app registrations; MACOS_CLEANUP_ARGS=--remove-build-apps removes obsolete generated app bundles"
 	@echo "android-install: build and install debug APK with ADB; android-install-apk: install existing APK; ANDROID_SERIAL selects a device"
-	@echo "deps: provision pinned MsQuic; build: configure and compile; test: build and run tests; check: format, lint, and tests"
+	@echo "deps: check system MsQuic and provision pairing; deps-source: explicitly build pinned MsQuic and pairing"
+	@echo "build: configure and compile; test: build and run tests; check: format, lint, and tests"
 	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"
 	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"

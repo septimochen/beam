@@ -69,9 +69,13 @@ It installs without `sudo`:
 | macOS | `~/.local/bin/beam` | `~/Applications/Beam.app` |
 
 Add `~/.local/bin` to your shell's `PATH` if needed. On Linux, the launcher uses
-`$XDG_DATA_HOME/applications` when `XDG_DATA_HOME` is set. Qt, OpenSSL, and Avahi
-remain system package dependencies; the private MsQuic library is installed in
-`~/.local/lib/beam`. On macOS, the CLI entry is a symlink to its private runtime
+`$XDG_DATA_HOME/applications` when `XDG_DATA_HOME` is set. Qt, OpenSSL, Avahi,
+and MsQuic remain system package dependencies. Linux installations use the system
+MsQuic runtime, so package upgrades apply without reinstalling Beam. For a custom
+runtime outside the system loader paths, explicitly configure
+`-DBEAM_BUNDLE_MSQUIC=ON` to copy MsQuic into `~/.local/lib/beam`.
+See [dependency setup](development.md#build-setup). On macOS, the CLI entry is a
+symlink to its private runtime
 under `~/.local/lib/beam`, and both it and the app include their non-system dylibs
 with local ad-hoc signatures. These are local builds, not notarized distribution
 packages. Installed programs do not depend on the build directory.

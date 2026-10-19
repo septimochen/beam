@@ -13,13 +13,16 @@ See the [roadmap](docs/ROADMAP.md) for upcoming features.
 ### 1. Build Beam on both devices
 
 You'll need CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL development
-libraries. LAN discovery uses Bonjour on macOS or Avahi on Linux.
+libraries, plus a system MsQuic 2.x package (2.6.2+). On macOS, run
+`brew install libmsquic`. Linux uses `libmsquic` from a compatible distribution
+package or Microsoft's APT/DNF repository. LAN discovery uses Bonjour on macOS
+or Avahi on Linux.
 See [build setup](docs/development.md#build-setup) for platform dependencies.
 
 ```sh
 git clone https://github.com/septimochen/beam.git
 cd beam
-make deps   # provisions pinned MsQuic and pairing dependencies
+make deps   # checks system MsQuic and provisions pairing dependencies
 make build
 ./build/beam --help
 ```

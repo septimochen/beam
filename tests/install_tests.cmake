@@ -93,7 +93,7 @@ if(BEAM_HAS_DESKTOP)
     endif()
 endif()
 # Moving the complete installation proves it has no runtime dependency on its
-# original prefix. Linux's system OpenSSL/Qt packages remain prerequisites.
+# original prefix. Linux's system MsQuic/OpenSSL/Qt packages remain prerequisites.
 if(APPLE AND BEAM_HAS_DESKTOP)
     execute_process(COMMAND "${CMAKE_CURRENT_LIST_DIR}/../scripts/cleanup-macos.sh"
         --development --root "${root}" OUTPUT_QUIET ERROR_QUIET)
@@ -123,8 +123,22 @@ foreach(executable IN LISTS executables)
     elseif(BEAM_HAS_QUIC)
         execute_process(COMMAND ldd "${executable}" OUTPUT_VARIABLE dependencies COMMAND_ERROR_IS_FATAL ANY)
         string(FIND "${dependencies}" "${prefix}/bin/../lib/beam/libmsquic" position)
-        if(position LESS 0)
+        if(BEAM_BUNDLE_MSQUIC AND position LESS 0)
             message(FATAL_ERROR "Installed executable did not load private MsQuic: ${dependencies}")
+        elseif(NOT BEAM_BUNDLE_MSQUIC)
+            if(NOT dependencies MATCHES "libmsquic\\.so\\.2 => /" OR
+               dependencies MATCHES "not found" OR NOT position LESS 0)
+                message(FATAL_ERROR "Installed executable did not load system MsQuic: ${dependencies}")
+            endif()
+            execute_process(COMMAND readelf -d "${executable}" OUTPUT_VARIABLE dynamic
+                COMMAND_ERROR_IS_FATAL ANY)
+            if(dynamic MATCHES "\\((RPATH|RUNPATH)\\)")
+                message(FATAL_ERROR "System-runtime installation retained a private search path: ${dynamic}")
+            endif()
+            file(GLOB private_msquic "${prefix}/lib/beam/libmsquic.so*")
+            if(private_msquic)
+                message(FATAL_ERROR "System-runtime installation copied MsQuic: ${private_msquic}")
+            endif()
         endif()
     endif()
 endforeach()

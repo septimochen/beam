@@ -42,8 +42,11 @@ The core exposes the kind independently of storage names and never opens content
 See [content](content.md) for bounds and API semantics.
 
 The transfer implementation targets macOS/Linux/Android. Windows still builds the portable filename/core scaffold;
-Windows exclusive storage and credential provisioning remain future work. MsQuic v2.6.2
-is pinned by the explicit `make deps` workflow. Regular CMake configuration discovers
+Windows exclusive storage and credential provisioning remain future work. Native builds
+use system MsQuic 2.x packages (2.6.2+), validated by `make deps` and CMake.
+Runtime-only Linux packages use vendored public API headers; the implementation
+remains in the installed library. Android and the explicit `make deps-source`
+fallback pin v2.6.2. Regular CMake configuration discovers
 installed dependencies and never downloads code. See [TLS](tls.md) for peer authorization,
 [wire protocol](protocol.md), and the upstream [MsQuic build guide](https://github.com/microsoft/msquic/blob/v2.6.2/docs/BUILD.md).
 

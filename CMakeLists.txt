@@ -33,6 +33,7 @@ target_include_directories(beam-core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include
 target_compile_definitions(beam-core PRIVATE BEAM_VERSION="${PROJECT_VERSION}")
 
 option(BEAM_ENABLE_QUIC "Build macOS/Linux QUIC transfers" ${UNIX})
+option(BEAM_BUNDLE_MSQUIC "Install a private MsQuic runtime on Linux (macOS always bundles)" OFF)
 if(BEAM_ENABLE_QUIC)
     if(NOT UNIX)
         message(FATAL_ERROR "Receive storage currently supports macOS/Linux only")
@@ -41,9 +42,7 @@ if(BEAM_ENABLE_QUIC)
         find_package(OpenSSL REQUIRED COMPONENTS Crypto)
     endif()
     find_package(Threads REQUIRED)
-    set(MSQUIC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/build/deps/install" CACHE PATH "Installed MsQuic prefix")
-    find_path(MSQUIC_INCLUDE_DIR msquic.h HINTS "${MSQUIC_ROOT}/include" REQUIRED)
-    find_library(MSQUIC_LIBRARY NAMES msquic HINTS "${MSQUIC_ROOT}/lib" "${MSQUIC_ROOT}/lib64" REQUIRED)
+    include(cmake/FindMsQuic.cmake)
     target_sources(beam-core PRIVATE src/core/identity.cpp src/core/routing.cpp src/core/transfer.cpp src/core/errors.cpp src/protocol/codec.cpp
         src/transfer/files.cpp src/transfer/content.cpp src/transport/msquic.cpp)
     target_include_directories(beam-core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -142,6 +141,12 @@ if(BUILD_TESTING)
     beam_enable_warnings(beam-config-tests)
     add_test(NAME config COMMAND beam-config-tests)
     if(UNIX)
+        add_test(NAME msquic-dependency COMMAND "${CMAKE_COMMAND}"
+            "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/msquic-dependency-test"
+            "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/msquic_dependency_tests.cmake")
+        set_tests_properties(msquic-dependency PROPERTIES TIMEOUT 120)
         add_test(NAME dependency-download COMMAND "${CMAKE_COMMAND}"
             "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/dependency-download-test"
@@ -161,6 +166,7 @@ if(BUILD_TESTING)
         add_test(NAME install COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/install_smoke.sh"
             "${CMAKE_COMMAND}" "${CMAKE_CURRENT_BINARY_DIR}"
             "-DBEAM_HAS_DESKTOP=${BEAM_ENABLE_DESKTOP}"
+            "-DBEAM_BUNDLE_MSQUIC=${BEAM_BUNDLE_MSQUIC}"
             "-DBEAM_HAS_QUIC=${BEAM_ENABLE_QUIC}"
             "-DBEAM_MACOS_VERSION=${CMAKE_OSX_DEPLOYMENT_TARGET}"
             "-DBEAM_MACOS_BUNDLE_ID=${BEAM_MACOS_BUNDLE_ID}"

@@ -10,13 +10,14 @@ Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL develo
 headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy 23.
 Optional Tailscale CLI discovery uses header-only nlohmann_json 3.11+ for bounded
 JSON parsing; it adds no runtime service or shared library.
-The pinned MsQuic build uses its own quictls TLS implementation; Beam uses the
-installed OpenSSL libcrypto for hashing and random transfer IDs.
+Install an OpenSSL-backed MsQuic 2.x runtime, version 2.6.2 or newer, through your
+system package manager. Beam also uses installed OpenSSL libcrypto for hashing,
+certificate verification, and random transfer IDs.
 
 On macOS, install the build tools with Homebrew:
 
 ```sh
-brew install cmake openssl@3 llvm nlohmann-json
+brew install cmake libmsquic openssl@3 llvm nlohmann-json
 export CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format"
 export CLANG_TIDY="$(brew --prefix llvm)/bin/clang-tidy"
 ```
@@ -34,16 +35,45 @@ export CLANG_FORMAT=clang-format-23
 export CLANG_TIDY=clang-tidy-23
 ```
 
+Install MsQuic from your distribution if a compatible package is available.
+Otherwise configure [Microsoft's Linux package repository](https://learn.microsoft.com/en-us/linux/packages)
+for your distribution/version using its official repository package and signing
+key, then run:
+
+```sh
+# Debian/Ubuntu, after configuring Microsoft's repository:
+sudo apt update
+sudo apt install libmsquic
+# Fedora/RHEL, after configuring Microsoft's repository:
+sudo dnf install libmsquic
+```
+
+See [upstream distribution support](https://github.com/microsoft/msquic/blob/main/docs/Release.md)
+before choosing a repository. On Arch, install normal build prerequisites with
+`pacman`; MsQuic is available through the [msquic AUR package](https://aur.archlinux.org/packages/msquic),
+not the default repositories. As checked on 2026-10-19, that package is 2.4.11,
+below Beam's minimum. Use an updated compatible package or the explicit source
+fallback below. Beam does not install an AUR helper or add package repositories.
+
 From the repository root:
 
 ```sh
-make deps   # explicit network download/build of MsQuic v2.6.2
+make deps   # validate system MsQuic, then download/build the pairing dependency
 make check  # formatting, clang-tidy/static analysis, build, and tests
 ```
 
-`make deps` checks commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`, initializes only
-its pinned TLS submodule, and installs into ignored `build/deps/install`. Normal
-CMake configuration never downloads dependencies. The allowlist `.gitignore`
+`make deps` prints setup guidance when MsQuic is missing or incompatible; it never
+installs packages, changes repositories, or invokes `sudo`. Homebrew discovery
+only queries `brew --prefix libmsquic`. Native CMake configuration and `make deps`
+share an offline API/link/runtime-version probe and print the selected library,
+headers, and version. Homebrew's prefix is detected automatically; Linux searches
+normal system, multiarch, and `lib64` locations, including `libmsquic.so.2` without
+an unversioned linker symlink. Installed SDK headers are preferred. Runtime-only
+DEB/RPM packages use the three unmodified, MIT-licensed v2.6.2 POSIX public headers
+in `third_party/msquic`; Beam does not compile an MsQuic implementation from them.
+Android continues to use its pinned per-ABI archives and headers.
+
+Normal CMake configuration never downloads dependencies. The allowlist `.gitignore`
 keeps builds, certificates, keys, and local receive directories untracked.
 
 ## Build options
@@ -55,13 +85,31 @@ make build BUILD_DIR=build-release BUILD_TYPE=Release
 make test BUILD_DIR=build-release BUILD_TYPE=Release
 ```
 
-To use an existing OpenSSL-backed MsQuic installation, pass its prefix to CMake:
+To use a custom OpenSSL-backed MsQuic installation, pass its prefix to CMake.
+Use a **fresh build directory** when switching between system/custom/source
+installations: CMake caches `MSQUIC_ROOT`, `MSQUIC_INCLUDE_DIR`, and `MSQUIC_LIBRARY`.
+The latter two remain available as explicit overrides.
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMSQUIC_ROOT=/path/to/prefix
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+cmake -S . -B build-custom -DCMAKE_BUILD_TYPE=Release -DMSQUIC_ROOT=/path/to/prefix
+cmake --build build-custom --parallel
+ctest --test-dir build-custom --output-on-failure
 ```
+
+For the explicit source fallback:
+
+```sh
+make deps-source
+make test BUILD_DIR=build-source \
+  CMAKE_ARGS="-DMSQUIC_ROOT=$PWD/build/deps/install -DBEAM_BUNDLE_MSQUIC=ON"
+```
+
+This pins MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`,
+initializes only its quictls TLS submodule, and installs into ignored
+`build/deps/install`; it also provisions pairing. That prefix is never searched
+implicitly. On Linux, `BEAM_BUNDLE_MSQUIC=ON` bundles the custom runtime for
+installation; default installations depend on the system loader's MsQuic package.
+For `make install`, pass the same `CMAKE_ARGS` and a fresh `INSTALL_BUILD_DIR`.
 
 Discovery defaults to the QUIC setting. To build direct transfers without
 Bonjour/Avahi, use `make build CMAKE_ARGS='-DBEAM_ENABLE_DISCOVERY=OFF'`.
@@ -76,8 +124,9 @@ make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF -DBEAM
 ```
 
 Use `make install` for a user-local Release CLI and desktop installation. It
-includes the private MsQuic runtime; macOS also bundles non-system dylibs. Linux
-still uses system OpenSSL/Qt/Avahi packages. See [installation](desktop.md#install-for-your-user)
+uses system MsQuic/OpenSSL/Qt/Avahi packages on Linux; package upgrades update the
+MsQuic runtime Beam loads. macOS bundles non-system dylibs, including MsQuic.
+See [installation](desktop.md#install-for-your-user)
 for destinations, prefix overrides, and CMake install components. `make uninstall`
 removes that installation without a build directory, retaining user data. CTest's
 `install` check stages and relocates the installation, runs its binaries, then
@@ -220,8 +269,8 @@ leave unrelated changes unstaged.
 
 ## Pairing dependencies and checks
 
-`make deps` also runs `make pairing-deps`. The explicit provisioning script pins
-Mbed TLS 4.2.0's official archive and SHA-256, includes its matching TF-PSA-Crypto,
+`make deps` and `make deps-source` also run `make pairing-deps`. The explicit
+provisioning script pins Mbed TLS 4.2.0's official archive and SHA-256, includes its matching TF-PSA-Crypto,
 and enables EC-JPAKE plus the required pthread locking. Libraries are linked
 statically, separately from MsQuic/quictls. Normal configuration never downloads.
 `BEAM_PAIRING_ROOT` selects that provisioned prefix; `BEAM_ENABLE_PAIRING=OFF`
