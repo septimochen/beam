@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   id("com.android.application")
 }
@@ -23,6 +25,46 @@ val platformVersion = toolchain.getValue("platform").split('.').map(String::toIn
 require(!project.hasProperty("beamAbis")) {
   "Beam Android supports only arm64-v8a; remove the obsolete beamAbis override"
 }
+
+val unsignedRelease =
+  providers.gradleProperty("beamUnsignedRelease").map(String::toBooleanStrict).getOrElse(false)
+val releaseSigningFile =
+  providers
+    .environmentVariable("BEAM_ANDROID_SIGNING_PROPERTIES")
+    .orNull
+    ?.takeIf { it.isNotBlank() }
+    ?.let(rootProject::file)
+    ?: File(System.getProperty("user.home"), ".android/beam-release/signing.properties")
+val releaseSigning =
+  Properties().apply {
+    if (!unsignedRelease && releaseSigningFile.isFile) {
+      releaseSigningFile.reader(Charsets.UTF_8).use { load(it) }
+    }
+  }
+val signingFields = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val missingSigningFields = signingFields.filter { releaseSigning.getProperty(it).isNullOrBlank() }
+val releaseKeystore =
+  releaseSigningFile.parentFile.resolve(releaseSigning.getProperty("storeFile", ""))
+val releaseSigningReady = !unsignedRelease && missingSigningFields.isEmpty()
+
+val verifyReleaseSigning =
+  tasks.register("verifyReleaseSigning") {
+    doLast {
+      if (!unsignedRelease) {
+        check(releaseSigningFile.isFile) {
+          "Release signing file is missing: $releaseSigningFile. " +
+            "Set BEAM_ANDROID_SIGNING_PROPERTIES or follow docs/android.md#release-apk. " +
+            "Use make android-release-unsigned for an explicitly unsigned build."
+        }
+        check(missingSigningFields.isEmpty()) {
+          "Release signing file is missing fields: ${missingSigningFields.joinToString()}"
+        }
+        check(releaseKeystore.isFile) { "Release keystore is missing: $releaseKeystore" }
+      }
+    }
+  }
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(verifyReleaseSigning) }
 
 android {
   namespace = "org.beam.android"
@@ -53,6 +95,29 @@ android {
     cmake {
       path = file("../native/CMakeLists.txt")
       version = toolchain.getValue("cmake")
+    }
+  }
+  signingConfigs {
+    if (releaseSigningReady) {
+      create("release") {
+        storeFile = releaseKeystore
+        storePassword = releaseSigning.getProperty("storePassword")
+        keyAlias = releaseSigning.getProperty("keyAlias")
+        keyPassword = releaseSigning.getProperty("keyPassword")
+      }
+    }
+  }
+  buildTypes {
+    getByName("release") {
+      isDebuggable = false
+      isJniDebuggable = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      externalNativeBuild { cmake { arguments += "-DCMAKE_BUILD_TYPE=Release" } }
+      if (releaseSigningReady) {
+        signingConfig = signingConfigs.getByName("release")
+      }
     }
   }
   compileOptions {

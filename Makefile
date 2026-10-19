@@ -24,6 +24,7 @@ ANDROID_GRADLE_ARGS ?=
 export ANDROID_ABI ANDROID_HOME ANDROID_NDK ANDROID_PLATFORM_VERSION
 export ANDROID_BUILD_TOOLS_VERSION ANDROID_NDK_VERSION ANDROID_CMAKE_VERSION
 export ANDROID_SETUP_DRY_RUN SDKMANAGER
+export BEAM_ANDROID_SIGNING_PROPERTIES
 ifeq ($(shell uname -s),Darwin)
 INSTALL_BUILD_DIR ?= build/macos/release
 else
@@ -38,7 +39,7 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps pairing-deps configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-release android-release-unsigned android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -107,10 +108,19 @@ android-deps:
 android:
 	./android/gradlew -p android assembleDebug $(ANDROID_GRADLE_ARGS)
 
+android-release:
+	./android/gradlew -p android assembleRelease $(ANDROID_GRADLE_ARGS) -PbeamUnsignedRelease=false
+	bash tests/android_release_apk.sh "$(CURDIR)/android/app/build/outputs/apk/release/app-release.apk" signed
+
+android-release-unsigned:
+	./android/gradlew -p android assembleRelease $(ANDROID_GRADLE_ARGS) -PbeamUnsignedRelease=true
+	bash tests/android_release_apk.sh "$(CURDIR)/android/app/build/outputs/apk/release/app-release-unsigned.apk" unsigned
+
 android-native-test:
 	$(CMAKE) -DBEAM_ANDROID_ACTION=test -DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" -P cmake/AndroidTools.cmake
 
 android-check:
+	bash tests/android_release_signing.sh $(ANDROID_GRADLE_ARGS)
 	./android/gradlew -p android formatCheck lintDebug testDebugUnitTest assembleDebug $(ANDROID_GRADLE_ARGS)
 
 android-format:
@@ -190,5 +200,6 @@ help:
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"
 	@echo "android-setup: install latest stable SDK/NDK/CMake tools; android-toolchain: show selected installed versions"
 	@echo "android-deps: pinned native dependencies for ARM64; android: ARM64 debug APK"
+	@echo "android-release: signed optimized ARM64 APK; android-release-unsigned: unsigned APK for validation/CI"
 	@echo "android-native-test: configure Android ARM64 with incompatible host OpenSSL metadata"
-	@echo "android-check: Kotlin format, Android lint, unit tests and APK; android-connected-test: device/emulator JNI and UI tests"
+	@echo "android-check: signing validation, Kotlin format, Android lint, unit tests and APK; android-connected-test: device/emulator JNI and UI tests"

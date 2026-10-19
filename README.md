@@ -134,6 +134,8 @@ for development builds and stale registrations. Tray notifications report verifi
 ## Android sharing
 
 Build an ARM64 APK with `make android` after the [Android build setup](docs/android.md#build).
+Use `make android-release` for a signed, optimized APK after configuring the
+[private release signing key](docs/android.md#release-apk).
 `make android-setup` installs the latest stable SDK/NDK/CMake tools;
 `make android-toolchain` shows the installed versions selected for builds.
 With USB debugging enabled and your phone connected/authorized, run

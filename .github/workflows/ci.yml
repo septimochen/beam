@@ -33,6 +33,8 @@ jobs:
         run: |
           make android-native-test
           make android-check
+      - name: Check and build optimized unsigned release without production signing keys
+        run: make android-release-unsigned ANDROID_GRADLE_ARGS=lintRelease
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -56,6 +58,8 @@ jobs:
           path: |
             android-native-deps.log
             android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*-unsigned.apk
+            android/app/build/outputs/mapping/release/mapping.txt
             android/app/build/reports/
 
   status:

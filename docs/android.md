@@ -137,9 +137,80 @@ host OpenSSL/pkg-config metadata cannot add libraries to the Android link.
 All generated output and local SDK configuration stay ignored.
 
 The APK contains only `arm64-v8a`; other ABI overrides are rejected. Debug signing
-is automatic; release signing/distribution is outside this milestone. Native libraries use
+is automatic. Signed release builds use a private local keystore as described below.
+Native libraries use
 16 KiB page alignment, including the NDK's packaged libc++ runtime. No desktop Qt,
 Swift, Bonjour/Avahi daemon, or Tailscale executable is linked into the APK.
+
+## Release APK
+
+After native dependency setup, build a signed release APK with:
+
+```sh
+make android-release
+```
+
+The result is `android/app/build/outputs/apk/release/app-release.apk`. It is
+nondebuggable, uses the native C++ Release configuration, and enables R8 code
+optimization and resource shrinking. A narrow keep rule preserves the JNI
+class/method names used by the shared C++ bridge. The app identifier remains
+`org.beam.android`; features, pairing rules, and encryption are unchanged.
+R8's mapping is saved in `android/app/build/outputs/mapping/release/mapping.txt`;
+retain it with each distributed version for crash analysis.
+Both release Make targets inspect the resulting APK's debuggable flag, ARM64
+libraries, signing state, and exact JNI method names/signatures in the packaged DEX.
+
+Signing loads `~/.android/beam-release/signing.properties` by default. To use
+another private file, set `BEAM_ANDROID_SIGNING_PROPERTIES` to its absolute path.
+Its contents are:
+
+```properties
+storeFile=beam-release.p12
+storePassword=YOUR_PRIVATE_KEYSTORE_PASSWORD
+keyAlias=beam-release
+keyPassword=YOUR_PRIVATE_KEY_PASSWORD
+```
+
+`storeFile` can be absolute or relative to the properties file's directory.
+Keep the properties file and keystore outside the repository and build folders;
+protect the directory with mode 700 and both files with mode 600. Back up this
+directory securely: future APK updates need the same signing key. Beam's app/CLI
+uninstall does not remove it. Passwords are not passed as Gradle command arguments.
+Missing or incomplete signing configuration fails the signed release build; it
+never falls back to the debug key or an unsigned output.
+
+For a new signing identity, create a private directory and generate a key with
+the JDK's `keytool`, which prompts for passwords and certificate information:
+
+```sh
+mkdir -p "$HOME/.android/beam-release"
+chmod 700 "$HOME/.android/beam-release"
+keytool -genkeypair -storetype PKCS12 -keyalg RSA -keysize 3072 \
+  -sigalg SHA256withRSA -validity 10000 -alias beam-release \
+  -keystore "$HOME/.android/beam-release/beam-release.p12"
+```
+
+Create the properties file above with the chosen passwords, then apply mode 600
+to it and the keystore. Reuse existing signing files; do not overwrite a key used
+for distributed releases. See [Android app signing](https://developer.android.com/studio/publish/app-signing).
+
+CI and developers without a release key can explicitly build the same optimized
+variant without signing:
+
+```sh
+make android-release-unsigned
+```
+
+This produces `app-release-unsigned.apk`, which cannot be installed until signed.
+It ignores local signing credentials. CI builds this variant and publishes the
+unsigned APK and R8 mapping; production signing keys are not needed in CI.
+`make android` and `make android-install` continue to use the debug APK.
+To install an already-built signed release, use
+`make android-install-apk ANDROID_APK="$PWD/android/app/build/outputs/apk/release/app-release.apk"`.
+Debug and release share an application ID but use different keys, so Android
+rejects switching between them as an update. The installer never automatically
+uninstalls the old app; uninstalling loses that app's private identity and pairing
+data. Separately installed versions would require a different application ID.
 
 ## Install on your phone
 
@@ -309,7 +380,7 @@ Beam 0.9 requires protocol v4 on both peers; existing identity/pairing remains u
 ```sh
 make check                    # includes native Android session/paired-transfer tests
 make android-format           # ktfmt for Kotlin and Gradle scripts
-make android-check            # ktfmt check, Android lint, JUnit, ARM64 debug APK
+make android-check            # signing input checks, ktfmt, debug lint/JUnit/APK
 make android-native-test      # ARM64 link graph with incompatible host OpenSSL metadata
 make android-connected-test   # requires a running ARM64 emulator or attached ARM64 device
 ```
@@ -333,7 +404,9 @@ supports Android 17 permission allow/deny cases with optional notifications deni
 Linux/Android storage uses search-only ancestor handles and atomic no-replace
 rename, retaining
 symlink rejection and collision protection in the app sandbox. Main-branch Android
-CI builds only ARM64, checks Kotlin/lint/JUnit, and uploads the debug APK. Its accelerated Linux emulator uses an Intel system image with
+CI builds only ARM64, checks signing input validation and Kotlin/lint/JUnit,
+and uploads the debug APK plus an explicitly unsigned optimized release APK.
+Its accelerated Linux emulator uses an Intel system image with
 ARM64 translation; CI verifies ARM64 ABI availability before running the JNI/UI
 tests against the ARM64 APK. Local device tests should use an ARM64 emulator or
 phone. Set `ANDROID_SERIAL` when multiple devices are attached.

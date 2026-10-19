@@ -71,6 +71,7 @@
 !/android/**/*.java
 !/android/**/*.xml
 !/android/gradle.properties
+!/android/app/proguard-rules.pro
 !/android/gradlew
 !/android/gradle/wrapper/gradle-wrapper.jar
 !/android/gradle/wrapper/gradle-wrapper.properties
