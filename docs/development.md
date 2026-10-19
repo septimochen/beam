@@ -217,7 +217,7 @@ local filesystem details.
 
 ## Testing and completion
 
-Focused checks (also included in `make check`):
+Focused checks (included in `make check` when their features are enabled):
 
 | Command | Coverage |
 | --- | --- |

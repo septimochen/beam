@@ -63,7 +63,9 @@ remain enabled. Warm-cache timing gains require observation in subsequent runs.
 - New mapped-address and duplicate-stream localhost regressions passed.
 - Changed shell scripts pass `bash -n`; workflow YAML parses; local documentation
   links and `git diff --check` pass.
-- Linux Qt and Android cross-build/emulator validation depend on CI; those toolchains
-  were not available locally. Cold/warm cache behavior and timing are not yet measured.
-- GitHub CLI is unauthenticated and the public Actions API is rate-limited on the
-  current network, so remote CI results could not be verified during this review.
+- [CI run 39205887720](https://github.com/septimochen/beam/actions/runs/39205887720)
+  passed for implementation commit `03a0366`: Linux LLVM 23 analysis, Qt UI and
+  transfer tests, live Avahi, source-fallback installation/transfers, Android native
+  dependency isolation, debug checks, release lint/packaging and emulator JNI/UI.
+- Dependency cache uploads passed. Warm-cache restores and timing gains still need
+  measurement in a subsequent run; no speedup percentage is claimed.
