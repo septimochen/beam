@@ -78,6 +78,17 @@ keeps builds, certificates, keys, and local receive directories untracked.
 
 ## Build options
 
+`make clean` deletes `build/`, root-level `build-*` directories, and Android's
+`android/build`, `android/app/build`, and `android/app/.cxx` output. It also deletes
+project-local downloaded dependencies and SDK/JDK/tool caches stored under `build/`.
+It succeeds before configuration and on repeated runs. Run `make deps` (and the
+Android setup/dependency commands when needed) again before rebuilding. Custom
+`BUILD_DIR`, `DESKTOP_BUILD_DIR`, and `INSTALL_BUILD_DIR` paths are also removed
+when they contain a CMake cache identifying this Beam checkout. Source folders,
+installed applications, system packages, and tools outside these build paths stay
+in place. For CMake's narrower object-file cleanup, use
+`cmake --build BUILD_DIR --target clean` on a configured tree.
+
 Use Make for a separate Release build:
 
 ```sh

@@ -141,6 +141,10 @@ if(BUILD_TESTING)
     beam_enable_warnings(beam-config-tests)
     add_test(NAME config COMMAND beam-config-tests)
     if(UNIX)
+        add_test(NAME clean COMMAND "${CMAKE_COMMAND}"
+            "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/clean-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/clean_tests.cmake")
         add_test(NAME msquic-dependency COMMAND "${CMAKE_COMMAND}"
             "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/msquic-dependency-test"

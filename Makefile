@@ -183,7 +183,8 @@ format-check: format-version
 	@if [ "$$(uname -s)" = Darwin ]; then $(SWIFT_FORMAT) lint --strict $(SWIFT_SOURCES); fi
 
 clean:
-	$(CMAKE) --build "$(BUILD_DIR)" --target clean --config $(BUILD_TYPE)
+	$(CMAKE) -DBUILD_DIR="$(BUILD_DIR)" -DDESKTOP_BUILD_DIR="$(DESKTOP_BUILD_DIR)" \
+		-DINSTALL_BUILD_DIR="$(INSTALL_BUILD_DIR)" -P cmake/Clean.cmake
 
 help:
 	@echo "icons: regenerate shared icon exports on macOS; icons-native: compile native appearances with Xcode actool"
@@ -193,7 +194,8 @@ help:
 	@echo "android-install: build and install debug APK with ADB; android-install-apk: install existing APK; ANDROID_SERIAL selects a device"
 	@echo "deps: check system MsQuic and provision pairing; deps-source: explicitly build pinned MsQuic and pairing"
 	@echo "build: configure and compile; test: build and run tests; check: format, lint, and tests"
-	@echo "format: apply clang-format; format-check: verify formatting; clean: remove compiled targets"
+	@echo "format: apply clang-format; format-check: verify formatting"
+	@echo "clean: delete build/, build-* and Android build output, including local dependencies/toolchains"
 	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"
 	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"

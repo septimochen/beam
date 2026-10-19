@@ -33,9 +33,12 @@ Only the installed
 `Beam.app` is published in Applications. An explicitly installed `Beam Dev.app`
 is still a separate, intentional installation.
 
-Old build directories are not moved or deleted. `make clean
-BUILD_DIR=build/macos/dev` cleans compiled targets in that tree, preserving project
-data. CLI and Linux build defaults are unchanged.
+`make clean` removes all checkout build folders, including `build/macos/dev`,
+`build/macos/release`, root-level `build-*` trees, and the dependencies/toolchains
+under `build/`. It works without a configured CMake cache. Installed applications
+and user data are retained. To keep a configured tree and only remove compiled
+targets, use `cmake --build build/macos/dev --target clean`. See
+[build cleanup](development.md#build-options) for custom build paths and Android output.
 
 The CMake cache option `BEAM_MACOS_BUNDLE_ID` accepts `org.beam.desktop` or a
 sub-identifier, such as `org.beam.desktop.experiment`. An empty value selects
