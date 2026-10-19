@@ -1,8 +1,13 @@
 {
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/build-desktop/compile_commands.json",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
     "terminal.integrated.env.osx": {
         "JAVA_HOME": "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
         "ANDROID_HOME": "${env:HOME}/Library/Android/sdk",
         "PATH": "/opt/homebrew/opt/openjdk@17/bin:${env:HOME}/Library/Android/sdk/platform-tools:${env:HOME}/Library/Android/sdk/cmdline-tools/latest/bin:/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin:${env:PATH}"
+    },
+    "terminal.integrated.env.linux": {
+        "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk",
+        "ANDROID_HOME": "${env:HOME}/Android/Sdk",
+        "PATH": "${env:HOME}/Android/Sdk/platform-tools:${env:HOME}/Android/Sdk/cmdline-tools/latest/bin:${env:PATH}"
     }
 }
