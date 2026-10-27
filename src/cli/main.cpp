@@ -13,6 +13,7 @@
 #include "beam/identity.hpp"
 #include "beam/routing.hpp"
 #include "beam/transfer.hpp"
+#include <unistd.h>
 #endif
 #ifdef BEAM_HAS_TAILSCALE
 #include "beam/tailscale.hpp"
@@ -96,6 +97,33 @@ class InterruptGuard {
     ~InterruptGuard() { sigaction(SIGINT, &previous, nullptr); }
 };
 #ifdef BEAM_HAS_QUIC
+class ProgressLine {
+    bool active_ = false;
+
+  public:
+    const bool terminal = isatty(STDERR_FILENO) != 0;
+    ~ProgressLine() { finish(); }
+    void finish() {
+        if (active_) {
+            std::cerr << '\n' << std::flush;
+            active_ = false;
+        }
+    }
+    void update(const beam::TransferProgress& progress) {
+        constexpr int width = 20;
+        const auto fraction = progress.total
+                                  ? std::min(1.0L, static_cast<long double>(progress.bytes) /
+                                                       static_cast<long double>(progress.total))
+                                  : 1.0L;
+        const auto filled = static_cast<int>(fraction * width);
+        const auto percent = static_cast<int>(fraction * 100);
+        std::cerr << "\r\033[2K[" << std::string(static_cast<std::size_t>(filled), '=')
+                  << std::string(static_cast<std::size_t>(width - filled), ' ') << "] " << percent
+                  << "% " << progress.bytes << "/" << progress.total << " bytes ("
+                  << static_cast<std::uint64_t>(progress.bytes_per_second) << " B/s)" << std::flush;
+        active_ = true;
+    }
+};
 const char* stage_name(beam::TransferStage stage) {
     switch (stage) {
     case beam::TransferStage::hashing:
@@ -637,11 +665,13 @@ int transfer_command(int argc, char** argv, bool receive) {
     }
     InterruptGuard interrupts;
     configuration.should_cancel = [] { return interrupted != 0; };
+    ProgressLine progress_line;
     auto last_update = std::chrono::steady_clock::time_point{};
     auto last_stage = beam::TransferStage::complete;
     if (!options.contains("--no-progress")) {
         if (!receive)
-            configuration.on_connecting = [](const beam::Endpoint& target) {
+            configuration.on_connecting = [&](const beam::Endpoint& target) {
+                progress_line.finish();
                 std::cerr << "Trying " << beam::endpoint_string(target) << '\n';
             };
         configuration.on_progress = [&](const beam::TransferProgress& update) {
@@ -649,8 +679,21 @@ int transfer_command(int argc, char** argv, bool receive) {
             // The final chunk may precede verification; only Complete denotes success.
             if (update.stage == last_stage && now - last_update < std::chrono::milliseconds(250))
                 return;
+            const bool new_stage = update.stage != last_stage;
             last_stage = update.stage;
             last_update = now;
+            if (progress_line.terminal && update.stage == beam::TransferStage::transferring) {
+                if (new_stage) {
+                    progress_line.finish();
+                    std::cerr << "Transferring";
+                    if (!update.filename.empty())
+                        std::cerr << " " << update.filename;
+                    std::cerr << '\n';
+                }
+                progress_line.update(update);
+                return;
+            }
+            progress_line.finish();
             std::cerr << stage_name(update.stage);
             if (!update.filename.empty())
                 std::cerr << " " << update.filename;
@@ -691,6 +734,7 @@ int transfer_command(int argc, char** argv, bool receive) {
                 try {
                     advertisement->check();
                 } catch (const std::exception& error) {
+                    progress_line.finish();
                     std::cerr << "beam: LAN advertisement stopped: " << error.what() << '\n';
                     advertisement.reset();
                 }
@@ -730,6 +774,7 @@ int transfer_command(int argc, char** argv, bool receive) {
             try {
                 result = beam::receive_content(port, output, configuration);
             } catch (const beam::TransferError& error) {
+                progress_line.finish();
                 if (!listening || options.contains("--once") ||
                     error.code == beam::TransferErrorCode::cancelled)
                     throw;

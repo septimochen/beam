@@ -189,7 +189,8 @@ and peer-record compatibility.
   (the default is 30 seconds). A continuous receiver waits indefinitely for a peer;
   `--once` also bounds that wait. `devices --timeout 5` browses for five seconds.
 - Press **Ctrl-C** to cancel. Add `--no-progress` to `send` or `receive` for scripts;
-  progress and received-file confirmations go to stderr; received text goes to stdout.
+  terminal transfers show a progress bar on stderr; redirected progress is logged as lines.
+  Received-file confirmations go to stderr; received text goes to stdout.
 - Beam refuses to overwrite existing files. If a transfer fails at the final
   acknowledgement, check the destination before retrying: a verified file may
   already be there. Keep the source file unchanged during transfer.
