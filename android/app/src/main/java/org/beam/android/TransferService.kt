@@ -21,6 +21,22 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
+internal fun humanSize(bytes: Double): String {
+  val units = listOf("B", "KB", "MB", "GB", "TB", "PB", "EB")
+  var value = bytes
+  var unit = 0
+  while (value >= 1000 && unit + 1 < units.size) {
+    value /= 1000
+    unit++
+  }
+  return String.format(
+    java.util.Locale.ROOT,
+    if (unit == 0) "%.0f %s" else "%.2f %s",
+    value,
+    units[unit],
+  )
+}
+
 class TransferService : Service() {
   inner class LocalBinder : Binder() {
     val service: TransferService
@@ -522,14 +538,10 @@ class TransferService : Service() {
                       receiveActive = event[5] != "5"
                     }
                     "${if (event[0] == "1") "Receive · " else ""}${stages[event[5].toInt()]}: $percent% · " +
-                      String.format(
-                        java.util.Locale.ROOT,
-                        "%.1f MiB/s",
-                        event[8].toDouble() / 1048576,
-                      )
+                      "${humanSize(event[6].toDouble())} / ${humanSize(event[7].toDouble())} · ${humanSize(event[8].toDouble())}/s"
                   }
                   "2" ->
-                    "Verified ${if (event[0] == "0") "sent" else "received"}: ${event[3]} (${event[4]} bytes)"
+                    "Verified ${if (event[0] == "0") "sent" else "received"}: ${event[3]} (${humanSize(event[4].toDouble())})"
                   "3",
                   "4" -> event[2]
                   "5" -> if (status == "Stopping receiver…") "Receiver stopped" else status

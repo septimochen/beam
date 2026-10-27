@@ -8,6 +8,15 @@ import org.junit.Test
 
 class SelectionTest {
   @Test
+  fun formatsTransferSizes() {
+    assertEquals("0 B", humanSize(0.0))
+    assertEquals("999 B", humanSize(999.0))
+    assertEquals("1.00 KB", humanSize(1000.0))
+    assertEquals("1.05 MB", humanSize(1_048_576.0))
+    assertEquals("2.50 GB", humanSize(2_500_000_000.0))
+  }
+
+  @Test
   fun rejectsUnsafeNamesAndSchemes() {
     listOf("../x", ".hidden", "a/b", "a\\b", "a\u0000b", "CON.txt", "COM1", "x.", " x", "世界")
       .forEach {

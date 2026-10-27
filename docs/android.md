@@ -350,7 +350,7 @@ use `INTERNET` for LAN access. See the official
 [document access](https://developer.android.com/training/data-storage/shared/documents-files),
 and [local-network permissions](https://developer.android.com/privacy-and-security/local-network-permission).
 
-The app shows send/receive percentage, progress bars, and average payload MiB/s;
+The app shows send/receive percentage, progress bars, transferred and total sizes, and average payload speed in decimal B/KB/MB/GB;
 the foreground notification reflects progress too. Completion still follows
 verification and acknowledgement. **Manage devices → Check** checks the selected
 peer's authenticated Beam receiver with a bounded probe and no payload/file.

@@ -1,6 +1,19 @@
 import AppKit
 import Combine
 
+func humanSize(_ bytes: Double) -> String {
+  let units = ["B", "KB", "MB", "GB", "TB", "PB", "EB"]
+  var value = bytes
+  var unit = 0
+  while value >= 1000 && unit + 1 < units.count {
+    value /= 1000
+    unit += 1
+  }
+  return String(
+    format: unit == 0 ? "%.0f %@" : "%.2f %@", locale: Locale(identifier: "en_US_POSIX"), value,
+    units[unit])
+}
+
 enum ContentSelection: String, CaseIterable, Identifiable {
   case file = "File"
   case text = "Text"
@@ -309,7 +322,7 @@ final class DesktopModel: ObservableObject {
       if event.stage == .transferring {
         let percent = event.total == 0 ? 0 : Int(100 * Double(event.bytes) / Double(event.total))
         status +=
-          " · \(percent)% · " + String(format: "%.1f MiB/s", event.bytesPerSecond / 1_048_576)
+          " · \(percent)% · \(humanSize(Double(event.bytes))) / \(humanSize(Double(event.total))) · \(humanSize(event.bytesPerSecond))/s"
       }
     case .listening:
       status = "Listening for paired devices on port \(port)."
@@ -317,7 +330,7 @@ final class DesktopModel: ObservableObject {
       let description =
         event.sending
         ? "Sent and verified with \(event.message)" : "Received and verified \(event.filename)"
-      status = "\(description) (\(event.bytes) bytes)"
+      status = "\(description) (\(humanSize(Double(event.bytes))))"
       progress = 1
       lastResult = status
       if !event.sending && event.contentKind == .text { receivedText = event.text }

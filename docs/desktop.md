@@ -190,7 +190,7 @@ transfer history, folder synchronization, or automatic retry of a failed send.
 ## Progress, connectivity, and settings
 
 The app window and tray/menu-bar popup show send/receive progress bars, payload
-percentage, and average payload MiB/s. Hashing, connecting, and verification remain
+percentage, transferred and total sizes, and average payload speed in decimal B/KB/MB/GB. Hashing, connecting, and verification remain
 separate stages; 100% payload bytes does not report verified completion.
 
 Select a paired device and click **Check connectivity**. A bounded authenticated

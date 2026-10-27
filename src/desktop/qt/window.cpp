@@ -14,6 +14,7 @@
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLocale>
 #include <QMenu>
 #include <QMimeData>
 #include <QPlainTextEdit>
@@ -25,11 +26,22 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWidgetAction>
+#include <array>
 
 namespace beam::desktop {
 namespace {
 QString display(std::string_view value) {
     return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+}
+QString human_size(long double bytes) {
+    constexpr std::array units{"B", "KB", "MB", "GB", "TB", "PB", "EB"};
+    std::size_t unit = 0;
+    while (bytes >= 1000 && unit + 1 < units.size()) {
+        bytes /= 1000;
+        ++unit;
+    }
+    return QLocale::c().toString(static_cast<double>(bytes), 'f', unit == 0 ? 0 : 2) + " " +
+           units[unit];
 }
 std::string bytes(const QString& value) { return value.toUtf8().toStdString(); }
 QIcon icon() { return QIcon(":/beam/icons/beam.png"); }
@@ -449,9 +461,10 @@ void Window::report(const Event& event) {
                                        static_cast<long double>(update.total)));
         auto label = stage_name(update.stage);
         if (update.stage == TransferStage::transferring)
-            label += QString(" · %1% · %2 MiB/s")
+            label += QString(" · %1% · %2 / %3 · %4/s")
                          .arg(progress->value())
-                         .arg(update.bytes_per_second / 1048576, 0, 'f', 1);
+                         .arg(human_size(update.bytes), human_size(update.total),
+                              human_size(update.bytes_per_second));
         status->setText(label);
         return;
     }
@@ -466,7 +479,7 @@ void Window::report(const Event& event) {
         message = event.direction == Direction::send
                       ? "Sent and verified with " + display(event.message)
                       : "Received and verified " + display(event.result.filename);
-        message += QString(" (%1 bytes)").arg(static_cast<qulonglong>(event.result.bytes));
+        message += " (" + human_size(event.result.bytes) + ")";
         break;
     case EventKind::failed:
         progress->setRange(0, 100);

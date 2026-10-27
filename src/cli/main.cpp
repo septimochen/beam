@@ -837,7 +837,12 @@ int transfer_command(int argc, char** argv, bool receive) {
     }
     if (result.kind != beam::ContentKind::file)
         std::cout << beam::content_type(result.kind) << " ";
-    std::cout << result.filename << " (" << result.bytes << " bytes, SHA-256)\n";
+    std::cout << result.filename << " (";
+    if (isatty(STDOUT_FILENO))
+        std::cout << human_size(result.bytes);
+    else
+        std::cout << result.bytes << " bytes";
+    std::cout << ", SHA-256)\n";
     return 0;
 }
 #endif

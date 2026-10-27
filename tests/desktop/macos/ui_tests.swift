@@ -102,6 +102,11 @@ private func renderDevices(_ model: DesktopModel) throws {
 
 @MainActor
 private func tests() throws {
+  try require(humanSize(0) == "0 B", "Incorrect zero size")
+  try require(humanSize(999) == "999 B", "Incorrect byte size")
+  try require(humanSize(1000) == "1.00 KB", "Incorrect kilobyte size")
+  try require(humanSize(1_048_576) == "1.05 MB", "Incorrect megabyte size")
+  try require(humanSize(2_500_000_000) == "2.50 GB", "Incorrect gigabyte size")
   // Test the app's signal policy even if the test runner ignores broken pipes.
   signal(SIGPIPE, SIG_DFL)
   let manager = FileManager.default
