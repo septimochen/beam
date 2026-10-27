@@ -46,7 +46,8 @@ send() { "$beam" "$@" --state-dir "$root/alice" --timeout 3 >sender.log 2>&1; }
 helper_send() { "$helper" "$1" "$root/alice" bob "$endpoint" output >sender.log 2>&1; }
 check_output() {
     [[ -z "$(ls -A output)" ]] || { ls -la output; echo 'text was saved as a file'; exit 1; }
-    cmp expected received-text
+    { printf 'Received text: '; cat expected; printf '\n'; } >expected-display
+    cmp expected-display received-text
     if grep -Fq 'PRIVATE-CONTENT' receiver.log sender.log; then echo 'content leaked to logs'; exit 1; fi
     if compgen -G 'output/.beam-*' >/dev/null; then echo 'partial file leaked'; exit 1; fi
 }
@@ -91,14 +92,16 @@ if ! send send first.bin bob; then cat sender.log receiver.log; exit 1; fi
 wait_for_listeners 2
 if ! send text 'continuous text' bob; then cat sender.log receiver.log; exit 1; fi
 wait_for_listeners 3
-if send send first.bin bob; then echo 'receiver overwrote a file'; exit 1; fi
+if ! send text 'second message' bob; then cat sender.log receiver.log; exit 1; fi
 wait_for_listeners 4
-if ! send send second.bin bob; then cat sender.log receiver.log; exit 1; fi
+if send send first.bin bob; then echo 'receiver overwrote a file'; exit 1; fi
 wait_for_listeners 5
+if ! send send second.bin bob; then cat sender.log receiver.log; exit 1; fi
+wait_for_listeners 6
 cmp first.bin output/first.bin
 cmp second.bin output/second.bin
-printf 'continuous text' >expected
-cmp expected received-text
+printf 'Received text: continuous text\nReceived text: second message\n' >expected-display
+cmp expected-display received-text
 kill -INT "$receiver_pid"
 status=0
 wait_receiver || status=$?

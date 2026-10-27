@@ -27,9 +27,9 @@ area with a **Copy to clipboard** button at the top right. The outgoing text are
 has its own explicit Copy button. New text replaces the previous in-memory view;
 there is no persistent history or automatic clipboard write.
 
-The CLI writes received text verbatim to stdout, without a newline or metadata.
-Listener/progress diagnostics go to stderr. Redirect stdout only when you want
-to save text yourself. Text from successive transfers is concatenated without delimiters.
+The CLI writes `Received text: `, the received bytes, and a terminating newline
+to stdout for each text transfer. Existing line breaks in the text are preserved.
+Listener/progress diagnostics go to stderr. Redirect stdout to save the labeled output.
 The CLI defaults to `~/Downloads` for files when no folder is configured.
 File receives retain safe, exclusive publication in the selected directory.
 

@@ -65,8 +65,8 @@ for kind in file text url; do
     if ! wait_receiver; then cat receiver.log; exit 1; fi
     case "$kind" in
         file) cmp sample.txt output/sample.txt ;;
-        text) printf 'routed text' >expected; cmp expected received-text ;;
-        url) printf 'https://example.com/' >expected; cmp expected received-text ;;
+        text) printf 'Received text: routed text\n' >expected; cmp expected received-text ;;
+        url) printf 'Received text: https://example.com/\n' >expected; cmp expected received-text ;;
     esac
     rm -f output/*
 done

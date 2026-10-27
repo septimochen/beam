@@ -66,7 +66,7 @@ void print_help() {
            "Paired send/text/check accept --route auto|direct|tailscale; default: direct first.\n"
            "--endpoint overrides all saved routes. Fallback only precedes authentication.\n"
            "Files default to ~/Downloads; an explicit receive folder must exist.\n"
-           "Received text is written verbatim to stdout.\n"
+           "Received text is labeled and written to stdout.\n"
            "Text (including URLs): UTF-8, up to 64 KiB. Config: ~/.config/beam/config.\n"
            "Use -- before positional arguments that start with --.\n"
            "Use beam pairing, or approve public certificates with independently verified "
@@ -740,9 +740,10 @@ int transfer_command(int argc, char** argv, bool receive) {
             if (result.connectivity_check)
                 continue;
             if (result.kind == beam::ContentKind::text) {
+                std::cout << "Received text: ";
                 std::cout.write(result.text.data(),
                                 static_cast<std::streamsize>(result.text.size()));
-                std::cout.flush();
+                std::cout << '\n' << std::flush;
             } else {
                 std::cerr << "Received and verified " << result.filename << " (" << result.bytes
                           << " bytes, SHA-256)\n";
