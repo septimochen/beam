@@ -18,11 +18,14 @@
 #ifdef BEAM_HAS_TAILSCALE
 #include "beam/tailscale.hpp"
 #endif
+#include <array>
 #include <charconv>
 #include <csignal>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -97,6 +100,21 @@ class InterruptGuard {
     ~InterruptGuard() { sigaction(SIGINT, &previous, nullptr); }
 };
 #ifdef BEAM_HAS_QUIC
+std::string human_size(long double bytes) {
+    constexpr std::array units{"B", "KB", "MB", "GB", "TB", "PB", "EB"};
+    std::size_t unit = 0;
+    while (bytes >= 1000 && unit + 1 < units.size()) {
+        bytes /= 1000;
+        ++unit;
+    }
+    std::ostringstream output;
+    if (unit == 0)
+        output << std::fixed << std::setprecision(0);
+    else
+        output << std::fixed << std::setprecision(2);
+    output << bytes << ' ' << units[unit];
+    return output.str();
+}
 class ProgressLine {
     bool active_ = false;
 
@@ -119,8 +137,8 @@ class ProgressLine {
         const auto percent = static_cast<int>(fraction * 100);
         std::cerr << "\r\033[2K[" << std::string(static_cast<std::size_t>(filled), '=')
                   << std::string(static_cast<std::size_t>(width - filled), ' ') << "] " << percent
-                  << "% " << progress.bytes << "/" << progress.total << " bytes ("
-                  << static_cast<std::uint64_t>(progress.bytes_per_second) << " B/s)" << std::flush;
+                  << "% " << human_size(progress.bytes) << " / " << human_size(progress.total)
+                  << " (" << human_size(progress.bytes_per_second) << "/s)" << std::flush;
         active_ = true;
     }
 };
@@ -699,8 +717,13 @@ int transfer_command(int argc, char** argv, bool receive) {
                 std::cerr << " " << update.filename;
             if (update.stage == beam::TransferStage::hashing ||
                 update.stage == beam::TransferStage::transferring ||
-                update.stage == beam::TransferStage::complete)
-                std::cerr << ": " << update.bytes << "/" << update.total << " bytes";
+                update.stage == beam::TransferStage::complete) {
+                if (progress_line.terminal)
+                    std::cerr << ": " << human_size(update.bytes) << " / "
+                              << human_size(update.total);
+                else
+                    std::cerr << ": " << update.bytes << "/" << update.total << " bytes";
+            }
             if (update.stage == beam::TransferStage::transferring)
                 std::cerr << " ("
                           << (update.total ? static_cast<int>(
@@ -790,8 +813,12 @@ int transfer_command(int argc, char** argv, bool receive) {
                                 static_cast<std::streamsize>(result.text.size()));
                 std::cout << '\n' << std::flush;
             } else {
-                std::cerr << "Received and verified " << result.filename << " (" << result.bytes
-                          << " bytes, SHA-256)\n";
+                std::cerr << "Received and verified " << result.filename << " (";
+                if (progress_line.terminal)
+                    std::cerr << human_size(result.bytes);
+                else
+                    std::cerr << result.bytes << " bytes";
+                std::cerr << ", SHA-256)\n";
             }
             if (options.contains("--once"))
                 return 0;
