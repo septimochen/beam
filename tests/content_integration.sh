@@ -31,7 +31,7 @@ start_receiver() {
     if [[ -n "${1:-}" ]]; then
         "$helper" "$1" "$root/bob" alice "$endpoint" output >receiver.log 2>&1 &
     else
-        "$beam" receive --state-dir "$root/bob" --listen "$port" --output output --timeout 3 --no-discovery >received-text 2>receiver.log &
+        "$beam" receive --once --state-dir "$root/bob" --listen "$port" --output output --timeout 3 --no-discovery >received-text 2>receiver.log &
     fi
     receiver_pid=$!
     ready "$receiver_pid" receiver.log '^Listening'
@@ -70,6 +70,40 @@ if [[ $(uname -s) == Darwin ]]; then
     wait_receiver
     [[ -z "$(ls -A output)" ]]
 fi
+# Continuous reception survives idle waits, successive transfers, and rejected files.
+"$beam" receive --state-dir "$root/bob" --listen "$port" --output output --timeout 1 --no-discovery >received-text 2>receiver.log &
+receiver_pid=$!
+ready "$receiver_pid" receiver.log '^Listening'
+sleep 2
+kill -0 "$receiver_pid" || { cat receiver.log; echo 'idle receiver exited'; exit 1; }
+wait_for_listeners() {
+    local count=$1
+    for attempt in {1..500}; do
+        if [[ $(grep -c '^Listening' receiver.log) -ge $count ]]; then return; fi
+        if ! kill -0 "$receiver_pid" 2>/dev/null; then cat receiver.log; echo 'receiver exited'; exit 1; fi
+        sleep 0.01
+    done
+    cat receiver.log; echo 'receiver did not restart'; exit 1
+}
+printf first >first.bin
+printf second >second.bin
+if ! send send first.bin bob; then cat sender.log receiver.log; exit 1; fi
+wait_for_listeners 2
+if ! send text 'continuous text' bob; then cat sender.log receiver.log; exit 1; fi
+wait_for_listeners 3
+if send send first.bin bob; then echo 'receiver overwrote a file'; exit 1; fi
+wait_for_listeners 4
+if ! send send second.bin bob; then cat sender.log receiver.log; exit 1; fi
+wait_for_listeners 5
+cmp first.bin output/first.bin
+cmp second.bin output/second.bin
+printf 'continuous text' >expected
+cmp expected received-text
+kill -INT "$receiver_pid"
+status=0
+wait_receiver || status=$?
+[[ $status == 130 ]] || { cat receiver.log; echo 'continuous receiver did not cancel'; exit 1; }
+reset_output
 # UTF-8, newlines, shell-like text and empty payloads preserve exact bytes.
 start_receiver
 if ! send check bob; then cat sender.log receiver.log; exit 1; fi

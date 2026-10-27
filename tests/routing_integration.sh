@@ -39,7 +39,7 @@ start_receiver() {
     if [[ "$receiver" == hold-completion ]]; then
         "$helper" hold-completion "$root/bob" alice "$fallback" "$primary" sample.txt >receiver.log 2>&1 &
     else
-        "$beam" receive --state-dir "$root/$receiver" --listen "$port" --output output --timeout 3 --no-discovery >received-text 2>receiver.log &
+        "$beam" receive --once --state-dir "$root/$receiver" --listen "$port" --output output --timeout 3 --no-discovery >received-text 2>receiver.log &
     fi
     receiver_pid=$!
     for attempt in {1..500}; do

@@ -25,7 +25,8 @@ or calling-thread predicate, checked between buffers and every 50 ms during wait
 Failures close with a bounded application error code, including cancellation, so a
 blocked peer payload operation sees the reason without an extra control reader thread.
 Progress callbacks run synchronously on the application thread and never in C callbacks. The payload buffer and configured
-receive window are 64 KiB. Each wait has a deadline and peer-abort propagation.
+receive window are 64 KiB. Transfer waits have deadlines and peer-abort propagation;
+the CLI can wait indefinitely for a new peer while retaining a bounded handshake.
 
 `src/protocol` defines bounded versioned frames and transfer IDs. `src/core/transfer.cpp`
 implements offer/accept/payload/verified-completion state transitions. `src/transfer`

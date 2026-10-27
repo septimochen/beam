@@ -50,7 +50,7 @@ start_receiver() {
     if [[ -n "${receiver_cert:-}" ]]; then
         credentials=(--cert "$receiver_cert" --key "$root/bob/identity.pem" --ca alice.pem)
     fi
-    "$beam" receive "${credentials[@]}" --listen "$port" --output output --timeout 3 --no-discovery >receiver.log 2>&1 &
+    "$beam" receive --once "${credentials[@]}" --listen "$port" --output output --timeout 3 --no-discovery >receiver.log 2>&1 &
     receiver_pid=$!
     for attempt in {1..500}; do
         if grep -q '^Listening' receiver.log; then return; fi
@@ -136,7 +136,7 @@ unset sender
 "$beam" unpair charlie --state-dir "$root/bob"
 "$beam" identity show --state-dir "$root/bob" >identity-after-unpair.log
 cmp identity-before-unpair.log identity-after-unpair.log
-if "$beam" receive --state-dir "$root/bob" --listen "$port" --output output --timeout 1 --no-discovery >receiver.log 2>&1; then echo 'empty trust receiver accepted'; exit 1; fi
+if "$beam" receive --once --state-dir "$root/bob" --listen "$port" --output output --timeout 1 --no-discovery >receiver.log 2>&1; then echo 'empty trust receiver accepted'; exit 1; fi
 grep -q 'no trusted peers' receiver.log
 if compgen -G 'output/.beam-*' >/dev/null; then echo 'pairing failures leaked partial files'; exit 1; fi
 echo 'Phase 4: persistent identities, reciprocal pairing, name-based transfers, IPv6, pinning and revocation verified'

@@ -640,6 +640,12 @@ std::unique_ptr<Connection> listen(std::uint16_t port, const TransferOptions& op
         options.on_listening();
     std::unique_lock lock(connection->mutex);
     try {
+        if (options.wait_for_peer_indefinitely) {
+            while (!connection->accepted && !connection->failed && !connection->stopped) {
+                check_cancel(options);
+                connection->changed.wait_for(lock, std::chrono::milliseconds(50));
+            }
+        }
         connection->wait(lock, [&] { return connection->connected; });
     } catch (const TransferError& error) {
         lock.unlock();

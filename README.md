@@ -69,8 +69,8 @@ mkdir -p received
 ```
 
 Allow UDP port 4269 through its firewall. The receiver advertises itself on the
-LAN, accepts one file or text (including URLs) from a paired device, and exits. Run it again
-for another transfer.
+LAN, and accepts files or text (including URLs) from paired devices until you press
+**Ctrl-C**. Use `--once` to exit after one transfer.
 
 ### 4. Send a file
 
@@ -94,7 +94,7 @@ Use an endpoint from discovery. A changed address does not require re-pairing.
 
 ### 5. Send text or a URL
 
-Restart the receiver for each transfer, then send to its paired name:
+Send to its paired name:
 
 ```sh
 ./build/beam text "hello" laptop
@@ -186,7 +186,8 @@ and peer-record compatibility.
 - Use `[IPv6]:4269` for an IPv6 endpoint.
 - Add `--no-discovery` to `receive` to keep it unadvertised; omit `--name` in that case.
 - Add `--timeout 120` to `send` or `receive` for longer individual waits
-  (the default is 30 seconds). `devices --timeout 5` browses for five seconds.
+  (the default is 30 seconds). A continuous receiver waits indefinitely for a peer;
+  `--once` also bounds that wait. `devices --timeout 5` browses for five seconds.
 - Press **Ctrl-C** to cancel. Add `--no-progress` to `send` or `receive` for scripts;
   progress goes to stderr and success to stdout.
 - Beam refuses to overwrite existing files. If a transfer fails at the final

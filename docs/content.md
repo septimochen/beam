@@ -29,8 +29,8 @@ there is no persistent history or automatic clipboard write.
 
 The CLI writes received text verbatim to stdout, without a newline or metadata.
 Listener/progress diagnostics go to stderr. Redirect stdout only when you want
-to save text yourself. A receiver with no `--output` or configured receive folder
-accepts text and authenticated connectivity probes, and rejects file offers.
+to save text yourself. Text from successive transfers is concatenated without delimiters.
+The CLI defaults to `~/Downloads` for files when no folder is configured.
 File receives retain safe, exclusive publication in the selected directory.
 
 `--state-dir`, `--endpoint IP:PORT`, `--route`, `--timeout SECONDS`, and
@@ -41,7 +41,8 @@ history/process listings; avoid passing secrets this way.
 `send_text` snapshots caller content before callbacks. `receive_content` accepts
 files, text, and connectivity probes; `receive_file` still rejects text offers.
 A probe result has `connectivity_check=true` and no payload. The CLI continues
-listening after a probe; apps restart their listener quietly. A failed completion
+listening after each transfer or probe until interrupted; `--once` exits after a
+file or text transfer. Apps restart their listener quietly. A failed completion
 exchange does not display or emit received text. File publication can already
 have completed when acknowledgement fails, as before.
 

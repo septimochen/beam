@@ -25,7 +25,7 @@ start_receiver() {
     else
         local discovery_flags=(--no-discovery)
         if [[ -n "${discovery_name:-}" ]]; then discovery_flags=(--name "$discovery_name"); fi
-        SSL_CERT_FILE="${system_ca:-ca.pem}" "$beam" receive --listen "$port" --output output --cert "${server_cert:-server.pem}" --key "${server_key:-server.key}" --ca ca.pem --timeout 5 "${discovery_flags[@]}" >receiver.log 2>&1 &
+        SSL_CERT_FILE="${system_ca:-ca.pem}" "$beam" receive --once --listen "$port" --output output --cert "${server_cert:-server.pem}" --key "${server_key:-server.key}" --ca ca.pem --timeout 5 "${discovery_flags[@]}" >receiver.log 2>&1 &
     fi
     receiver_pid=$!
     local attempt
@@ -84,7 +84,7 @@ for destination_mode in default configured explicit; do
             expected_dir="$root/configured" ;;
         explicit) receive_args=(--output output); expected_dir=output ;;
     esac
-    HOME="$root/test-home" SSL_CERT_FILE=ca.pem "$beam" receive --listen "$port" "${receive_args[@]}" --cert server.pem --key server.key --ca ca.pem --timeout 5 --no-discovery >receiver.log 2>&1 &
+    HOME="$root/test-home" SSL_CERT_FILE=ca.pem "$beam" receive --once --listen "$port" "${receive_args[@]}" --cert server.pem --key server.key --ca ca.pem --timeout 5 --no-discovery >receiver.log 2>&1 &
     receiver_pid=$!
     for attempt in {1..500}; do
         if grep -q '^Listening' receiver.log; then break; fi
@@ -170,8 +170,8 @@ printf abc >expected.bin
 cmp expected.bin output/attack.bin
 rm output/attack.bin
 # A listener with no sender expires instead of hanging indefinitely.
-"$beam" receive --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 --no-discovery >receiver.log 2>&1 && exit 1
-if "$beam" receive --listen "$port" --output missing-directory --cert server.pem --key server.key --ca ca.pem --timeout 1 >receiver.log 2>&1; then exit 1; fi
+"$beam" receive --once --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 --no-discovery >receiver.log 2>&1 && exit 1
+if "$beam" receive --once --listen "$port" --output missing-directory --cert server.pem --key server.key --ca ca.pem --timeout 1 >receiver.log 2>&1; then exit 1; fi
 grep -q 'open receive directory' receiver.log
 # Phase 2: progress callbacks on both sides, including zero-sized payloads.
 for file in empty.bin small.bin large.bin; do
@@ -283,7 +283,7 @@ if send source/quiet.bin; then exit 1; fi
 if wait_receiver; then exit 1; fi
 grep -q 'peer: destination exists' sender.log
 # The listener timeout has an explicit category.
-"$beam" receive --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 --no-discovery >receiver.log 2>&1 && exit 1
+"$beam" receive --once --listen "$port" --output output --cert server.pem --key server.key --ca ca.pem --timeout 1 --no-discovery >receiver.log 2>&1 && exit 1
 grep -q 'timed out' receiver.log
 echo 'Phase 2: callback progress, cancellation, Ctrl-C, typed errors and cleanup verified'
 echo 'QUIC integration: binary/empty/large success; overwrite, TLS, malicious and interrupted transfers rejected'

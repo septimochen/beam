@@ -56,13 +56,13 @@ void print_help() {
            "[--no-progress]\n"
            "  beam check PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS]\n"
            "  beam receive [--output DIR] [--listen PORT] [--state-dir DIR] [--name NAME] "
-           "[--no-discovery]\n"
+           "[--no-discovery] [--once]\n"
            "  beam devices [--timeout SECONDS]\n"
            "  beam receive --listen PORT [--output DIR] --cert PEM --key PEM --ca PEM "
-           "[--timeout SECONDS] [--no-progress] [--name NAME] [--no-discovery]\n"
+           "[--timeout SECONDS] [--no-progress] [--name NAME] [--no-discovery] [--once]\n"
            "  beam send IP:PORT FILE --cert PEM --key PEM --ca PEM [--server-name NAME] "
            "[--timeout SECONDS] [--no-progress]\n\n"
-           "Receive one file or text from one authenticated peer, then exit.\n"
+           "Receive files and text until Ctrl-C; --once exits after one transfer.\n"
            "Paired send/text/check accept --route auto|direct|tailscale; default: direct first.\n"
            "--endpoint overrides all saved routes. Fallback only precedes authentication.\n"
            "Files default to ~/Downloads; an explicit receive folder must exist.\n"
@@ -75,7 +75,8 @@ void print_help() {
            "The server certificate must match IP or --server-name. IPv6: [ADDRESS]:PORT.\n"
            "Progress goes to stderr; --no-progress disables it. Ctrl-C cancels cleanly.\n"
            "Receivers advertise on LAN; --no-discovery disables this. Discovery is not trust.\n"
-           "Timeout defaults to 30 seconds per wait. Existing files are never overwritten.\n";
+           "Transfer waits default to 30 seconds; --once also bounds the peer wait.\n"
+           "Existing files are never overwritten.\n";
 }
 #if defined(BEAM_HAS_QUIC) || defined(BEAM_HAS_DISCOVERY)
 volatile std::sig_atomic_t interrupted = 0;
@@ -506,7 +507,8 @@ int transfer_command(int argc, char** argv, bool receive) {
             positional.push_back(argument);
             continue;
         }
-        if (argument == "--no-progress" || (receive && argument == "--no-discovery")) {
+        if (argument == "--no-progress" ||
+            (receive && (argument == "--no-discovery" || argument == "--once"))) {
             if (!options.emplace(argument, "").second)
                 throw std::invalid_argument("duplicate option: " + argument);
             continue;
@@ -696,7 +698,10 @@ int transfer_command(int argc, char** argv, bool receive) {
             return interrupted != 0;
         };
 #endif
+        configuration.wait_for_peer_indefinitely = !options.contains("--once");
+        bool listening = false;
         configuration.on_listening = [&] {
+            listening = true;
 #ifdef BEAM_HAS_DISCOVERY
             if (!options.contains("--no-discovery") && defaults.discovery) {
                 beam::DiscoveryOptions discovery;
@@ -717,17 +722,34 @@ int transfer_command(int argc, char** argv, bool receive) {
             std::cerr << "Listening for one authenticated peer on UDP port " << port << "..."
                       << std::endl;
         };
-        do {
+        for (;;) {
 #ifdef BEAM_HAS_DISCOVERY
             advertisement.reset();
 #endif
-            result = beam::receive_content(port, output, configuration);
-        } while (result.connectivity_check);
-        if (result.kind == beam::ContentKind::text) {
-            std::cout.write(result.text.data(), static_cast<std::streamsize>(result.text.size()));
-            return 0;
+            listening = false;
+            try {
+                result = beam::receive_content(port, output, configuration);
+            } catch (const beam::TransferError& error) {
+                if (!listening || options.contains("--once") ||
+                    error.code == beam::TransferErrorCode::cancelled)
+                    throw;
+                std::cerr << "beam [" << beam::error_name(error.code) << "]: " << error.what()
+                          << '\n';
+                continue;
+            }
+            if (result.connectivity_check)
+                continue;
+            if (result.kind == beam::ContentKind::text) {
+                std::cout.write(result.text.data(),
+                                static_cast<std::streamsize>(result.text.size()));
+                std::cout.flush();
+            } else {
+                std::cerr << "Received and verified " << result.filename << " (" << result.bytes
+                          << " bytes, SHA-256)\n";
+            }
+            if (options.contains("--once"))
+                return 0;
         }
-        std::cout << "Received and verified ";
     } else {
         if (checking) {
             beam::check_connectivity(endpoint, server_name, configuration);

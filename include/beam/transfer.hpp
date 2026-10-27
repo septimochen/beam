@@ -63,6 +63,9 @@ struct TransferProgress {
 struct TransferOptions {
     Credentials credentials;
     std::chrono::milliseconds timeout{30000};
+    // Wait without a deadline for an incoming connection; handshake and transfer waits remain
+    // bounded.
+    bool wait_for_peer_indefinitely{false};
     // Called on the calling thread after the receive socket is bound.
     std::function<void()> on_listening{};
     std::stop_token stop_token{};

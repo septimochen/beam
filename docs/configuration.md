@@ -19,7 +19,8 @@ displays its selected receive directory on stderr when reception starts.
 
 `listen_port` is 1–65535. `discovery` accepts `true`/`false` and controls receiver
 LAN advertisement; it never affects pairing or TLS. `timeout_seconds` is 1–86400
-and bounds individual transfer waits. Connectivity checks are capped at five
+and bounds individual transfer waits. Continuous CLI receivers wait indefinitely
+for a peer; `--once` also applies the timeout to that wait. Connectivity checks are capped at five
 seconds per wait. Defaults are 4269, true, and 30 respectively.
 
 Explicit command-line options override the corresponding configured value.
