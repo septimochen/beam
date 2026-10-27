@@ -33,7 +33,7 @@ Listener/progress diagnostics go to stderr. Redirect stdout to save the labeled 
 The CLI defaults to `~/Downloads` for files when no folder is configured.
 File receives retain safe, exclusive publication in the selected directory.
 
-`--state-dir`, `--endpoint IP:PORT`, `--route`, `--timeout SECONDS`, and
+`--state-dir`, `--endpoint IP:PORT`, `--timeout SECONDS`, and
 `--no-progress` work as for paired file sends. Quote shell arguments, and use `--`
 after options when content begins with `--`. Arguments may appear in shell
 history/process listings; avoid passing secrets this way.

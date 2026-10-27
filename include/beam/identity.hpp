@@ -16,10 +16,10 @@ struct TrustedPeer {
     std::string name;
     std::string endpoint;
     DeviceIdentity identity;
-    std::string tailscale_endpoint{};
+    std::string fallback_endpoint{};
 };
 struct PeerEdit {
-    std::optional<std::string> name, endpoint, tailscale_endpoint;
+    std::optional<std::string> name, endpoint, fallback_endpoint;
     std::string certificate_pem, verified_fingerprint, expected_fingerprint;
 };
 struct DeviceBackup {
@@ -61,8 +61,8 @@ class IdentityStore {
     [[nodiscard]] TrustedPeer peer(const std::string& name) const;
     void unpair(const std::string& name);
     void set_endpoint(const std::string& name, const std::string& endpoint);
-    // An empty string explicitly removes the optional Tailscale route.
-    void set_tailscale_endpoint(const std::string& name, const std::string& endpoint);
+    // An empty string explicitly removes the optional fallback endpoint.
+    void set_fallback_endpoint(const std::string& name, const std::string& endpoint);
     TrustedPeer edit_peer(const std::string& name, const PeerEdit& edit);
     [[nodiscard]] std::string export_devices() const;
     [[nodiscard]] DeviceBackup preview_import(const std::string& contents) const;

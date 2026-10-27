@@ -17,7 +17,7 @@ struct DevicesView: View {
     model.devices.filter {
       search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)
         || $0.endpoint.localizedCaseInsensitiveContains(search)
-        || $0.tailscale.localizedCaseInsensitiveContains(search)
+        || $0.fallback.localizedCaseInsensitiveContains(search)
     }
   }
 
@@ -88,8 +88,8 @@ struct DevicesView: View {
                 Text(device.name).font(.headline)
                 Text(device.endpoint.isEmpty ? "No direct address saved" : device.endpoint)
                   .font(.callout.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
-                if !device.tailscale.isEmpty {
-                  Text("Tailscale · \(device.tailscale)").font(.caption.monospaced())
+                if !device.fallback.isEmpty {
+                  Text("Fallback · \(device.fallback)").font(.caption.monospaced())
                     .foregroundStyle(.secondary).textSelection(.enabled)
                 }
               }
@@ -166,7 +166,7 @@ struct DevicesView: View {
               VStack(alignment: .leading, spacing: 5) {
                 Text(preview[i]).font(.headline)
                 Text(preview[i + 1].isEmpty ? "No direct address" : preview[i + 1])
-                if !preview[i + 2].isEmpty { Text("Tailscale: \(preview[i + 2])") }
+                if !preview[i + 2].isEmpty { Text("Fallback: \(preview[i + 2])") }
                 Text(preview[i + 3]).font(.caption.monospaced()).textSelection(.enabled)
               }
               Divider()
@@ -235,7 +235,7 @@ private struct DeviceEditor: View {
   @Environment(\.dismiss) private var dismiss
   @State private var name: String
   @State private var endpoint: String
-  @State private var tailscale: String
+  @State private var fallback: String
   @State private var replaceCertificate = false
   @State private var certificate = ""
   @State private var fingerprint = ""
@@ -246,7 +246,7 @@ private struct DeviceEditor: View {
     self.device = device
     _name = State(initialValue: device.name)
     _endpoint = State(initialValue: device.endpoint)
-    _tailscale = State(initialValue: device.tailscale)
+    _fallback = State(initialValue: device.fallback)
   }
 
   var body: some View {
@@ -263,7 +263,7 @@ private struct DeviceEditor: View {
             Text("1–63 lowercase letters, numbers, - or _; start with a letter.")
               .font(.caption).foregroundStyle(.secondary)
             TextField("IP address & port", text: $endpoint, prompt: Text("192.168.1.20:4269"))
-            TextField("Tailscale address (optional)", text: $tailscale)
+            TextField("Fallback address (optional)", text: $fallback)
             Text(
               "IPv6: [address]:port. Leave an address empty to remove it. Saving stops active transfers and checks."
             )
@@ -305,7 +305,7 @@ private struct DeviceEditor: View {
         Button(replaceCertificate ? "Save & trust certificate" : "Save changes") {
           do {
             try model.saveDevice(
-              device, name: name, endpoint: endpoint, tailscale: tailscale,
+              device, name: name, endpoint: endpoint, fallback: fallback,
               certificate: replaceCertificate ? certificate : "",
               fingerprint: replaceCertificate ? fingerprint : "")
             dismiss()

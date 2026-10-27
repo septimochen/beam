@@ -273,7 +273,7 @@ void report(NSError** output, const std::exception& error) {
         if (action == "details") {
             for (const auto& peer : beam::IdentityStore(_config.state_directory).peers())
                 [values addObjectsFromArray:@[
-                    display(peer.name), display(peer.endpoint), display(peer.tailscale_endpoint),
+                    display(peer.name), display(peer.endpoint), display(peer.fallback_endpoint),
                     display(peer.identity.fingerprint), display(peer.identity.certificate_pem)
                 ]];
         } else if (action == "edit") {
@@ -309,7 +309,7 @@ void report(NSError** output, const std::exception& error) {
             ]];
             for (const auto& peer : result.peers)
                 [values addObjectsFromArray:@[
-                    display(peer.name), display(peer.endpoint), display(peer.tailscale_endpoint),
+                    display(peer.name), display(peer.endpoint), display(peer.fallback_endpoint),
                     display(peer.identity.fingerprint)
                 ]];
         } else

@@ -29,7 +29,6 @@ set_target_properties(OpenSSL::SSL PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${prefix}/include"
     INTERFACE_LINK_LIBRARIES OpenSSL::Crypto)
 set(BEAM_ENABLE_DISCOVERY OFF CACHE BOOL "" FORCE)
-set(BEAM_ENABLE_TAILSCALE OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BEAM_PAIRING_ROOT "${BEAM_ANDROID_DEPS}/pairing/pairing-${ANDROID_ABI}/install" CACHE PATH "" FORCE)
 # Android libc++ provides stop_token/jthread in its experimental library.

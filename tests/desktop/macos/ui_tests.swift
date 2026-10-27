@@ -455,7 +455,7 @@ private func tests() throws {
   try require(preview[1] == "0" && preview[2] == "1", "Backup preview lost existing devices")
   let device = invalid.devices[0]
   try invalid.saveDevice(
-    device, name: "work-mac", endpoint: "127.0.0.1:4269", tailscale: "",
+    device, name: "work-mac", endpoint: "127.0.0.1:4269", fallback: "",
     certificate: "", fingerprint: "")
   try waitUntil {
     invalid.poll()

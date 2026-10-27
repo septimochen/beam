@@ -30,22 +30,15 @@ template <typename Action> void rejects(Action action) {
     throw std::logic_error("invalid route was accepted");
 }
 void unit_tests() {
-    using beam::RoutePreference;
     beam::TrustedPeer peer{"bob", "192.168.1.2:4269", {}, "[FD7A:115C:A1E0::2]:4269"};
     auto endpoints = beam::peer_endpoints(peer);
     require(endpoints.size() == 2 && endpoints[0].host == "192.168.1.2" &&
                 endpoints[1].host == "fd7a:115c:a1e0::2",
             "direct route was not preferred");
-    require(beam::peer_endpoints(peer, RoutePreference::direct).size() == 1 &&
-                beam::peer_endpoints(peer, RoutePreference::tailscale)[0].host ==
-                    "fd7a:115c:a1e0::2",
-            "explicit route preference failed");
     peer.endpoint = "[fd7a:115c:a1e0:0:0:0:0:2]:4269";
     require(beam::peer_endpoints(peer).size() == 1, "equivalent routes were not deduplicated");
-    require(beam::peer_endpoints(peer, RoutePreference::direct).empty(),
-            "Tailscale route classified as direct");
     peer.endpoint = "100.64.0.20:4269";
-    peer.tailscale_endpoint = "[::ffff:100.64.0.20]:4269";
+    peer.fallback_endpoint = "[::ffff:100.64.0.20]:4269";
     endpoints = beam::peer_endpoints(peer);
     require(endpoints.size() == 1 && endpoints.front().host == "100.64.0.20",
             "mapped IPv4 route was not normalized and deduplicated");
@@ -53,18 +46,11 @@ void unit_tests() {
                 "127.0.0.1:4269",
             "mapped loopback was not normalized");
     peer.endpoint.clear();
-    peer.tailscale_endpoint.clear();
+    peer.fallback_endpoint.clear();
     require(beam::peer_endpoints(peer).empty(), "empty peer invented a route");
-    peer.tailscale_endpoint = "127.0.0.1:4269";
-    rejects([&] { static_cast<void>(beam::peer_endpoints(peer)); });
-    for (const auto* host :
-         {"100.64.0.1", "100.127.255.254", "fd7a:115c:a1e0::1", "::ffff:100.64.0.2"})
-        require(beam::is_tailscale_address(host), "Tailscale prefix missed");
-    for (const auto* host : {"100.63.255.255", "100.128.0.0", "10.0.0.1", "fd7a:115c:a1e1::1",
-                             "fd00::1", "::1", "example.ts.net", "fd7a:115c:a1e0::1%2"})
-        require(!beam::is_tailscale_address(host), "non-Tailscale address accepted");
+    peer.fallback_endpoint = "127.0.0.1:4269";
+    require(beam::peer_endpoints(peer).size() == 1, "generic fallback rejected");
     const std::string hidden = std::string("100.64.0.1") + '\0' + "hidden";
-    require(!beam::is_tailscale_address(hidden), "NUL hidden from C address parser");
     rejects([&] { static_cast<void>(beam::numeric_endpoint(hidden + ":4269")); });
     for (const auto* text :
          {"example.ts.net:4269", "127.0.0.1:0", "[::1%0]:4269", "[::1%name]:4269",

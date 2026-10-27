@@ -62,10 +62,15 @@ int main() {
             beam::IdentityStore store(local_path, true);
             const auto local = store.initialize();
             store.pair("phone", workspace.path / "bob.pem", bob.fingerprint, "127.0.0.1:4269");
+            // Existing v2 records become generic endpoint pairs when edited.
+            save(local_path / "phone.peer",
+                 "beam-peer-v2\n127.0.0.1:4269\n100.64.0.2:4269\n" + bob.certificate_pem);
+            require(store.peer("phone").fallback_endpoint == "100.64.0.2:4269",
+                    "legacy peer lost fallback");
             beam::PeerEdit edit;
             edit.name = "work-phone";
             edit.endpoint = "[::1]:5000";
-            edit.tailscale_endpoint = "100.64.0.2:5000";
+            edit.fallback_endpoint = "100.64.0.2:5000";
             edit.expected_fingerprint = bob.fingerprint;
             const auto changed = store.edit_peer("phone", edit);
             require(changed.name == "work-phone" &&
@@ -81,7 +86,7 @@ int main() {
             edit.endpoint = "127.0.0.1:0";
             rejects([&] { store.edit_peer("work-phone", edit); });
             edit.endpoint = "";
-            edit.tailscale_endpoint = "";
+            edit.fallback_endpoint = "";
             edit.certificate_pem = carol.certificate_pem;
             edit.verified_fingerprint = bob.fingerprint;
             rejects([&] { store.edit_peer("work-phone", edit); });
@@ -104,7 +109,15 @@ int main() {
             duplicate.certificate_pem = local.certificate_pem;
             duplicate.verified_fingerprint = local.fingerprint;
             rejects([&] { store.edit_peer("work-phone", duplicate); });
+            beam::PeerEdit fallback;
+            fallback.fallback_endpoint = "192.168.1.10:5000";
+            store.edit_peer("phone", fallback);
             backup = store.export_devices();
+            auto legacy = backup;
+            legacy.replace(0, std::string("beam-devices-backup-v2").size(),
+                           "beam-devices-backup-v1");
+            require(store.preview_import(legacy).peers[0].fallback_endpoint == "192.168.1.10:5000",
+                    "legacy backup lost fallback");
             require(backup.find("PRIVATE KEY") == std::string::npos &&
                         store.preview_import(backup).existing == 2,
                     "bad backup contents");
@@ -140,12 +153,16 @@ int main() {
         std::filesystem::create_symlink(file, workspace.path / "link");
         rejects([&] { static_cast<void>(beam::read_device_backup(workspace.path / "link")); });
         // Simulate interruption after the durable commit and one partial write.
-        save(local_path / "devices.transaction", backup);
+        auto legacy_transaction = backup;
+        legacy_transaction.replace(0, std::string("beam-devices-backup-v2").size(),
+                                   "beam-devices-backup-v1");
+        save(local_path / "devices.transaction", legacy_transaction);
         std::filesystem::remove(local_path / "phone.peer");
         {
             beam::IdentityStore recovered(local_path);
             require(recovered.peers().size() == 2 &&
-                        recovered.peer("phone").endpoint == "127.0.0.1:4269",
+                        recovered.peer("phone").endpoint == "127.0.0.1:4269" &&
+                        recovered.peer("phone").fallback_endpoint == "192.168.1.10:5000",
                     "transaction did not recover");
             require(!std::filesystem::exists(local_path / "devices.transaction"),
                     "journal not cleaned");

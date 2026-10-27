@@ -96,7 +96,7 @@ drains the existing bounded mailbox; destroying the native session cancels and j
 workers. Android document providers are read through a private streamed staging
 file, keeping content URIs and platform APIs out of the transfer core. Android
 builds statically link the pinned MsQuic/quictls into one JNI library and package
-NDK libc++; they disable desktop DNS-SD and local Tailscale subprocess discovery.
+NDK libc++; they disable desktop DNS-SD discovery.
 See [Android](android.md) for lifecycle, storage, and build requirements.
 
 QUIC is the primary transport. Prefer MsQuic; consider quiche only when platform support
@@ -112,25 +112,16 @@ adding a serialization framework solely for popularity.
 
 Future trusted peers may reuse long-lived connections, but the current implementation deliberately uses one
 connection per transfer. LAN discovery uses mDNS with minimal connection metadata.
-Tailscale addresses remain ordinary endpoints: prefer saved direct paths when available,
-fall back safely to Tailscale, and keep both discovery sources optional.
-See [the roadmap](ROADMAP.md) before expanding the current scope.
+Any numeric address, including a VPN address, can be saved as a primary or fallback
+endpoint. See [the roadmap](ROADMAP.md) before expanding the current scope.
 
-## Endpoint routing and Tailscale
+## Endpoint routing
 
-`routing.hpp` provides pure numeric endpoint validation, normalization, Tailscale
-range classification, and selection from a trusted peer's saved routes. The CLI
-chooses direct-first candidates or an explicit preference and supplies the same
-immutable credentials for each. The shared sending state machine retries only
-backend-marked connectivity failures before an authenticated connection exists.
-It never replays offers or payloads, including after a final-exchange failure.
-
-`tailscale.hpp` exposes optional local `tailscale status --json` discovery.
-`src/discovery/tailscale.cpp` uses bounded nlohmann_json parsing and a scoped POSIX
-subprocess with cancellation, a total deadline, and process-group cleanup. It is
-independent of certificate storage and transfer state. Names, online state, and
-addresses are hints; saving a route remains explicit. Tailscale itself controls
-its direct/relayed network path. See [Tailscale](tailscale.md).
+`routing.hpp` validates and normalizes numeric endpoints and selects the primary
+followed by the optional fallback, deduplicating equivalent addresses. The sender
+uses the same pinned credentials for each candidate. It retries only backend-marked
+connectivity failures before authentication or application streams; it never
+replays offers or payloads after a failure.
 
 ## LAN discovery
 

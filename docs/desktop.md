@@ -2,7 +2,7 @@
 
 Beam has an optional native SwiftUI/AppKit app on macOS and Qt 6 Widgets tray
 app on Linux. Both frontends use the same shared C++ desktop service and
-identity store, paired certificates, wire protocol v4, safe direct/Tailscale
+identity store, paired certificates, wire protocol v4, safe primary/fallback
 fallback, streamed file transfer, and text validation as the CLI. Each frontend owns
 only the window, menu bar/tray, clipboard access, and notifications; the core remains
 independent of the desktop toolkit.
@@ -44,7 +44,7 @@ For a custom Linux Qt prefix, pass `CMAKE_ARGS='-DCMAKE_PREFIX_PATH=/path/to/qt'
 directory. Existing macOS Qt build directories remain separate. Manual native
 configuration requires a fresh directory with `-G Ninja` (or the Xcode generator)
 and `-DBEAM_ENABLE_DESKTOP=ON`. The app requires the
-macOS/Linux QUIC core; discovery and Tailscale CLI discovery remain optional.
+macOS/Linux QUIC core; LAN discovery remains optional.
 On macOS the application bundle is always generated inside `apps.noindex`,
 including with a custom build directory, so Spotlight does not index a second
 launchable copy. `make install` publishes the searchable `Beam.app`.
@@ -123,7 +123,7 @@ Linux's default launcher path follows `XDG_DATA_HOME` just as installation does.
 Choose **Add device** for QR display, nearby PIN entry, or invitation paste.
 Review and approve on both devices; see [pairing](pairing.md). Manual CLI PEM
 pairing remains available as an advanced option. Set a peer's numeric address
-with `beam peer NAME --endpoint IP:PORT` or its optional Tailscale route. Click
+with `beam peer NAME --endpoint IP:PORT` or its optional fallback endpoint. Click
 **Refresh devices** after CLI changes. Discovery never chooses or approves a peer.
 The app reports missing identity, peers, or addresses with setup guidance.
 
@@ -260,7 +260,7 @@ or a running Avahi daemon and local multicast access, and also runs in Linux CI.
 ## Device management
 
 macOS has separate **Share** and **Devices** views; Linux opens **Manage devices**.
-The Devices view provides searchable cards, direct/Tailscale routes, individual
+The Devices view provides searchable cards, primary/fallback endpoints, individual
 connection checks, QR/PIN/invitation pairing, local rename/address edits,
 certificate inspection/replacement, and confirmed unpairing. **Backup & restore**
 exports public device records and previews imports before adding trust. Inline

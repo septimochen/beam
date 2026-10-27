@@ -70,17 +70,6 @@ set(beam_optional_discovery ${BEAM_ENABLE_QUIC})
 if(ANDROID)
     set(beam_optional_discovery OFF)
 endif()
-option(BEAM_ENABLE_TAILSCALE "Build optional local Tailscale CLI discovery" ${beam_optional_discovery})
-if(BEAM_ENABLE_TAILSCALE)
-    if(NOT BEAM_ENABLE_QUIC)
-        message(FATAL_ERROR "Tailscale discovery requires the macOS/Linux QUIC core")
-    endif()
-    find_package(nlohmann_json 3.11 REQUIRED)
-    target_sources(beam-core PRIVATE src/discovery/tailscale.cpp)
-    target_link_libraries(beam-core PRIVATE nlohmann_json::nlohmann_json)
-    target_compile_definitions(beam-core PUBLIC BEAM_HAS_TAILSCALE=1)
-endif()
-
 option(BEAM_ENABLE_DISCOVERY "Build LAN discovery with Bonjour/Avahi DNS-SD" ${beam_optional_discovery})
 if(BEAM_ENABLE_DISCOVERY)
     if(NOT UNIX)
@@ -115,8 +104,8 @@ if(BEAM_ENABLE_QUIC)
 endif()
 
 if(ANDROID)
-    if(NOT BEAM_ENABLE_QUIC OR BEAM_ENABLE_DISCOVERY OR BEAM_ENABLE_TAILSCALE)
-        message(FATAL_ERROR "Android requires QUIC with desktop DNS-SD/Tailscale CLI discovery disabled")
+    if(NOT BEAM_ENABLE_QUIC OR BEAM_ENABLE_DISCOVERY)
+        message(FATAL_ERROR "Android requires QUIC with desktop DNS-SD discovery disabled")
     endif()
     add_library(beam-android SHARED src/android/jni.cpp)
     target_link_libraries(beam-android PRIVATE beam-app-support)
@@ -194,7 +183,6 @@ if(BUILD_TESTING)
         "-DBEAM_VERSION=${PROJECT_VERSION}"
         "-DBEAM_HAS_QUIC=${BEAM_ENABLE_QUIC}"
         "-DBEAM_HAS_DISCOVERY=${BEAM_ENABLE_DISCOVERY}"
-        "-DBEAM_HAS_TAILSCALE=${BEAM_ENABLE_TAILSCALE}"
         "-DBEAM_HAS_PAIRING=${BEAM_ENABLE_PAIRING}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_tests.cmake")
     if(BEAM_ENABLE_DISCOVERY)
@@ -259,16 +247,6 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/routing_integration.sh"
             "$<TARGET_FILE:beam>" "$<TARGET_FILE:beam-routing-tests>")
         set_tests_properties(routing-localhost PROPERTIES TIMEOUT 45)
-        if(BEAM_ENABLE_TAILSCALE)
-            add_executable(beam-tailscale-tests tests/tailscale_tests.cpp)
-            target_link_libraries(beam-tailscale-tests PRIVATE Beam::Core)
-            beam_enable_warnings(beam-tailscale-tests)
-            add_test(NAME tailscale COMMAND beam-tailscale-tests)
-            set_tests_properties(tailscale PROPERTIES TIMEOUT 15)
-            add_test(NAME tailscale-cli COMMAND "${BASH_EXECUTABLE}"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/tailscale_cli.sh" "$<TARGET_FILE:beam>")
-            set_tests_properties(tailscale-cli PROPERTIES TIMEOUT 15)
-        endif()
         add_test(NAME content-localhost COMMAND "${BASH_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/content_integration.sh"
             "$<TARGET_FILE:beam>" "$<TARGET_FILE:beam-content-tests>")

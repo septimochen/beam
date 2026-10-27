@@ -275,7 +275,7 @@ closed, and system roots/discovery records cannot grant authorization.
 See [pairing](pairing.md) for certificate/storage rules and renewal behavior.
 
 Transfers use saved numeric endpoints. Pairing LAN discovery is available;
-transfer-receiver DNS-SD and Tailscale CLI discovery remain disabled. A manually entered numeric tailnet
+transfer-receiver DNS-SD remains disabled. A manually entered numeric tailnet
 address works when the Android Tailscale VPN and peer routing permit UDP; this
 does not change Beam's certificate verification.
 
@@ -402,7 +402,7 @@ and host tests do not establish those behaviors.
 
 **Manage devices** opens a native screen with search, device cards, saved routes,
 connection checks, refresh, Add device, and My identity. Edit a device's local name,
-IP/port, and optional Tailscale route together. Enable **Replace certificate** to
+IP/port, and optional fallback endpoint together. Enable **Replace certificate** to
 choose/paste a new public certificate and verify its full SHA-256 fingerprint.
 Invalid edits keep the form open. **More** shows the certificate or confirms unpair.
 

@@ -269,7 +269,7 @@ class DevicesActivity : Activity() {
         label(device[1].ifEmpty { "No direct address saved" }).apply { setTextIsSelectable(true) }
       )
       if (device[2].isNotEmpty())
-        card.addView(label("Tailscale · ${device[2]}").apply { setTextIsSelectable(true) })
+        card.addView(label("Fallback · ${device[2]}").apply { setTextIsSelectable(true) })
       val connection = label("Connection not checked", 13f)
       connection.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
       checkLabels[device[0]] = connection
@@ -424,7 +424,7 @@ class DevicesActivity : Activity() {
         12f,
       )
     )
-    val tailscale = field(form, "Tailscale address (optional)", device[2])
+    val fallback = field(form, "Fallback address (optional)", device[2])
     form.addView(label("Current SHA-256\n${device[3]}", 12f).apply { setTextIsSelectable(true) })
     val replace =
       CheckBox(this).apply {
@@ -491,7 +491,7 @@ class DevicesActivity : Activity() {
               device[0],
               name.text.toString(),
               endpoint.text.toString(),
-              tailscale.text.toString(),
+              fallback.text.toString(),
               if (replace.isChecked) pem.text.toString() else "",
               if (replace.isChecked) fingerprint.text.toString() else "",
               device[3],
@@ -593,7 +593,7 @@ class DevicesActivity : Activity() {
     for (device in preview.drop(3).chunked(4)) {
       form.addView(label(device[0], 16f, true))
       form.addView(label(device[1].ifEmpty { "No direct address" }))
-      if (device[2].isNotEmpty()) form.addView(label("Tailscale: ${device[2]}"))
+      if (device[2].isNotEmpty()) form.addView(label("Fallback: ${device[2]}"))
       form.addView(
         label(device[3], 12f).apply {
           typeface = Typeface.MONOSPACE

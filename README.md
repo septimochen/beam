@@ -164,20 +164,18 @@ foreground controls, APK paths, and platform verification.
 
 ## Useful options and tips
 
-For devices on an existing tailnet, discover an address and save it alongside the
-paired device's LAN endpoint:
+A paired device can have a primary and an optional fallback numeric endpoint:
 
 ```sh
-./build/beam devices --tailscale
-./build/beam peer laptop --tailscale-endpoint 100.64.0.20:4269
-./build/beam send hello.txt laptop --route tailscale
+./build/beam peer laptop --endpoint 192.168.1.50:4269
+./build/beam peer laptop --fallback-endpoint 100.64.0.20:4269
+./build/beam send hello.txt laptop
 ```
 
-The default route tries the saved direct address before a Tailscale address, with
-fallback only for connection failures before authentication. `--route direct` or
-`--route tailscale` selects one class; an explicit `--endpoint` selects exactly
-one address. See [Tailscale setup](docs/tailscale.md) for trust, build dependencies,
-and peer-record compatibility.
+Beam tries the primary first and falls back only for connection failures before
+authentication. `--endpoint` overrides both for one transfer. Tailscale IPs work
+as ordinary endpoints; obtain them separately because LAN discovery uses mDNS.
+See [pairing](docs/pairing.md) for storage compatibility and trust.
 
 - Use `beam peers` to list trusted devices and `beam unpair NAME` to remove one.
   Restart a running receiver after removal to apply the change.
@@ -214,7 +212,7 @@ make check           # check formatting, clang-tidy/static analysis, build, and 
 make lint            # run clang-tidy/static analysis for the configured build
 make discovery-test  # test live LAN discovery; requires Bonjour/Avahi
 make content-test    # test text validation, in-memory reception, and paired probes/transfers
-make routing-test    # test Tailscale fixtures and safe endpoint fallback
+make routing-test    # test endpoint selection and safe fallback
 make desktop-test    # build desktop app, test worker transfers and UI
 make android-check   # Android formatting, lint, unit tests, and debug APK
 ```

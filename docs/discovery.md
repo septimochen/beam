@@ -5,9 +5,8 @@ The backend uses macOS Bonjour and Linux `libavahi-compat-libdnssd`; no discover
 server, account, or persistent device database is involved. Avahi must be running
 on Linux. Build with `-DBEAM_ENABLE_DISCOVERY=OFF` to omit this dependency.
 
-`beam devices --tailscale` uses a separate optional local CLI backend for tailnet
-address hints. It does not discover Beam services or change pairing; see
-[Tailscale routing](tailscale.md). LAN discovery remains independently configurable.
+LAN discovery does not discover remote tailnet devices. Numeric VPN addresses can
+be entered as ordinary endpoints; discovery never changes pairing or trust.
 
 ## CLI behavior
 

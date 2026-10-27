@@ -22,18 +22,18 @@ for device in bob charlie; do
 done
 printf 'routed file\n' >sample.txt
 # Updating either route preserves the other route and the paired certificate.
-"$beam" peer bob --state-dir "$root/alice" --tailscale-endpoint 100.64.0.2:4269
+"$beam" peer bob --state-dir "$root/alice" --fallback-endpoint 100.64.0.2:4269
 "$beam" peer bob --state-dir "$root/alice" --endpoint "$fallback"
 "$beam" peers --state-dir "$root/alice" >peers.log
 grep -q '100.64.0.2:4269' peers.log
 grep -q "$(fingerprint bob)" peers.log
 cp "$root/alice/bob.peer" saved.peer
-if "$beam" peer bob --state-dir "$root/alice" --tailscale-endpoint 192.168.1.2:4269 >bad.log 2>&1; then echo 'non-Tailscale route accepted'; exit 1; fi
+if "$beam" peer bob --state-dir "$root/alice" --fallback-endpoint invalid:4269 >bad.log 2>&1; then echo 'invalid route accepted'; exit 1; fi
 cmp saved.peer "$root/alice/bob.peer"
-"$beam" peer bob --state-dir "$root/alice" --clear-tailscale
+"$beam" peer bob --state-dir "$root/alice" --clear-fallback
 "$beam" peers --state-dir "$root/alice" >peers.log
 if grep -q '100.64.0.2:4269' peers.log; then echo 'route removal failed'; exit 1; fi
-"$beam" peer bob --state-dir "$root/alice" --tailscale-endpoint '[fd7a:115c:a1e0::2]:4269'
+"$beam" peer bob --state-dir "$root/alice" --fallback-endpoint '[fd7a:115c:a1e0::2]:4269'
 start_receiver() {
     local receiver=${1:-bob}
     if [[ "$receiver" == hold-completion ]]; then
@@ -70,18 +70,25 @@ for kind in file text url; do
     esac
     rm -f output/*
 done
-# A direct route wins without touching the configured unavailable Tailscale route.
+# Generic saved endpoints also drive fallback through the CLI.
+"$beam" peer bob --state-dir "$root/alice" --endpoint "$primary" --fallback-endpoint "$fallback" > /dev/null
+start_receiver
+if ! "$beam" text 'fallback works' bob --state-dir "$root/alice" --timeout 3 >sender.log 2>&1; then cat sender.log receiver.log; exit 1; fi
+if ! wait_receiver; then cat receiver.log; exit 1; fi
+[[ $(grep -c '^Trying ' sender.log) == 2 ]]
+grep -q "Trying $fallback" sender.log
+"$beam" peer bob --state-dir "$root/alice" --endpoint "$fallback" --fallback-endpoint '[fd7a:115c:a1e0::2]:4269' > /dev/null
+# The primary route wins without touching the unavailable fallback.
 start_receiver
 if ! "$beam" text 'direct preferred' bob --state-dir "$root/alice" --timeout 3 >sender.log 2>&1; then cat sender.log receiver.log; exit 1; fi
 if ! wait_receiver; then cat receiver.log; exit 1; fi
 [[ $(grep -c '^Trying ' sender.log) == 1 ]]
 grep -q "Trying $fallback" sender.log
 rm -f output/*
-# Explicit endpoint and route selection retain the same TLS identity.
-for option in direct override mapped; do
+# Explicit endpoints retain the same TLS identity.
+for option in override mapped; do
     start_receiver
     case "$option" in
-        direct) route=(--route direct) ;;
         override) route=(--endpoint "$fallback") ;;
         mapped) route=(--endpoint "[::ffff:127.0.0.1]:$port") ;;
     esac

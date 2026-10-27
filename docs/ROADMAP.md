@@ -34,7 +34,7 @@ protocol v4; see [protocol](protocol.md) for compatibility and cancellation sema
 | 3 | LAN discovery through mDNS; `beam devices` |
 | 4 | Persistent device identity, explicit pairing, and stored trusted peers |
 | 5 | Typed text/URL transfer; `beam text "hello" macbook` |
-| 6 | Optional Tailscale endpoint configuration/discovery and sensible endpoint preference |
+| 6 | Generic primary and fallback endpoints |
 | 7 | Desktop tray, drag-and-drop, notifications, and explicit clipboard sharing |
 | 8 | Android Kotlin/JNI app with share target, file picker, receiver, and device picker |
 | 9 | Authenticated LAN pairing: phone QR scan, nearby PIN entry, and invitation fallback |
@@ -101,23 +101,13 @@ retired. See [current content behavior](content.md).
 
 ## Phase 6 implementation
 
-- [x] Optional read-only local Tailscale CLI discovery with numeric address hints.
-- [x] Bounded JSON/process handling, deadlines, cancellation, and child cleanup.
-- [x] Save a Tailscale route beside a paired endpoint without changing trust.
-- [x] Normalize/deduplicate routes; prefer direct, support explicit route selection.
-- [x] Fall back only for connectivity failures before authentication/application data.
-- [x] Preserve pinned identity and prevent retries after rejection or payload transmission.
-- [x] Test route storage/selection, CLI discovery, bounded failures, and localhost fallback.
-- [x] Verify macOS Debug/Release, ASan/UBSan, direct-only, Tailscale-only discovery,
-  discovery-only, scaffold, and live Bonjour discovery/transfer checks.
-- [x] Verify Phase 6 on Linux CI ([run 38135083076](https://github.com/septimochen/beam/actions/runs/38135083076)),
-  including formatting, LLVM 23 static analysis, Tailscale fixtures, authenticated
-  endpoint fallback, typed/paired/file transfers, and live Avahi discovery.
+- [x] Save primary and fallback numeric endpoints without changing trust.
+- [x] Normalize and deduplicate endpoints; retry only safe pre-authentication failures.
+- [x] Preserve pinned identity and avoid replay after rejection or payload transmission.
 
-Beam 0.6.0 retains wire protocol v3 and reads legacy peer records. Route updates
-write versioned records that older Beam binaries cannot read. A live Tailscale
-tailnet transfer remains unverified; deterministic tests need no account or daemon.
-See [Tailscale](tailscale.md) for configuration and safety boundaries.
+The original Tailscale-specific discovery and routing controls have been removed.
+Existing peer records and backups remain readable; generic fallback endpoints replace
+the Tailscale slot. Live tailnet transfers remain unverified.
 
 ## Phase 7 implementation
 
@@ -168,8 +158,7 @@ privacy design, and native desktop verification limits.
   scaffold-only build, Android Kotlin formatting/lint/unit tests, and ARM64 APK.
 
 Beam 0.8.0 retains wire protocol v3 and existing identity/route records. Android
-uses saved numeric endpoints; LAN discovery/advertisement and Tailscale CLI
-integration remain desktop/CLI features. Physical-device LAN/tailnet behavior,
+uses saved numeric endpoints; LAN discovery/advertisement remains a desktop/CLI feature. Physical-device LAN/tailnet behavior,
 OEM background policy, and third-party provider compatibility remain unverified.
 See [Android](android.md) for build, install, pairing, and validation details.
 
@@ -191,7 +180,7 @@ protocol, interruption recovery, and deployment limits.
 
 ## Device management
 
-- [x] Shared transactional rename, direct/Tailscale route edits, and verified public certificate replacement.
+- [x] Shared transactional rename, primary/fallback endpoint edits, and verified public certificate replacement.
 - [x] Portable public device backups with bounded validation, review, conflict rejection, and idempotent restore.
 - [x] CLI inspection, combined edits, backup export, import preview, and explicit restore approval.
 - [x] Native macOS Devices view and Linux/Android management screens with search, cards, pairing, connectivity, refresh, identity, and confirmed unpairing.
@@ -234,7 +223,7 @@ LAN/Tailscale reachability, and minimal dependencies or operational complexity.
 Future everyday commands should select known devices by name, such as
 `beam send photo.jpg pixel` or `beam clipboard laptop`. Ports, routing, stream IDs,
 and certificate details should eventually live below that UX. Paired aliases now
-support file and text transfers (including URLs) with stored direct/Tailscale routes or an
+support file and text transfers (including URLs) with stored primary/fallback endpoints or an
 explicit endpoint override. Discovery remains an untrusted address hint;
 see [pairing](pairing.md) for identity and trust management.
 

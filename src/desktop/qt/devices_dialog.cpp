@@ -54,10 +54,10 @@ bool edit_device(QWidget* parent, Service& service, const TrustedPeer& peer,
     endpoint->setMaxLength(256);
     endpoint->setPlaceholderText("192.168.1.20:4269 or [IPv6]:4269");
     form->addRow("IP address & port", endpoint);
-    auto* tailscale = new QLineEdit(text(peer.tailscale_endpoint), body);
-    tailscale->setObjectName("deviceTailscale");
-    tailscale->setMaxLength(256);
-    form->addRow("Tailscale (optional)", tailscale);
+    auto* fallback = new QLineEdit(text(peer.fallback_endpoint), body);
+    fallback->setObjectName("deviceFallback");
+    fallback->setMaxLength(256);
+    form->addRow("Fallback (optional)", fallback);
     form->addRow(label(
         "Leave an address empty to remove it. Saving stops active transfers and checks.", body));
     form->addRow("Current SHA-256", label(text(peer.identity.fingerprint), body));
@@ -115,7 +115,7 @@ bool edit_device(QWidget* parent, Service& service, const TrustedPeer& peer,
                 throw std::invalid_argument(
                     "Choose a certificate and verify all 64 fingerprint characters");
             service.edit_peer(
-                peer.name, {bytes(name->text()), bytes(endpoint->text()), bytes(tailscale->text()),
+                peer.name, {bytes(name->text()), bytes(endpoint->text()), bytes(fallback->text()),
                             replace->isChecked() ? bytes(certificate->toPlainText()) : "",
                             replace->isChecked() ? bytes(fingerprint->text()) : "",
                             peer.identity.fingerprint});
@@ -237,7 +237,7 @@ void show_devices_dialog(QWidget* parent, const Config& config, Service& service
             const auto query = search->text();
             if (!query.isEmpty() && !text(device.name).contains(query, Qt::CaseInsensitive) &&
                 !text(device.endpoint).contains(query, Qt::CaseInsensitive) &&
-                !text(device.tailscale_endpoint).contains(query, Qt::CaseInsensitive))
+                !text(device.fallback_endpoint).contains(query, Qt::CaseInsensitive))
                 continue;
             ++visible;
             auto* card = new QFrame(list);
@@ -257,8 +257,8 @@ void show_devices_dialog(QWidget* parent, const Config& config, Service& service
             contents->addLayout(top);
             contents->addWidget(label(
                 device.endpoint.empty() ? "No direct address saved" : text(device.endpoint), card));
-            if (!device.tailscale_endpoint.empty())
-                contents->addWidget(label("Tailscale · " + text(device.tailscale_endpoint), card));
+            if (!device.fallback_endpoint.empty())
+                contents->addWidget(label("Fallback · " + text(device.fallback_endpoint), card));
             auto* check_status = label("Connection not checked", card);
             contents->addWidget(check_status);
             auto* actions = new QHBoxLayout;
@@ -381,7 +381,7 @@ void show_devices_dialog(QWidget* parent, const Config& config, Service& service
             QString details;
             for (const auto& peer : preview.peers)
                 details += text(peer.name) + "\n" + text(peer.endpoint) +
-                           "\nTailscale: " + text(peer.tailscale_endpoint) +
+                           "\nFallback: " + text(peer.fallback_endpoint) +
                            "\nSHA-256: " + text(peer.identity.fingerprint) + "\n\n";
             auto* content = new QPlainTextEdit(details, &review);
             content->setReadOnly(true);

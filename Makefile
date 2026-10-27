@@ -156,7 +156,7 @@ content-test: build
 	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^content(-localhost)?$$'
 
 routing-test: build
-	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^(tailscale(-cli)?|routing(-localhost)?)$$'
+	$(CTEST) --test-dir "$(BUILD_DIR)" --build-config $(BUILD_TYPE) --output-on-failure -R '^(routing(-localhost)?)$$'
 
 # Explicit LAN test: requires a running Bonjour/Avahi daemon and multicast access.
 discovery-test: configure
@@ -201,7 +201,7 @@ help:
 	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"
 	@echo "devices-test: device edits, certificate replacement, backup restore and CLI checks"
 	@echo "content-test: text and connectivity validation and paired localhost transfers (requires QUIC build)"
-	@echo "routing-test: Tailscale discovery fixtures, route selection and safe localhost fallback"
+	@echo "routing-test: endpoint selection and safe localhost fallback"
 	@echo "desktop: native Swift macOS (BUILD_DIR/macos/dev) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"
 	@echo "android-setup: install latest stable SDK/NDK/CMake tools; android-toolchain: show selected installed versions"

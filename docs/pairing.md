@@ -78,10 +78,12 @@ Private keys always stay on their original devices.
 
 ## Advanced manual pairing
 
-Phase 6 adds an optional saved Tailscale endpoint beside the primary endpoint.
-Route updates preserve the approved certificate and use versioned peer records;
-the reader also accepts legacy records, while older Beam binaries cannot read an
-updated record. See [Tailscale routing](tailscale.md) for configuration and fallback.
+A peer may have a primary and optional fallback numeric endpoint. Beam tries them
+in order, retrying only safe connection failures before authentication. An explicit
+`--endpoint` overrides both. Tailscale IPs are ordinary endpoints; discover them
+separately from LAN mDNS. Updates preserve the approved certificate. Existing peer
+records and backups remain readable; newly written records and backups use newer
+formats that older Beam binaries cannot read.
 
 ## Initialize and exchange public certificates
 
@@ -195,7 +197,7 @@ keeps an explicit receiving Stop in effect.
 ## Device management
 
 Open **Devices** in macOS, or **Manage devices** in Linux/Android. Search by device
-name or address. Each card shows saved direct/Tailscale routes and a separate
+name or address. Each card shows saved primary and fallback endpoints and a separate
 **Check connection** action. Checks use authenticated QUIC/TLS, transfer no content,
 and show the result of that check; refreshing the saved list does not imply a
 connectivity check. **Add device** keeps the QR, nearby PIN, and invitation flows.
@@ -204,14 +206,14 @@ connectivity check. **Add device** keeps the QR, nearby PIN, and invitation flow
 **Edit** changes the local name and IP/port together. Names retain the CLI alias
 rules (lowercase, 1–63 characters, starting with a letter); the remote device's
 name is unaffected. Use `IP:PORT` or `[IPv6]:PORT`. Leave a route blank to remove
-it. Tailscale routes must use an address in the supported Tailscale ranges.
+it. Both accept numeric IPv4 or IPv6 addresses.
 Renaming preserves the certificate and does not require pairing again.
 
 ```sh
 beam peer laptop                              # inspect saved details
 beam peer laptop --rename work-mac --endpoint 192.168.1.60:4269
-beam peer work-mac --tailscale-endpoint 100.64.0.2:4269
-beam peer work-mac --clear-endpoint --clear-tailscale
+beam peer work-mac --fallback-endpoint 100.64.0.2:4269
+beam peer work-mac --clear-endpoint --clear-fallback
 beam check work-mac                           # authenticated, bounded check
 beam peers                                    # refresh the saved list
 beam devices                                  # discover untrusted LAN hints
@@ -232,7 +234,7 @@ beam peer work-mac --cert replacement-public.pem --fingerprint VERIFIED_NEW_SHA2
 ### Back up and restore paired devices
 
 **Export backup** writes a portable `.beam-backup` file containing local aliases,
-direct/Tailscale endpoints, public certificates, their exact fingerprints, and the
+primary and fallback endpoints, public certificates, their exact fingerprints, and the
 exporting device's fingerprint. It contains **no private key**, received content,
 settings, or pending pairing approvals. The CLI/desktop exporter creates a new
 owner-only file and refuses to overwrite existing paths. Android uses the system

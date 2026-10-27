@@ -11,11 +11,8 @@ current certificate authorization model and [protocol](protocol.md) for wire val
   Keep QUIC encryption enabled even when the connection travels over Tailscale.
 - Discovery is a convenience, not authentication. Never automatically trust a
   discovered machine or advertise secrets in discovery records.
-- Treat Tailscale status names, online state, and numeric ranges as endpoint hints.
-  Preserve pinned TLS identity on every route. Retry only backend-marked connection
-  failures before authentication; never replay an offer or payload after failure.
-  Bound local CLI output and lifetime, and reap children on cancellation/error.
-  See [Tailscale](tailscale.md).
+- Preserve pinned TLS identity on every endpoint. Retry only backend-marked
+  connection failures before authentication; never replay an offer or payload.
 - Persistent identity must survive network changes; an IP address is not
   device identity. Manual pairing must explicitly verify the full certificate fingerprint
   through an independent channel. Network pairing may instead use the reviewed

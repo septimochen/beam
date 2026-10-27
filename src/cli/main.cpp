@@ -15,9 +15,6 @@
 #include "beam/transfer.hpp"
 #include <unistd.h>
 #endif
-#ifdef BEAM_HAS_TAILSCALE
-#include "beam/tailscale.hpp"
-#endif
 #include <array>
 #include <charconv>
 #include <csignal>
@@ -51,9 +48,8 @@ void print_help() {
            "  beam peer NAME --cert PEM --fingerprint VERIFIED_SHA256 [--state-dir DIR]\n"
            "  beam unpair NAME [--state-dir DIR]\n"
            "  beam peer NAME --endpoint IP:PORT [--state-dir DIR]\n"
-           "  beam peer NAME --tailscale-endpoint IP:PORT [--state-dir DIR]\n"
-           "  beam peer NAME --clear-tailscale [--state-dir DIR]\n"
-           "  beam devices --tailscale [--port PORT] [--timeout SECONDS] [--tailscale-cli PATH]\n"
+           "  beam peer NAME --fallback-endpoint IP:PORT [--state-dir DIR]\n"
+           "  beam peer NAME --clear-fallback [--state-dir DIR]\n"
            "  beam send FILE PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS] "
            "[--no-progress]\n"
            "  beam text TEXT PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS] "
@@ -67,7 +63,6 @@ void print_help() {
            "  beam send IP:PORT FILE --cert PEM --key PEM --ca PEM [--server-name NAME] "
            "[--timeout SECONDS] [--no-progress]\n\n"
            "Receive files and text until Ctrl-C; --once exits after one transfer.\n"
-           "Paired send/text/check accept --route auto|direct|tailscale; default: direct first.\n"
            "--endpoint overrides all saved routes. Fallback only precedes authentication.\n"
            "Files default to ~/Downloads; an explicit receive folder must exist.\n"
            "Received text is labeled and written to stdout.\n"
@@ -344,46 +339,6 @@ int devices_command(int argc, char** argv) {
     return 0;
 }
 #endif
-#ifdef BEAM_HAS_TAILSCALE
-int tailscale_devices_command(int argc, char** argv) {
-    beam::DiscoveryOptions options;
-    std::uint16_t port = 4269;
-    std::string executable = "tailscale";
-    std::map<std::string, std::string> arguments;
-    for (int index = 2; index < argc; ++index) {
-        const std::string argument = argv[index];
-        if (argument == "--tailscale") {
-            if (!arguments.emplace(argument, "").second)
-                throw std::invalid_argument("duplicate option: " + argument);
-            continue;
-        }
-        if (argument != "--timeout" && argument != "--port" && argument != "--tailscale-cli")
-            throw std::invalid_argument("unknown Tailscale discovery option: " + argument);
-        if (++index == argc || std::string_view(argv[index]).starts_with("--"))
-            throw std::invalid_argument("missing value for " + argument);
-        if (!arguments.emplace(argument, argv[index]).second)
-            throw std::invalid_argument("duplicate option: " + argument);
-    }
-    if (arguments.contains("--timeout"))
-        options.timeout =
-            std::chrono::seconds(number(arguments.at("--timeout"), 60, "discovery timeout"));
-    if (arguments.contains("--port"))
-        port = static_cast<std::uint16_t>(number(arguments.at("--port"), 65535, "Tailscale port"));
-    if (arguments.contains("--tailscale-cli"))
-        executable = arguments.at("--tailscale-cli");
-    InterruptGuard interrupts;
-    options.should_cancel = [] { return interrupted != 0; };
-    const auto devices = beam::discover_tailscale(options, port, executable);
-    std::cout << "NAME\tENDPOINT\tSTATUS\n";
-    for (const auto& device : devices)
-        for (const auto& endpoint : device.endpoints)
-            std::cout << device.name << '\t' << beam::endpoint_string(endpoint) << '\t'
-                      << (device.online ? "online" : "offline") << '\n';
-    std::cerr << "Tailscale addresses are untrusted hints; Beam receiver availability and pairing "
-                 "must be checked independently.\n";
-    return 0;
-}
-#endif
 #ifdef BEAM_HAS_QUIC
 std::filesystem::path state_directory(const std::map<std::string, std::string>& options) {
     return options.contains("--state-dir") ? std::filesystem::path(options.at("--state-dir"))
@@ -400,7 +355,7 @@ int identity_command(int argc, char** argv) {
             continue;
         }
         if ((command == "peer" &&
-             (argument == "--clear-tailscale" || argument == "--clear-endpoint")) ||
+             (argument == "--clear-fallback" || argument == "--clear-endpoint")) ||
             (command == "peers" && argument == "--approve")) {
             if (!options.emplace(argument, "").second)
                 throw std::invalid_argument("duplicate option: " + argument);
@@ -410,7 +365,7 @@ int identity_command(int argc, char** argv) {
             !(command == "pair" &&
               (argument == "--cert" || argument == "--fingerprint" || argument == "--endpoint")) &&
             !(command == "peer" &&
-              (argument == "--endpoint" || argument == "--tailscale-endpoint" ||
+              (argument == "--endpoint" || argument == "--fallback-endpoint" ||
                argument == "--rename" || argument == "--cert" || argument == "--fingerprint")))
             throw std::invalid_argument("unknown option: " + argument);
         if (++index == argc || std::string_view(argv[index]).starts_with("--"))
@@ -456,7 +411,7 @@ int identity_command(int argc, char** argv) {
             const auto backup = store.preview_import(contents);
             std::cout << "Backup source: " << backup.source_fingerprint << "\n";
             for (const auto& peer : backup.peers)
-                std::cout << peer.name << '\t' << peer.endpoint << '\t' << peer.tailscale_endpoint
+                std::cout << peer.name << '\t' << peer.endpoint << '\t' << peer.fallback_endpoint
                           << '\t' << peer.identity.fingerprint << '\n';
             std::cout << backup.added << " to restore, " << backup.existing
                       << " already paired (current settings kept).\n";
@@ -475,11 +430,11 @@ int identity_command(int argc, char** argv) {
         if (!positional.empty() || options.contains("--approve"))
             throw std::invalid_argument(
                 "use peers, peers export FILE, or peers import FILE [--approve]");
-        std::cout << "NAME\tENDPOINT\tTAILSCALE\tFINGERPRINT\n";
+        std::cout << "NAME\tENDPOINT\tFALLBACK\tFINGERPRINT\n";
         for (const auto& peer : store.peers())
             std::cout << peer.name << '\t' << (peer.endpoint.empty() ? "(unset)" : peer.endpoint)
                       << '\t'
-                      << (peer.tailscale_endpoint.empty() ? "(unset)" : peer.tailscale_endpoint)
+                      << (peer.fallback_endpoint.empty() ? "(unset)" : peer.fallback_endpoint)
                       << '\t' << peer.identity.fingerprint << '\n';
         return 0;
     }
@@ -499,7 +454,7 @@ int identity_command(int argc, char** argv) {
         std::cout << "Unpaired " << positional[0] << " on this device. Pair again to reconnect.\n";
     } else {
         if ((options.contains("--endpoint") && options.contains("--clear-endpoint")) ||
-            (options.contains("--tailscale-endpoint") && options.contains("--clear-tailscale")))
+            (options.contains("--fallback-endpoint") && options.contains("--clear-fallback")))
             throw std::invalid_argument("choose a route value or clear it");
         if (options.contains("--cert") != options.contains("--fingerprint"))
             throw std::invalid_argument("certificate replacement needs --cert and --fingerprint");
@@ -511,20 +466,20 @@ int identity_command(int argc, char** argv) {
             edit.endpoint = required("--endpoint");
         if (options.contains("--clear-endpoint"))
             edit.endpoint = "";
-        if (options.contains("--tailscale-endpoint"))
-            edit.tailscale_endpoint = required("--tailscale-endpoint");
-        if (options.contains("--clear-tailscale"))
-            edit.tailscale_endpoint = "";
+        if (options.contains("--fallback-endpoint"))
+            edit.fallback_endpoint = required("--fallback-endpoint");
+        if (options.contains("--clear-fallback"))
+            edit.fallback_endpoint = "";
         if (options.contains("--cert")) {
             edit.certificate_pem = beam::read_device_backup(required("--cert"));
             edit.verified_fingerprint = required("--fingerprint");
         }
         const bool changed =
-            edit.name || edit.endpoint || edit.tailscale_endpoint || !edit.certificate_pem.empty();
+            edit.name || edit.endpoint || edit.fallback_endpoint || !edit.certificate_pem.empty();
         const auto peer =
             changed ? store.edit_peer(positional[0], edit) : store.peer(positional[0]);
         std::cout << (changed ? "Updated " : "Device ") << peer.name
-                  << "\nEndpoint: " << peer.endpoint << "\nTailscale: " << peer.tailscale_endpoint
+                  << "\nEndpoint: " << peer.endpoint << "\nFallback: " << peer.fallback_endpoint
                   << "\nFingerprint: " << peer.identity.fingerprint << '\n';
     }
     return 0;
@@ -567,8 +522,7 @@ int transfer_command(int argc, char** argv, bool receive) {
             argument != "--timeout" && argument != "--state-dir" &&
             !(receive &&
               (argument == "--listen" || argument == "--output" || argument == "--name")) &&
-            !(!receive &&
-              (argument == "--server-name" || argument == "--endpoint" || argument == "--route")))
+            !(!receive && (argument == "--server-name" || argument == "--endpoint")))
             throw std::invalid_argument("unknown option: " + argument);
         if (++index == argc || std::string_view{argv[index]}.starts_with("--"))
             throw std::invalid_argument("missing value for " + argument);
@@ -594,10 +548,9 @@ int transfer_command(int argc, char** argv, bool receive) {
     beam::Endpoint endpoint{};
     std::string filename, server_name;
     if (manual) {
-        if (options.contains("--state-dir") || options.contains("--endpoint") ||
-            options.contains("--route"))
+        if (options.contains("--state-dir") || options.contains("--endpoint"))
             throw std::invalid_argument(
-                "manual credentials cannot be combined with --state-dir, --endpoint or --route");
+                "manual credentials cannot be combined with --state-dir or --endpoint");
         configuration.credentials = {required("--cert"), required("--key"), required("--ca")};
     }
     if (receive) {
@@ -646,18 +599,6 @@ int transfer_command(int argc, char** argv, bool receive) {
             std::chrono::seconds(number(options.at("--timeout"), 86400, "timeout"));
     if (checking)
         configuration.timeout = std::min(configuration.timeout, std::chrono::milliseconds(5000));
-    beam::RoutePreference preference = beam::RoutePreference::automatic;
-    if (options.contains("--route")) {
-        const auto& route = options.at("--route");
-        if (route == "direct")
-            preference = beam::RoutePreference::direct;
-        else if (route == "tailscale")
-            preference = beam::RoutePreference::tailscale;
-        else if (route != "auto")
-            throw std::invalid_argument("route must be auto, direct or tailscale");
-        if (options.contains("--endpoint"))
-            throw std::invalid_argument("--route cannot be combined with --endpoint");
-    }
     if (!manual) {
         beam::IdentityStore store(state_directory(options));
         if (receive) {
@@ -667,11 +608,10 @@ int transfer_command(int argc, char** argv, bool receive) {
             const auto candidates =
                 options.contains("--endpoint")
                     ? std::vector{beam::numeric_endpoint(options.at("--endpoint"))}
-                    : beam::peer_endpoints(peer, preference);
+                    : beam::peer_endpoints(peer);
             if (candidates.empty())
-                throw std::invalid_argument(
-                    "peer has no endpoint for this route; use --endpoint IP:PORT or "
-                    "beam peer NAME --endpoint IP:PORT");
+                throw std::invalid_argument("peer has no endpoint; use --endpoint IP:PORT or "
+                                            "beam peer NAME --endpoint IP:PORT");
             endpoint = candidates.front();
             configuration.fallback_endpoints.assign(candidates.begin() + 1, candidates.end());
             if (candidates.size() > 1)
@@ -870,16 +810,6 @@ int main(int argc, char** argv) {
 #endif
         }
         if (command == "devices") {
-            for (int index = 2; index < argc; ++index) {
-                if (std::string_view(argv[index]) == "--tailscale") {
-#ifdef BEAM_HAS_TAILSCALE
-                    return tailscale_devices_command(argc, argv);
-#else
-                    throw std::runtime_error(
-                        "Tailscale discovery is disabled in this build; see README.md");
-#endif
-                }
-            }
 #ifdef BEAM_HAS_DISCOVERY
             return devices_command(argc, argv);
 #else
@@ -910,7 +840,7 @@ int main(int argc, char** argv) {
         std::cerr << "beam [" << beam::error_name(error.code) << "]: " << error.what() << '\n';
         return error.code == beam::TransferErrorCode::cancelled ? 130 : 1;
 #endif
-#if defined(BEAM_HAS_DISCOVERY) || defined(BEAM_HAS_TAILSCALE)
+#ifdef BEAM_HAS_DISCOVERY
     } catch (const beam::DiscoveryError& error) {
         std::cerr << "beam: " << error.what() << '\n';
         return error.cancelled ? 130 : 1;

@@ -29,7 +29,7 @@ enum ContentSelection: String, CaseIterable, Identifiable {
 struct ManagedDevice: Identifiable, Equatable {
   let name: String
   let endpoint: String
-  let tailscale: String
+  let fallback: String
   let fingerprint: String
   let certificate: String
   var id: String { name }
@@ -93,7 +93,7 @@ final class DesktopModel: ObservableObject {
       let values = try bridge.devices(command: "details", arguments: [])
       devices = stride(from: 0, to: values.count, by: 5).map {
         ManagedDevice(
-          name: values[$0], endpoint: values[$0 + 1], tailscale: values[$0 + 2],
+          name: values[$0], endpoint: values[$0 + 1], fallback: values[$0 + 2],
           fingerprint: values[$0 + 3], certificate: values[$0 + 4])
       }
       peers = devices.map(\.name)
@@ -137,14 +137,14 @@ final class DesktopModel: ObservableObject {
   }
 
   func saveDevice(
-    _ device: ManagedDevice, name: String, endpoint: String, tailscale: String,
+    _ device: ManagedDevice, name: String, endpoint: String, fallback: String,
     certificate: String, fingerprint: String
   ) throws {
     defer { refreshPeers() }
     _ = try bridge.devices(
       command: "edit",
       arguments: [
-        device.name, name, endpoint, tailscale,
+        device.name, name, endpoint, fallback,
         certificate, fingerprint, device.fingerprint,
       ])
     poll()

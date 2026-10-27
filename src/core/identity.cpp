@@ -193,16 +193,16 @@ bool fingerprint_valid(std::string_view value) {
            });
 }
 std::string peer_record(const TrustedPeer& peer) {
-    const auto result = "beam-peer-v2\n" + peer.endpoint + "\n" + peer.tailscale_endpoint + "\n" +
+    const auto result = "beam-peer-v3\n" + peer.endpoint + "\n" + peer.fallback_endpoint + "\n" +
                         peer.identity.certificate_pem;
     checked(result.size() <= max_certificate, "device record is too large");
     return result;
 }
 std::string backup_text(const DeviceBackup& backup) {
-    std::string result = "beam-devices-backup-v1\n" + backup.source_fingerprint + "\n" +
+    std::string result = "beam-devices-backup-v2\n" + backup.source_fingerprint + "\n" +
                          std::to_string(backup.peers.size()) + "\n";
     for (const auto& peer : backup.peers)
-        result += peer.name + "\n" + peer.endpoint + "\n" + peer.tailscale_endpoint + "\n" +
+        result += peer.name + "\n" + peer.endpoint + "\n" + peer.fallback_endpoint + "\n" +
                   peer.identity.fingerprint + "\n" +
                   std::to_string(peer.identity.certificate_pem.size()) + "\n" +
                   peer.identity.certificate_pem;
@@ -229,7 +229,9 @@ DeviceBackup parse_backup(const std::string& contents, bool check_validity = tru
                 "invalid device backup length");
         return number;
     };
-    checked(line() == "beam-devices-backup-v1", "unsupported device backup version");
+    const auto version = line();
+    checked(version == "beam-devices-backup-v1" || version == "beam-devices-backup-v2",
+            "unsupported device backup version");
     DeviceBackup result;
     result.source_fingerprint = line();
     checked(fingerprint_valid(result.source_fingerprint), "invalid backup source fingerprint");
@@ -241,12 +243,9 @@ DeviceBackup parse_backup(const std::string& contents, bool check_validity = tru
         checked(is_peer_name(peer.name) && names.insert(peer.name).second,
                 "invalid or duplicate device name in backup");
         peer.endpoint = line();
-        peer.tailscale_endpoint = line();
+        peer.fallback_endpoint = line();
         validate_endpoint(peer.endpoint);
-        validate_endpoint(peer.tailscale_endpoint);
-        checked(peer.tailscale_endpoint.empty() ||
-                    is_tailscale_address(numeric_endpoint(peer.tailscale_endpoint).host),
-                "invalid Tailscale endpoint in backup");
+        validate_endpoint(peer.fallback_endpoint);
         const auto fingerprint = line();
         const auto length = count(max_certificate);
         checked(length > 0 && length <= remaining.size(), "truncated device backup");
@@ -523,17 +522,15 @@ TrustedPeer IdentityStore::peer(const std::string& name) const {
         return value;
     };
     auto endpoint = line();
-    std::string tailscale;
-    if (endpoint == "beam-peer-v2") {
+    std::string fallback;
+    if (endpoint == "beam-peer-v2" || endpoint == "beam-peer-v3") {
         endpoint = line();
-        tailscale = line();
-        if (!tailscale.empty())
-            checked(is_tailscale_address(numeric_endpoint(tailscale).host),
-                    "invalid stored Tailscale endpoint");
+        fallback = line();
+        validate_endpoint(fallback);
     }
     validate_endpoint(endpoint);
     auto certificate = parse_certificate(std::string(remaining));
-    return {name, endpoint, describe(certificate.get(), false), tailscale};
+    return {name, endpoint, describe(certificate.get(), false), fallback};
 }
 std::vector<TrustedPeer> IdentityStore::peers() const {
     // openat creates a fresh directory cursor; dup would share a previous scan's offset.
@@ -612,17 +609,15 @@ void IdentityStore::set_endpoint(const std::string& name, const std::string& end
     validate_endpoint(endpoint);
     const auto saved = peer(name);
     implementation->write(name + ".peer",
-                          "beam-peer-v2\n" + endpoint + "\n" + saved.tailscale_endpoint + "\n" +
+                          "beam-peer-v3\n" + endpoint + "\n" + saved.fallback_endpoint + "\n" +
                               saved.identity.certificate_pem,
                           true);
 }
-void IdentityStore::set_tailscale_endpoint(const std::string& name, const std::string& endpoint) {
-    if (!endpoint.empty() && !is_tailscale_address(numeric_endpoint(endpoint).host))
-        throw std::invalid_argument(
-            "Tailscale endpoint must use 100.64.0.0/10 or fd7a:115c:a1e0::/48");
+void IdentityStore::set_fallback_endpoint(const std::string& name, const std::string& endpoint) {
+    validate_endpoint(endpoint);
     const auto saved = peer(name);
     implementation->write(name + ".peer",
-                          "beam-peer-v2\n" + saved.endpoint + "\n" + endpoint + "\n" +
+                          "beam-peer-v3\n" + saved.endpoint + "\n" + endpoint + "\n" +
                               saved.identity.certificate_pem,
                           true);
 }
@@ -640,13 +635,10 @@ TrustedPeer IdentityStore::edit_peer(const std::string& name, const PeerEdit& ed
             "use 1-63 lowercase letters, digits, '-' or '_', starting with a letter");
     if (edit.endpoint)
         saved.endpoint = *edit.endpoint;
-    if (edit.tailscale_endpoint)
-        saved.tailscale_endpoint = *edit.tailscale_endpoint;
+    if (edit.fallback_endpoint)
+        saved.fallback_endpoint = *edit.fallback_endpoint;
     validate_endpoint(saved.endpoint);
-    validate_endpoint(saved.tailscale_endpoint);
-    checked(saved.tailscale_endpoint.empty() ||
-                is_tailscale_address(numeric_endpoint(saved.tailscale_endpoint).host),
-            "Tailscale endpoint must use a Tailscale IP address");
+    validate_endpoint(saved.fallback_endpoint);
     if (!edit.certificate_pem.empty()) {
         saved.identity = validate_public_certificate(edit.certificate_pem);
         checked(fingerprint_valid(edit.verified_fingerprint) &&

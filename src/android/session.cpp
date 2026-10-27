@@ -53,7 +53,7 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
     case Command::device_details: {
         std::vector<std::string> result;
         for (const auto& peer : IdentityStore(state).peers())
-            result.insert(result.end(), {peer.name, peer.endpoint, peer.tailscale_endpoint,
+            result.insert(result.end(), {peer.name, peer.endpoint, peer.fallback_endpoint,
                                          peer.identity.fingerprint, peer.identity.certificate_pem});
         return result;
     }
@@ -75,7 +75,7 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         std::vector<std::string> values{result.source_fingerprint, std::to_string(result.added),
                                         std::to_string(result.existing)};
         for (const auto& peer : result.peers)
-            values.insert(values.end(), {peer.name, peer.endpoint, peer.tailscale_endpoint,
+            values.insert(values.end(), {peer.name, peer.endpoint, peer.fallback_endpoint,
                                          peer.identity.fingerprint});
         return values;
     }

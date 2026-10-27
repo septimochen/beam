@@ -54,40 +54,15 @@ std::string endpoint_string(const Endpoint& endpoint) {
                                                          : "[" + endpoint.host + "]") +
            ":" + std::to_string(endpoint.port);
 }
-bool is_tailscale_address(const std::string& host) noexcept {
-    if (host.find('\0') != std::string::npos || host.find('%') != std::string::npos)
-        return false;
-    std::array<unsigned char, 16> bytes{};
-    if (inet_pton(AF_INET, host.c_str(), bytes.data()) == 1)
-        return bytes[0] == 100 && (bytes[1] & 0xc0U) == 64;
-    if (inet_pton(AF_INET6, host.c_str(), bytes.data()) != 1)
-        return false;
-    const std::array<unsigned char, 6> prefix{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0};
-    if (std::equal(prefix.begin(), prefix.end(), bytes.begin()))
-        return true;
-    // IPv4-mapped IPv6 must use the same classification as its IPv4 address.
-    return std::all_of(bytes.begin(), bytes.begin() + 10, [](auto byte) { return byte == 0; }) &&
-           bytes[10] == 0xff && bytes[11] == 0xff && bytes[12] == 100 && (bytes[13] & 0xc0U) == 64;
-}
-std::vector<Endpoint> peer_endpoints(const TrustedPeer& peer, RoutePreference preference) {
-    std::vector<Endpoint> direct, tailscale;
-    if (!peer.endpoint.empty()) {
-        const auto endpoint = numeric_endpoint(peer.endpoint);
-        (is_tailscale_address(endpoint.host) ? tailscale : direct).push_back(endpoint);
+std::vector<Endpoint> peer_endpoints(const TrustedPeer& peer) {
+    std::vector<Endpoint> endpoints;
+    if (!peer.endpoint.empty())
+        endpoints.push_back(numeric_endpoint(peer.endpoint));
+    if (!peer.fallback_endpoint.empty()) {
+        const auto fallback = numeric_endpoint(peer.fallback_endpoint);
+        if (endpoints.empty() || endpoint_string(endpoints.front()) != endpoint_string(fallback))
+            endpoints.push_back(fallback);
     }
-    if (!peer.tailscale_endpoint.empty()) {
-        const auto endpoint = numeric_endpoint(peer.tailscale_endpoint);
-        if (!is_tailscale_address(endpoint.host))
-            throw std::invalid_argument(
-                "Tailscale endpoint must use 100.64.0.0/10 or fd7a:115c:a1e0::/48");
-        if (tailscale.empty() || endpoint_string(tailscale.front()) != endpoint_string(endpoint))
-            tailscale.push_back(endpoint);
-    }
-    if (preference == RoutePreference::direct)
-        return direct;
-    if (preference == RoutePreference::tailscale)
-        return tailscale;
-    direct.insert(direct.end(), tailscale.begin(), tailscale.end());
-    return direct;
+    return endpoints;
 }
 } // namespace beam

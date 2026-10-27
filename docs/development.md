@@ -8,8 +8,6 @@ for a first transfer.
 
 Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL development
 headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy 23.
-Optional Tailscale CLI discovery uses header-only nlohmann_json 3.11+ for bounded
-JSON parsing; it adds no runtime service or shared library.
 Install an OpenSSL-backed MsQuic 2.x runtime, version 2.4.0 or newer, through your
 system package manager. Beam also uses installed OpenSSL libcrypto for hashing,
 certificate verification, and random transfer IDs.
@@ -17,7 +15,7 @@ certificate verification, and random transfer IDs.
 On macOS, install the build tools with Homebrew:
 
 ```sh
-brew install cmake libmsquic openssl@3 llvm nlohmann-json
+brew install cmake libmsquic openssl@3 llvm
 export CLANG_FORMAT="$(brew --prefix llvm)/bin/clang-format"
 export CLANG_TIDY="$(brew --prefix llvm)/bin/clang-tidy"
 ```
@@ -26,7 +24,7 @@ Formatting and linting require LLVM 23; check the installed versions before runn
 contributor checks. Bonjour is included with macOS.
 
 On Debian/Ubuntu, install `build-essential`, `libssl-dev`, `perl`, `cmake`, `git`,
-`libavahi-compat-libdnssd-dev`, `avahi-daemon`, and `nlohmann-json3-dev`. Linux discovery requires a
+`libavahi-compat-libdnssd-dev`, and `avahi-daemon`. Linux discovery requires a
 running Avahi daemon. Install `clang-format-23` and `clang-tidy-23` from the
 [official LLVM package repository](https://apt.llvm.org/) for your distribution:
 
@@ -123,14 +121,12 @@ For `make install`, pass the same `CMAKE_ARGS` and a fresh `INSTALL_BUILD_DIR`.
 
 Discovery defaults to the QUIC setting. To build direct transfers without
 Bonjour/Avahi, use `make build CMAKE_ARGS='-DBEAM_ENABLE_DISCOVERY=OFF'`.
-Tailscale discovery also defaults to QUIC. Disable its CLI/JSON dependency with
-`-DBEAM_ENABLE_TAILSCALE=OFF`; manual numeric Tailscale routes remain available.
 Windows builds only the help/version and filename-validation scaffold by default;
 transfer filesystem handling is currently POSIX-only. To select the scaffold on
 any platform, disable all optional features explicitly:
 
 ```sh
-make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF -DBEAM_ENABLE_TAILSCALE=OFF'
+make build CMAKE_ARGS='-DBEAM_ENABLE_QUIC=OFF -DBEAM_ENABLE_DISCOVERY=OFF'
 ```
 
 Use `make install` for a user-local Release CLI and desktop installation. It
@@ -223,7 +219,7 @@ Focused checks (included in `make check` when their features are enabled):
 | `make pairing-test` | Identity storage, exact certificate pins, LAN pairing and recovery |
 | `make devices-test` | Device edits, certificate replacement, backup restore and CLI |
 | `make content-test` | Bounded UTF-8 text, integrity and paired localhost transfers |
-| `make routing-test` | Route ordering, authenticated fallback and subprocess cleanup |
+| `make routing-test` | Endpoint ordering and authenticated fallback |
 | `make desktop-test` | Shared workers and platform UI; see [desktop verification](desktop.md#verification) |
 
 Localhost integration checks require socket access, but no public network or
@@ -257,7 +253,7 @@ Opt-in analyzer checks are excluded because the enum-range check misdiagnoses
 MsQuic bitmask flags. Override `CLANG_TIDY_CHECKS` to explore other checks.
 
 Lint selects source files from the configured `compile_commands.json`, so disabled
-QUIC, discovery, Tailscale, or desktop components are not analyzed using unrelated
+QUIC, discovery, or desktop components are not analyzed using unrelated
 compiler flags. Use a Makefiles or Ninja generator. For the full desktop build:
 
 ```sh
