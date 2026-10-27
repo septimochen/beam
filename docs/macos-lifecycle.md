@@ -13,8 +13,6 @@ After `make deps`, with full Xcode selected and Ninja installed:
 make desktop                          # Debug: build/macos/dev
 open build/macos/dev/apps.noindex/beam-desktop.app
 
-cmake --preset macos-dev
-cmake --build --preset macos-dev
 cmake --preset macos-release
 cmake --build --preset macos-release
 
@@ -45,8 +43,8 @@ sub-identifier, such as `org.beam.desktop.experiment`. An empty value selects
 production for a single-config Release build without sanitizer flags; other
 configurations default to development. Multi-config generators default to
 development; explicitly select the intended identifier for distribution.
-Presets select identifiers explicitly. Select the development identifier for
-sanitizer builds, including when overriding the Release preset. Generated
+The Release preset selects its identifier explicitly. Select the development
+identifier for sanitizer builds, including when overriding the Release preset. Generated
 `Info.plist` and target bundle metadata use the same resolved identifier.
 
 The public CMake `desktop` install component and Make use the install script.
@@ -237,7 +235,7 @@ check its notification state stays unchanged. OS authorization checks require an
 interactive user session.
 
 `bash tests/macos_live_lifecycle.sh` performs the isolated user-local launch and
-uninstall cycles after both presets have been built. It checks that development
-stays open while production is removed, executes each bundle's notification
+uninstall cycles after the development and release builds above. It checks that
+development stays open while production is removed, executes each bundle's notification
 cleanup command, and removes its test folder. It does not enable notifications
 or test delivery banners; those require explicit OS authorization.
