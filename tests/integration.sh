@@ -72,6 +72,29 @@ for file in empty.bin small.bin large.bin; do
     if ! wait_receiver; then cat receiver.log; exit 1; fi
     cmp "source/$file" "output/$file"
 done
+# The CLI creates and displays the default Downloads folder, and honors overrides.
+mkdir -p test-home/.config/beam configured
+printf 'default destination' >source/default.bin
+for destination_mode in default configured explicit; do
+    receive_args=()
+    case "$destination_mode" in
+        default) expected_dir="$root/test-home/Downloads" ;;
+        configured)
+            printf 'receive_folder = "%s/configured"\n' "$root" >test-home/.config/beam/config
+            expected_dir="$root/configured" ;;
+        explicit) receive_args=(--output output); expected_dir=output ;;
+    esac
+    HOME="$root/test-home" SSL_CERT_FILE=ca.pem "$beam" receive --listen "$port" "${receive_args[@]}" --cert server.pem --key server.key --ca ca.pem --timeout 5 --no-discovery >receiver.log 2>&1 &
+    receiver_pid=$!
+    for attempt in {1..500}; do
+        if grep -q '^Listening' receiver.log; then break; fi
+        if ! kill -0 "$receiver_pid" 2>/dev/null; then cat receiver.log; wait_receiver || true; exit 1; fi
+        sleep 0.01
+    done
+    if ! grep -Fxq "Receive directory: $expected_dir" receiver.log || ! grep -q '^Listening' receiver.log; then cat receiver.log; exit 1; fi
+    if ! send source/default.bin || ! wait_receiver; then cat sender.log receiver.log; exit 1; fi
+    cmp source/default.bin "$expected_dir/default.bin"
+done
 # Discovery polling remains cancellable without receiver announcements.
 if [[ "$discovery_mode" == discovery ]]; then
     "$beam" devices --timeout 60 >devices.log 2>devices.err &

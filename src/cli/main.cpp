@@ -19,6 +19,7 @@
 #endif
 #include <charconv>
 #include <csignal>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <stdexcept>
@@ -54,17 +55,18 @@ void print_help() {
            "  beam text TEXT PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS] "
            "[--no-progress]\n"
            "  beam check PEER [--endpoint IP:PORT] [--state-dir DIR] [--timeout SECONDS]\n"
-           "  beam receive --output DIR [--listen PORT] [--state-dir DIR] [--name NAME] "
+           "  beam receive [--output DIR] [--listen PORT] [--state-dir DIR] [--name NAME] "
            "[--no-discovery]\n"
            "  beam devices [--timeout SECONDS]\n"
-           "  beam receive --listen PORT --output DIR --cert PEM --key PEM --ca PEM "
+           "  beam receive --listen PORT [--output DIR] --cert PEM --key PEM --ca PEM "
            "[--timeout SECONDS] [--no-progress] [--name NAME] [--no-discovery]\n"
            "  beam send IP:PORT FILE --cert PEM --key PEM --ca PEM [--server-name NAME] "
            "[--timeout SECONDS] [--no-progress]\n\n"
-           "Receive one file or text from one authenticated peer, then exit. DIR must exist.\n"
+           "Receive one file or text from one authenticated peer, then exit.\n"
            "Paired send/text/check accept --route auto|direct|tailscale; default: direct first.\n"
            "--endpoint overrides all saved routes. Fallback only precedes authentication.\n"
-           "Received text is written verbatim to stdout; files require a receive folder.\n"
+           "Files default to ~/Downloads; an explicit receive folder must exist.\n"
+           "Received text is written verbatim to stdout.\n"
            "Text (including URLs): UTF-8, up to 64 KiB. Config: ~/.config/beam/config.\n"
            "Use -- before positional arguments that start with --.\n"
            "Use beam pairing, or approve public certificates with independently verified "
@@ -672,9 +674,14 @@ int transfer_command(int argc, char** argv, bool receive) {
         const auto port = static_cast<std::uint16_t>(
             options.contains("--listen") ? number(options.at("--listen"), 65535, "listen port")
                                          : defaults.listen_port);
-        const std::filesystem::path output = options.contains("--output")
-                                                 ? std::filesystem::path(options.at("--output"))
-                                                 : defaults.receive_folder;
+        std::filesystem::path output = options.contains("--output")
+                                           ? std::filesystem::path(options.at("--output"))
+                                           : defaults.receive_folder;
+        if (output.empty() && !options.contains("--output")) {
+            output = std::filesystem::path(std::getenv("HOME")) / "Downloads";
+            std::filesystem::create_directory(output);
+        }
+        std::cerr << "Receive directory: " << output.string() << '\n';
 #ifdef BEAM_HAS_DISCOVERY
         std::unique_ptr<beam::ReceiverAdvertisement> advertisement;
         configuration.should_cancel = [&] {

@@ -80,7 +80,9 @@ On the sender:
 ./build/beam send hello.txt laptop
 ```
 
-The verified file appears in the receiver's `received` directory. If you need to
+The verified file appears in the receiver's `received` directory. Without `--output`
+or a configured receive folder, the CLI uses `~/Downloads` (creating it if needed)
+and displays the selected directory when reception starts. If you need to
 find or update its address:
 
 ```sh
