@@ -59,8 +59,9 @@ make install
 
 This builds the CLI and desktop app in a separate Release `build/macos/release`
 directory on macOS (`build-install` on Linux). See the
-[macOS lifecycle guide](macos-lifecycle.md) for development identities, presets,
-validated upgrades, optional data/notification cleanup, and stale registrations.
+[macOS lifecycle guide](macos-lifecycle.md) for development identities,
+Debug/Release builds, validated upgrades, optional data/notification cleanup,
+and stale registrations.
 It installs without `sudo`:
 
 | Platform | CLI | Desktop |

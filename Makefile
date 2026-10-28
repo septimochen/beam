@@ -10,6 +10,11 @@ SWIFT_SOURCES := $(shell find src tests tools -name "*.swift")
 JAVA_SOURCES := $(shell find android/app/src -name "*.java")
 SWIFT_FORMAT ?= xcrun swift-format
 ifeq ($(shell uname -s),Darwin)
+# make desktop defaults to Debug in build/macos/dev; BUILD_TYPE=Release uses
+# build/macos/release. BUILD_DIR and DESKTOP_BUILD_DIR can override these paths.
+# CMake defaults to org.beam.desktop.dev, or org.beam.desktop for single-config
+# Release without sanitizers. An explicit BEAM_MACOS_BUNDLE_ID in CMAKE_ARGS
+# or an existing CMake cache takes precedence over that default.
 DESKTOP_BUILD_DIR ?= $(BUILD_DIR)/macos/$(if $(filter Release,$(BUILD_TYPE)),release,dev)
 DESKTOP_GENERATOR ?= -G Ninja
 else

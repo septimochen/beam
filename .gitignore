@@ -7,7 +7,6 @@
 !/README.md
 !/CMakeLists.txt
 !/Makefile
-!/CMakePresets.json
 !/.vscode/
 !/.vscode/settings.json
 !/scripts/

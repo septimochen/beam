@@ -13,8 +13,7 @@ After `make deps`, with full Xcode selected and Ninja installed:
 make desktop                          # Debug: build/macos/dev
 open build/macos/dev/apps.noindex/beam-desktop.app
 
-cmake --preset macos-release
-cmake --build --preset macos-release
+make desktop BUILD_TYPE=Release        # Release: build/macos/release
 
 make install                          # Release CLI and ~/Applications/Beam.app
 # Install only the already-built application:
@@ -43,9 +42,9 @@ sub-identifier, such as `org.beam.desktop.experiment`. An empty value selects
 production for a single-config Release build without sanitizer flags; other
 configurations default to development. Multi-config generators default to
 development; explicitly select the intended identifier for distribution.
-The Release preset selects its identifier explicitly. Select the development
-identifier for sanitizer builds, including when overriding the Release preset. Generated
-`Info.plist` and target bundle metadata use the same resolved identifier.
+Select the development identifier for sanitizer builds when overriding a cached
+production identifier. Generated `Info.plist` and target bundle metadata use the
+same resolved identifier.
 
 The public CMake `desktop` install component and Make use the install script.
 It prepares one fresh bundle in a hidden sibling directory, bundles dependencies,

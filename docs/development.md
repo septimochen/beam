@@ -148,7 +148,7 @@ Linux uses Qt 6.4+ Widgets (`qt6-base-dev` and `qt6-qpa-plugins` on Debian/Ubunt
 Use `make desktop` / `make desktop-test`. Native macOS builds use Ninja and a
 separate `build/macos/dev` directory, keeping existing Qt build caches separate.
 The [macOS lifecycle guide](macos-lifecycle.md) covers development/production bundle
-identities, CMake presets, safe upgrades, and targeted registration cleanup.
+identities, Debug/Release builds, safe upgrades, and targeted registration cleanup.
 A normal CLI build has no Swift or Qt dependency. Main-branch Linux CI and manual
 macOS/Linux builds enable `BEAM_ENABLE_DESKTOP`; Linux UI tests use Qt's offscreen
 platform, while macOS tests exercise the Swift model and Objective-C++ bridge.
