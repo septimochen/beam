@@ -121,7 +121,7 @@ Linux's default launcher path follows `XDG_DATA_HOME` just as installation does.
 
 ## Set up paired devices
 
-Choose **Add device** for QR display, nearby PIN entry, or invitation paste.
+Choose **Add device** for QR display or invitation paste.
 Review and approve on both devices; see [pairing](pairing.md). Manual CLI PEM
 pairing remains available as an advanced option. Set a peer's numeric address
 with `beam peer NAME --endpoint IP:PORT` or its optional fallback endpoint. Click
@@ -262,7 +262,7 @@ or a running Avahi daemon and local multicast access, and also runs in Linux CI.
 
 macOS has separate **Share** and **Devices** views; Linux opens **Manage devices**.
 The Devices view provides searchable cards, primary/fallback endpoints, individual
-connection checks, QR/PIN/invitation pairing, local rename/address edits,
+connection checks, QR/invitation pairing, local rename/address edits,
 certificate inspection/replacement, and confirmed unpairing. **Backup & restore**
 exports public device records and previews imports before adding trust. Inline
 errors keep forms open for correction; saving cancels workers and reloads trust.

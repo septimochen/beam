@@ -1,15 +1,11 @@
 #include "beam/pairing.hpp"
 #include "beam/routing.hpp"
-#ifdef BEAM_HAS_DISCOVERY
-#include "beam/discovery.hpp"
-#endif
 #include "protocol/pairing.hpp"
 #include "transport/pairing_tls.hpp"
 #include <algorithm>
 #include <charconv>
 #include <condition_variable>
 #include <mutex>
-#include <openssl/rand.h>
 #include <thread>
 
 namespace beam {
@@ -25,15 +21,6 @@ void validate_name(const std::string& name) {
                 name.find_first_of("\n\r\t") == std::string::npos,
             "Device name must be one line, 1-128 UTF-8 bytes");
     validate_content(ContentKind::text, name);
-}
-std::string generate_pin() {
-    std::uint32_t value = 0;
-    do {
-        require(RAND_bytes(reinterpret_cast<unsigned char*>(&value), sizeof(value)) == 1,
-                "Generate pairing PIN failed");
-    } while (value >= 4294000000U);
-    const auto number = std::to_string(value % 1000000U);
-    return std::string(6 - number.size(), '0') + number;
 }
 std::uint16_t port_number(const std::string& text) {
     unsigned value = 0;
@@ -81,7 +68,7 @@ struct PairingSession::Impl {
     PairingSnapshot value;
     std::string approval_alias;
     bool rejected = false;
-    std::jthread worker, browser;
+    std::jthread worker;
     explicit Impl(PairingOptions configuration) : options(std::move(configuration)) {
         validate_name(options.device_name);
         require(options.transfer_port != 0 &&
@@ -102,7 +89,6 @@ struct PairingSession::Impl {
         value.message = std::move(message);
         if (state != PairingState::hosting) {
             value.invitation.clear();
-            value.pin.clear();
             value.qr.clear();
         }
     }
@@ -125,12 +111,9 @@ struct PairingSession::Impl {
     }
     void stop() {
         worker.request_stop();
-        browser.request_stop();
         changed.notify_all();
         if (worker.joinable())
             worker.join();
-        if (browser.joinable())
-            browser.join();
     }
     void reset() {
         stop();
@@ -239,11 +222,11 @@ struct PairingSession::Impl {
             require(listener != nullptr, "Missing pairing listener");
             socket = listener->accept(stop, proof_deadline);
             require(net::read_hello(socket, stop, proof_deadline) ==
-                        std::vector<std::string>{"beam-pair/1", "proof", proof_id},
+                        std::vector<std::string>{"beam-pair/2", "proof", proof_id},
                     "Invalid key-proof session");
         } else {
             socket = net::connect(endpoint, stop, proof_deadline);
-            net::send_hello(socket, {"beam-pair/1", "proof", proof_id}, stop, proof_deadline);
+            net::send_hello(socket, {"beam-pair/2", "proof", proof_id}, stop, proof_deadline);
         }
         net::Tls proof(std::move(socket), server, {}, credentials, remote, stop, deadline);
         // The authenticated identity data is repeated on the certificate-bound
@@ -266,32 +249,15 @@ struct PairingSession::Impl {
         require(!invitation.endpoints.empty() && invitation.endpoints.size() <= 8,
                 "Invalid pairing addresses");
         const auto encoded = wire::encode(invitation);
-        const auto pin = generate_pin();
         {
             std::lock_guard lock(mutex);
             value.state = PairingState::hosting;
-            value.message = "Scan QR, copy the invitation, or enter this PIN on the nearby device. "
+            value.message = "Scan QR or copy the invitation. "
                             "Expires in three minutes.";
             value.invitation = encoded;
-            value.pin = pin;
             value.port = listener.port;
             value.qr = pairing_qr(encoded);
         }
-#ifdef BEAM_HAS_DISCOVERY
-        std::unique_ptr<ReceiverAdvertisement> advertisement;
-        try {
-            DiscoveryOptions discovery;
-            discovery.pairing = true;
-            discovery.stop_token = stop;
-            advertisement = std::make_unique<ReceiverAdvertisement>(
-                listener.port,
-                is_discovery_name(options.device_name) ? options.device_name : "Beam device",
-                discovery);
-        } catch (const std::exception&) {
-            std::lock_guard lock(mutex);
-            value.message += " Nearby discovery unavailable; use QR or paste.";
-        }
-#endif
         unsigned failures = 0;
         while (failures < 5) {
             auto socket = listener.accept(stop, deadline);
@@ -300,17 +266,12 @@ struct PairingSession::Impl {
                 const auto handshake_deadline =
                     std::min(deadline, std::chrono::steady_clock::now() + std::chrono::seconds(10));
                 const auto hello = net::read_hello(socket, stop, handshake_deadline);
-                require(hello.size() == 3 && hello[0] == "beam-pair/1" &&
-                            ((hello[1] == "invitation" && hello[2] == invitation.id) ||
-                             (hello[1] == "pin" && hello[2].empty())),
+                require(hello.size() == 3 && hello[0] == "beam-pair/2" &&
+                            (hello[1] == "invitation" && hello[2] == invitation.id),
                         "Invalid or expired pairing request");
-                net::Tls bootstrap(std::move(socket), true,
-                                   hello[1] == "pin" ? pin : invitation.secret, {}, {}, stop,
+                net::Tls bootstrap(std::move(socket), true, invitation.secret, {}, {}, stop,
                                    handshake_deadline);
                 authenticated = true;
-#ifdef BEAM_HAS_DISCOVERY
-                advertisement.reset();
-#endif
                 publish(PairingState::verifying, "Authenticated pairing invitation.");
                 exchange(bootstrap, true, &listener, {}, {}, stop, deadline);
                 return;
@@ -321,7 +282,7 @@ struct PairingSession::Impl {
                 {
                     std::lock_guard lock(mutex);
                     value.message = "Pairing authentication failed (" + std::to_string(failures) +
-                                    "/5). Check the PIN and retry.";
+                                    "/5). Scan a current QR or paste its invitation.";
                 }
                 // Rate-limit all attempts, including malformed hellos, without
                 // blocking cancellation or extending the invitation deadline.
@@ -337,10 +298,10 @@ struct PairingSession::Impl {
         throw std::runtime_error(
             "Pairing window closed after five failed authentications. Open Add device again.");
     }
-    void join(wire::Invitation invitation, bool pin, std::stop_token stop) {
+    void join(wire::Invitation invitation, std::stop_token stop) {
         const auto deadline = std::chrono::steady_clock::now() + options.lifetime;
         // Retry only connectivity before authentication. Never replay an
-        // exchange after a PAKE handshake or approval has started.
+        // exchange after a TLS handshake or approval has started.
         net::Socket socket;
         Endpoint selected{};
         for (const auto& endpoint : invitation.endpoints) {
@@ -358,7 +319,7 @@ struct PairingSession::Impl {
         require(socket.fd >= 0, "Pairing host unreachable. Both devices must be on the same LAN.");
         const auto handshake_deadline =
             std::min(deadline, std::chrono::steady_clock::now() + std::chrono::seconds(10));
-        net::send_hello(socket, {"beam-pair/1", pin ? "pin" : "invitation", invitation.id}, stop,
+        net::send_hello(socket, {"beam-pair/2", "invitation", invitation.id}, stop,
                         handshake_deadline);
         net::Tls bootstrap(std::move(socket), false, invitation.secret, {}, {}, stop,
                            handshake_deadline);
@@ -387,59 +348,13 @@ void PairingSession::join(const std::string& text) {
     impl->worker =
         std::jthread([this, invitation = std::move(invitation)](std::stop_token stop) mutable {
             try {
-                impl->join(std::move(invitation), false, stop);
+                impl->join(std::move(invitation), stop);
             } catch (const std::exception& error) {
                 impl->failure(error, stop);
             } catch (...) {
                 impl->publish(PairingState::failed, "Pairing failed");
             }
         });
-}
-void PairingSession::join_pin(const std::string& endpoint, const std::string& pin) {
-    require(pin.size() == 6 &&
-                std::all_of(pin.begin(), pin.end(), [](char c) { return c >= '0' && c <= '9'; }),
-            "PIN must contain exactly six digits");
-    wire::Invitation invitation{{}, {}, pin, {numeric_endpoint(endpoint)}};
-    impl->reset();
-    impl->publish(PairingState::connecting, "Authenticating the nearby device…");
-    impl->worker =
-        std::jthread([this, invitation = std::move(invitation)](std::stop_token stop) mutable {
-            try {
-                impl->join(std::move(invitation), true, stop);
-            } catch (const std::exception& error) {
-                impl->failure(error, stop);
-            } catch (...) {
-                impl->publish(PairingState::failed, "Pairing failed");
-            }
-        });
-}
-void PairingSession::browse() {
-    impl->browser.request_stop();
-    if (impl->browser.joinable())
-        impl->browser.join();
-#ifdef BEAM_HAS_DISCOVERY
-    impl->browser = std::jthread([this](std::stop_token stop) {
-        try {
-            DiscoveryOptions options;
-            options.pairing = true;
-            options.stop_token = stop;
-            const auto devices = discover_devices(options);
-            std::vector<PairingDevice> nearby;
-            const auto local = snapshot().port;
-            const auto addresses =
-                impl->options.addresses.empty() ? net::local_addresses() : impl->options.addresses;
-            for (const auto& device : devices)
-                for (const auto& endpoint : device.endpoints)
-                    if (!(endpoint.port == local && std::find(addresses.begin(), addresses.end(),
-                                                              endpoint.host) != addresses.end()) &&
-                        nearby.size() < 128)
-                        nearby.push_back({device.name, endpoint_string(endpoint)});
-            std::lock_guard lock(impl->mutex);
-            impl->value.nearby = std::move(nearby);
-        } catch (const std::exception&) { /* QR and invitation remain available. */
-        }
-    });
-#endif
 }
 void PairingSession::approve(const std::string& alias) {
     require(is_peer_name(alias),

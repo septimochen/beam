@@ -44,8 +44,7 @@ jobs:
         with:
           path: |
             build/android-deps/arm64-v8a/install
-            build/android-deps/pairing/pairing-arm64-v8a/install
-          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ steps.android-tools.outputs.ndkVersion }}-${{ steps.android-tools.outputs.cmake }}-${{ hashFiles('cmake/AndroidTools.cmake', 'cmake/BootstrapAndroid.cmake', 'cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
+          key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ steps.android-tools.outputs.ndkVersion }}-${{ steps.android-tools.outputs.cmake }}-${{ hashFiles('cmake/AndroidTools.cmake', 'cmake/BootstrapAndroid.cmake', 'cmake/DownloadVerified.cmake') }}
       - name: Build pinned Android native dependencies
         if: steps.android-native.outputs.cache-hit != 'true'
         run: make android-deps 2>&1 | tee android-native-deps.log
@@ -105,17 +104,7 @@ jobs:
           clang-tidy-23 --version
       - name: Check formatting
         run: make format-check
-      - name: Record runner image for native caches
-        id: host-tools
-        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
-      - name: Cache host pairing dependency
-        uses: actions/cache@v5
-        with:
-          path: |
-            build/deps/mbedtls-4.2.0*
-            build/deps/pairing-build
-          key: pairing-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
-      - name: Validate system MsQuic and provision pairing
+      - name: Validate system MsQuic
         run: make deps
       - name: Lint and static analysis
         run: make lint BUILD_TYPE=Release
@@ -152,20 +141,7 @@ jobs:
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'
         run: brew install libmsquic openssl@3 ninja
-      - name: Record runner image for native caches
-        if: runner.os != 'Windows'
-        id: host-tools
-        shell: bash
-        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
-      - name: Cache host pairing dependency
-        if: runner.os != 'Windows'
-        uses: actions/cache@v5
-        with:
-          path: |
-            build/deps/mbedtls-4.2.0*
-            build/deps/pairing-build
-          key: pairing-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
-      - name: Validate system MsQuic and provision pairing
+      - name: Validate system MsQuic
         if: runner.os != 'Windows'
         run: make deps
       - name: Check formatting
@@ -208,7 +184,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: build/deps
-          key: source-fallback-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapMsQuic.cmake', 'cmake/BootstrapPairing.cmake', 'cmake/DownloadVerified.cmake', 'cmake/Pairing*Config.h') }}
+          key: source-fallback-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapMsQuic.cmake', 'cmake/DownloadVerified.cmake') }}
       - name: Provision pinned dependencies explicitly
         run: make deps-source
       - name: Test private runtime installation and authenticated transfers

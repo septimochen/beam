@@ -1,5 +1,4 @@
 #include "beam/pairing.hpp"
-#include "beam/routing.hpp"
 #include "protocol/pairing.hpp"
 #include "transport/pairing_tls.hpp"
 #include <atomic>
@@ -13,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <openssl/pem.h>
 #include <thread>
 
 namespace {
@@ -44,6 +44,74 @@ beam::PairingSnapshot await(beam::PairingSession& session, beam::PairingState st
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     throw std::runtime_error("Pairing timed out: " + session.snapshot().message);
+}
+// Exercise the TLS verifier directly, bypassing the earlier identity-frame checks.
+void reject_proof(const beam::Credentials& server_credentials, const beam::DeviceIdentity& client,
+                  const beam::Credentials& client_credentials, const beam::DeviceIdentity& server) {
+    using namespace beam::pairing_transport;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    Listener listener(0);
+    auto outgoing = connect({"127.0.0.1", listener.port}, {}, deadline);
+    auto incoming = listener.accept({}, deadline);
+    std::string server_error, client_error;
+    std::jthread worker([&] {
+        try {
+            Tls proof(std::move(incoming), true, {}, server_credentials, client, {}, deadline);
+            proof.send({"proof"});
+            static_cast<void>(proof.read());
+        } catch (const std::exception& error) {
+            server_error = error.what();
+        }
+    });
+    try {
+        Tls proof(std::move(outgoing), false, {}, client_credentials, server, {}, deadline);
+        static_cast<void>(proof.read());
+        proof.send({"proof"});
+    } catch (const std::exception& error) {
+        client_error = error.what();
+    }
+    worker.join();
+    require((!server_error.empty() || !client_error.empty()) &&
+                server_error.find("Pairing expired") == std::string::npos &&
+                client_error.find("Pairing expired") == std::string::npos,
+            "Invalid certificate proof accepted or timed out");
+}
+beam::DeviceIdentity dated_certificate(const beam::DeviceIdentity& identity,
+                                       const beam::Credentials& credentials,
+                                       const std::filesystem::path& output, bool future) {
+    std::unique_ptr<BIO, decltype(&BIO_free)> input(
+        BIO_new_mem_buf(identity.certificate_pem.data(),
+                        static_cast<int>(identity.certificate_pem.size())),
+        BIO_free);
+    std::unique_ptr<X509, decltype(&X509_free)> certificate(
+        PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr), X509_free);
+    std::unique_ptr<BIO, decltype(&BIO_free)> key_input(
+        BIO_new_file(credentials.private_key.c_str(), "r"), BIO_free);
+    std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> key(
+        PEM_read_bio_PrivateKey(key_input.get(), nullptr, nullptr, nullptr), EVP_PKEY_free);
+    require(certificate && key &&
+                X509_gmtime_adj(X509_getm_notBefore(certificate.get()), future ? 3600 : -3600) &&
+                X509_gmtime_adj(X509_getm_notAfter(certificate.get()), future ? 7200 : -60) &&
+                X509_sign(certificate.get(), key.get(), EVP_sha256()) > 0,
+            "Create dated certificate fixture failed");
+    std::unique_ptr<BIO, decltype(&BIO_free)> encoded(BIO_new(BIO_s_mem()), BIO_free);
+    require(encoded && PEM_write_bio_X509(encoded.get(), certificate.get()) == 1,
+            "Encode dated certificate failed");
+    char* data = nullptr;
+    const auto size = BIO_get_mem_data(encoded.get(), &data);
+    auto result = identity;
+    result.certificate_pem.assign(data, static_cast<std::size_t>(size));
+    std::array<unsigned char, 32> digest{};
+    unsigned count = 0;
+    require(X509_digest(certificate.get(), EVP_sha256(), digest.data(), &count) == 1 && count == 32,
+            "Fingerprint dated certificate failed");
+    result.fingerprint.clear();
+    for (const auto byte : digest) {
+        result.fingerprint += "0123456789abcdef"[byte >> 4];
+        result.fingerprint += "0123456789abcdef"[byte & 15];
+    }
+    std::ofstream(output) << result.certificate_pem;
+    return result;
 }
 } // namespace
 int main() {
@@ -77,18 +145,34 @@ int main() {
         fails([&] {
             static_cast<void>(beam::pairing_protocol::unpack(std::string("\0\0\0\1\0", 5)));
         });
-        fails([&] { joiner.join_pin("127.0.0.1:1", "12345"); });
-        // Prove PIN authentication failure cannot add either peer.
-        joiner.join_pin(beam::endpoint_string(decoded.endpoints[0]),
-                        invitation.pin == "000000" ? "000001" : "000000");
+        auto old_invitation = invitation.invitation;
+        old_invitation.replace(0, 12, "beam-pair:1:");
+        fails([&] { joiner.join(old_invitation); });
+        const auto legacy_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        auto legacy_socket =
+            beam::pairing_transport::connect(decoded.endpoints[0], {}, legacy_deadline);
+        beam::pairing_transport::send_hello(
+            legacy_socket, {"beam-pair/1", "invitation", decoded.id}, {}, legacy_deadline);
+        fails([&] {
+            beam::pairing_transport::Tls legacy(std::move(legacy_socket), false, decoded.secret, {},
+                                                {}, {}, legacy_deadline);
+        });
+        fails([&] {
+            beam::pairing_transport::Tls short_secret({}, false, "123456", {}, {}, {},
+                                                      legacy_deadline);
+        });
+        // A wrong 256-bit invitation secret cannot add either peer.
+        auto wrong = decoded;
+        wrong.secret[0] = wrong.secret[0] == '0' ? '1' : '0';
+        joiner.join(beam::pairing_protocol::encode(wrong));
         const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(12);
         while (joiner.snapshot().state != beam::PairingState::failed &&
                std::chrono::steady_clock::now() < limit)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        require(joiner.snapshot().state == beam::PairingState::failed, "wrong PIN must fail");
+        require(joiner.snapshot().state == beam::PairingState::failed, "wrong secret must fail");
         require(beam::IdentityStore(root / "host").peers().empty() &&
                     beam::IdentityStore(root / "phone").peers().empty(),
-                "wrong PIN granted trust");
+                "wrong secret granted trust");
         joiner.join(invitation.invitation);
         const auto a = await(host, beam::PairingState::approval);
         const auto b = await(joiner, beam::PairingState::approval);
@@ -178,21 +262,10 @@ int main() {
         require(pending.peers().empty() && pending.has_incomplete_pairing(),
                 "unpair discarded another device's pending approval");
         pending.forget_incomplete_pairing();
-        // PIN success uses the same full-certificate proof and reciprocal flow.
-        host.host();
-        invitation = await(host, beam::PairingState::hosting);
-        joiner.join_pin(beam::endpoint_string(
-                            beam::pairing_protocol::decode(invitation.invitation).endpoints[0]),
-                        invitation.pin);
-        host.approve(await(host, beam::PairingState::approval).alias);
-        joiner.approve(await(joiner, beam::PairingState::approval).alias);
-        await(host, beam::PairingState::paired);
-        await(joiner, beam::PairingState::paired);
         host.host();
         await(host, beam::PairingState::hosting);
         host.cancel();
-        require(host.snapshot().invitation.empty() && host.snapshot().pin.empty(),
-                "cancel retained invitation");
+        require(host.snapshot().invitation.empty(), "cancel retained invitation");
         // A substituted QR fingerprint is rejected even with the right secret.
         beam::PairingSession other(options("other"));
         host.host();
@@ -251,7 +324,25 @@ int main() {
                     server_error.find("expired") == std::string::npos &&
                     client_error.find("expired") == std::string::npos,
                 "mismatched private key: server=" + server_error + "; client=" + client_error);
-        // Pair over scoped IPv6-capable sockets as well as IPv4.
+        const auto client_credentials =
+            beam::IdentityStore(root / "phone").pairing_credentials(host_identity);
+        auto wrong_host = host_identity;
+        wrong_host.tls_name = "beam-00000000000000000000000000000000";
+        reject_proof(server_credentials, phone_identity, client_credentials, wrong_host);
+        auto wrong_pin = host_identity;
+        wrong_pin.fingerprint = std::string(64, '0');
+        reject_proof(server_credentials, phone_identity, client_credentials, wrong_pin);
+        auto wrong_client = phone_identity;
+        wrong_client.fingerprint = std::string(64, '0');
+        reject_proof(server_credentials, wrong_client, client_credentials, host_identity);
+        for (const bool future : {false, true}) {
+            auto dated_credentials = server_credentials;
+            dated_credentials.certificate = root / (future ? "future.pem" : "expired.pem");
+            const auto dated = dated_certificate(host_identity, server_credentials,
+                                                 dated_credentials.certificate, future);
+            reject_proof(dated_credentials, phone_identity, client_credentials, dated);
+        }
+        // Pair over IPv6-capable sockets as well as IPv4.
         auto v6_options = options("ipv6");
         v6_options.addresses = {"::1"};
         beam::PairingSession ipv6(v6_options);
@@ -268,10 +359,10 @@ int main() {
         beam::PairingSession limited(limited_options);
         limited.host();
         invitation = await(limited, beam::PairingState::hosting);
-        const auto limited_endpoint = beam::endpoint_string(
-            beam::pairing_protocol::decode(invitation.invitation).endpoints[0]);
+        auto limited_wrong = beam::pairing_protocol::decode(invitation.invitation);
+        limited_wrong.secret[0] = limited_wrong.secret[0] == '0' ? '1' : '0';
         for (int attempt = 0; attempt < 5; ++attempt) {
-            other.join_pin(limited_endpoint, invitation.pin == "000000" ? "000001" : "000000");
+            other.join(beam::pairing_protocol::encode(limited_wrong));
             await(other, beam::PairingState::failed);
         }
         await(limited, beam::PairingState::failed);
@@ -281,7 +372,7 @@ int main() {
         beam::PairingSession expired(expired_options);
         expired.host();
         await(expired, beam::PairingState::expired);
-        require(expired.snapshot().pin.empty(), "expired PIN retained");
+        require(expired.snapshot().invitation.empty(), "expired invitation retained");
         // Newly paired records authenticate real QUIC content, in both directions.
         for (const bool reverse : {false, true}) {
             beam::pairing_transport::Listener reservation(0);
@@ -330,7 +421,7 @@ int main() {
                     "paired QUIC content mismatch");
         }
         std::cout << "Seamless pairing authentication, key proof, reciprocal approval, replay, "
-                     "journal, PIN, and cancellation passed\n";
+                     "journal, version rejection, and cancellation passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         std::filesystem::remove_all(root);

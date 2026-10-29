@@ -27,7 +27,7 @@ internal object PairingQr {
         // detection can fail format/checksum validation as well as discovery.
         QRCodeReader().decode(bitmap, mapOf(DecodeHintType.PURE_BARCODE to true)).text
       }
-    require(text.length <= 2048 && text.startsWith("beam-pair:1:")) {
+    require(text.length <= 2048 && text.startsWith("beam-pair:2:")) {
       "Not a Beam pairing invitation"
     }
     return text

@@ -44,19 +44,14 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps deps-source pairing-deps configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-release android-release-unsigned android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
+.PHONY: all deps deps-source configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-release android-release-unsigned android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
 	$(CMAKE) --fresh -S cmake/msquic-check -B "$(BUILD_DIR)/msquic-check" $(CMAKE_ARGS)
-	$(MAKE) pairing-deps
 
 deps-source:
 	$(CMAKE) -DBEAM_DEPS_DIR="$(abspath build/deps)" -P cmake/BootstrapMsQuic.cmake
-	$(MAKE) pairing-deps
-
-pairing-deps:
-	$(CMAKE) -DBEAM_DEPS_DIR="$(abspath build/deps)" -P cmake/BootstrapPairing.cmake
 
 configure:
 	$(CMAKE) -S . -B "$(BUILD_DIR)" -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DBUILD_TESTING=ON $(CMAKE_ARGS)
@@ -197,7 +192,7 @@ help:
 	@echo "uninstall: remove installed Beam binaries, runtime and app/launcher; keep settings, pairing and received files"
 	@echo "macos-cleanup: inspect app registrations; MACOS_CLEANUP_ARGS=--remove-build-apps removes obsolete generated app bundles"
 	@echo "android-install: build and install debug APK with ADB; android-install-apk: install existing APK; ANDROID_SERIAL selects a device"
-	@echo "deps: check system MsQuic and provision pairing; deps-source: explicitly build pinned MsQuic and pairing"
+	@echo "deps: check system MsQuic; deps-source: explicitly build pinned MsQuic"
 	@echo "build: configure and compile; test: build and run tests; check: format, lint, and tests"
 	@echo "format: apply clang-format; format-check: verify formatting"
 	@echo "clean: delete build/, build-* and Android build output, including local dependencies/toolchains"

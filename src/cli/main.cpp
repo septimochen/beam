@@ -36,8 +36,7 @@ void print_help() {
            "  beam --help\n"
            "  beam --version\n"
            "  beam identity init|show|export [--state-dir DIR]\n"
-           "  beam pairing host|nearby|join|forget [--state-dir DIR] [--name NAME] [--endpoint "
-           "IP:PORT]\n"
+           "  beam pairing host|join|forget [--state-dir DIR] [--name NAME]\n"
            "  beam pairing host --qr [--name NAME]\n"
            "  beam pair NAME --cert PEM --fingerprint SHA256 [--endpoint IP:PORT] [--state-dir "
            "DIR]\n"
@@ -209,14 +208,13 @@ void print_pairing_qr(const std::vector<std::string>& rows) {
 }
 int pairing_command(int argc, char** argv) {
     if (argc < 3)
-        throw std::invalid_argument("Use beam pairing host|nearby|join|forget");
+        throw std::invalid_argument("Use beam pairing host|join|forget");
     const std::string command = argv[2];
-    if (command != "host" && command != "nearby" && command != "join" && command != "forget")
+    if (command != "host" && command != "join" && command != "forget")
         throw std::invalid_argument("Unknown pairing command");
     beam::PairingOptions options{beam::default_state_directory()};
     if (command == "host" || command == "join")
         options.transfer_port = beam::load_config(beam::default_config_file()).listen_port;
-    std::string endpoint;
     bool qr = false;
     std::map<std::string, bool> seen;
     for (int index = 3; index < argc; ++index) {
@@ -234,8 +232,6 @@ int pairing_command(int argc, char** argv) {
             options.state_directory = value;
         else if (key == "--name")
             options.device_name = value;
-        else if (key == "--endpoint" && command == "join")
-            endpoint = value;
         else if (key == "--port")
             options.transfer_port =
                 static_cast<std::uint16_t>(number(value, 65535, "transfer port"));
@@ -250,23 +246,9 @@ int pairing_command(int argc, char** argv) {
     }
     if (command == "host")
         session.host();
-    else if (command == "join") {
-        if (endpoint.empty())
-            session.join(pairing_input("Paste invitation: "));
-        else
-            session.join_pin(endpoint,
-                             pairing_input("Enter the six-digit PIN shown on the other device: "));
-    } else if (command == "nearby") {
-        session.browse();
-        // Browse has a bounded three-second window; allow cancellation throughout.
-        for (unsigned i = 0; i < 70 && !interrupted; ++i)
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        if (interrupted)
-            return 130;
-        for (const auto& device : session.snapshot().nearby)
-            std::cout << device.name << '\t' << device.endpoint << '\n';
-        return 0;
-    } else
+    else if (command == "join")
+        session.join(pairing_input("Paste invitation: "));
+    else
         throw std::invalid_argument("Unknown pairing command");
     beam::PairingState previous = beam::PairingState::idle;
     for (;;) {
@@ -282,7 +264,6 @@ int pairing_command(int argc, char** argv) {
             if (snapshot.state == beam::PairingState::hosting) {
                 // stdout is the explicit invitation output channel, never a log.
                 std::cout << snapshot.invitation << std::endl;
-                std::cout << "PIN: " << snapshot.pin << std::endl;
                 if (qr)
                     print_pairing_qr(snapshot.qr);
             }

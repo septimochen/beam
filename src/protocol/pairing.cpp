@@ -61,7 +61,7 @@ std::vector<std::string> unpack(std::string_view bytes) {
     return out;
 }
 std::string encode(const Invitation& invitation) {
-    std::vector<std::string> fields{"1", invitation.id, invitation.fingerprint, invitation.secret};
+    std::vector<std::string> fields{"2", invitation.id, invitation.fingerprint, invitation.secret};
     for (const auto& endpoint : invitation.endpoints)
         fields.push_back(endpoint_string(endpoint));
     const auto bytes = pack(fields);
@@ -73,10 +73,10 @@ std::string encode(const Invitation& invitation) {
     std::replace(out.begin(), out.end(), '/', '_');
     while (out.ends_with('='))
         out.pop_back();
-    return "beam-pair:1:" + out;
+    return "beam-pair:2:" + out;
 }
 Invitation decode(std::string_view text) {
-    constexpr std::string_view prefix = "beam-pair:1:";
+    constexpr std::string_view prefix = "beam-pair:2:";
     if (text.size() > 2048 || !text.starts_with(prefix))
         throw std::invalid_argument("invalid or unsupported Beam pairing invitation");
     std::string encoded(text.substr(prefix.size()));
@@ -98,7 +98,7 @@ Invitation decode(std::string_view text) {
         throw std::invalid_argument("invalid invitation encoding");
     bytes.resize(static_cast<std::size_t>(size) - padding);
     const auto fields = unpack(bytes);
-    if (fields.size() < 5 || fields.size() > 12 || fields[0] != "1" || !hex_string(fields[1], 32) ||
+    if (fields.size() < 5 || fields.size() > 12 || fields[0] != "2" || !hex_string(fields[1], 32) ||
         !hex_string(fields[2], 64) || !hex_string(fields[3], 64))
         throw std::invalid_argument("invalid invitation fields");
     Invitation result{fields[1], fields[2], fields[3], {}};

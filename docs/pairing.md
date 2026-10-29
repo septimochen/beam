@@ -10,12 +10,10 @@ QUIC/TLS connection and exact full SHA-256 leaf certificate pins.
 - **Phone and computer:** computer chooses **Add device → Show QR code**;
   Android chooses **Manage devices → Add device → Scan QR code**. Review the names
   and approve on both screens. Camera permission is requested only for scanning; denied or
-  missing cameras leave invitation paste and nearby PIN pairing available.
-- **Nearby devices:** open **Add device** on both, select the nearby device,
-  and enter the six-digit PIN shown on its screen. Approve on both devices.
+  missing cameras leave invitation paste available.
 - **Blocked discovery:** use **Copy invitation** on the host and paste it on
   the other device. Direct LAN connectivity must still be available; guest Wi-Fi
-  isolation can prevent all three flows.
+  isolation can prevent both flows.
 
 The invitation expires after three minutes and is consumed by one authenticated
 exchange. Cancel, closing the screen, or leaving the Android screen invalidates
@@ -28,41 +26,42 @@ CLI equivalents:
 
 ```sh
 beam pairing host --name laptop --qr
-beam pairing nearby
 beam pairing join --name phone
 # Paste the invitation on stdin, then type yes (or an alias) on both devices.
-beam pairing join --endpoint 192.168.1.20:PORT
-# Enter the six-digit PIN on stdin; PORT comes from pairing discovery.
 ```
 
 `beam pairing forget` explicitly clears an incomplete journal. `--qr` renders
 a terminal QR code for scanning. `--state-dir DIR` selects an independent store; `--port PORT` specifies the
 normal transfer listener's port (default 4269). The temporary pairing TCP port
-is allocated by the OS. The host's stdout deliberately contains its invitation
-and PIN; do not save or publish that output. Diagnostics omit secrets. These
-commands work without a GUI; invitations/PINs need not enter shell history.
+is allocated by the OS. The host's stdout deliberately contains its invitation;
+do not save or publish that output. Diagnostics omit secrets. These
+commands work without a GUI; invitations need not enter shell history.
 
 ### Authentication and completion
 
-Pairing has two distinct connections, both implemented by Mbed TLS 4.2.0:
+Pairing has two distinct connections, both implemented by OpenSSL 3.0 or newer:
 
-1. EC J-PAKE authenticates a temporary encrypted TLS 1.2 channel using the
-   256-bit QR/paste secret or the separate six-digit nearby PIN. Only the
-   library's EC-JPAKE cipher suite is enabled; no password is sent in plaintext.
+1. TLS 1.3 external-PSK authentication uses the random 256-bit QR/paste secret,
+   decoded from hexadecimal into 32 bytes. TLS_AES_128_GCM_SHA256 and ephemeral
+   key exchange are required. The secret is never transmitted over the network.
 2. The devices exchange and validate their public certificates, then open a
    fresh TLS 1.3 connection with mandatory mutual certificate authentication,
-   exact leaf pins, and the expected Beam TLS identity names. This proves each
-   private key belongs to the exchanged certificate. QR/paste also checks the
-   full host fingerprint carried by the invitation.
+   exact leaf pins, and expected Beam TLS identity names. This proves possession
+   of both private keys. The invitation's full host fingerprint is checked too.
 3. Each device approves its peer. Both approvals and preparation acknowledgements
-   precede publishing any trusted-peer record. Storage and completion receipts
-   are exchanged before reporting success.
+   precede publishing trusted-peer records. Storage and completion receipts are
+   exchanged before reporting success.
 
-The EC-JPAKE TLS profile is Mbed TLS's implementation-specific pairing profile;
-this is a Beam-to-Beam protocol. It does not alter the transfer TLS configuration.
-Session resumption and renegotiation are disabled. At most one exchange is active,
-with five failed authentications per window and at least one second between
-failed attempts. Discovery carries `_beam-pair._tcp` and `v=1`, never secrets.
+Invitations use `beam-pair:2:` and TCP hellos use `beam-pair/2`. Version 1
+invitations and handshakes are rejected without fallback: update both devices
+before new pairing. Existing identities, saved peers, manual certificate pairing,
+and the `beam/4` transfer protocol remain unchanged.
+
+Early data, tickets, session caching, and renegotiation are disabled. External
+PSK handshakes use a per-connection SSL_SESSION description, never a reusable
+cached session. At most one exchange is active, with five failed authentications
+per window and at least one second between failed attempts. PIN pairing and
+`_beam-pair._tcp` discovery are removed; QR and pasted invitations supply routes.
 
 ### Interrupted pairing
 
@@ -200,7 +199,7 @@ Open **Devices** in macOS, or **Manage devices** in Linux/Android. Search by dev
 name or address. Each card shows saved primary and fallback endpoints and a separate
 **Check connection** action. Checks use authenticated QUIC/TLS, transfer no content,
 and show the result of that check; refreshing the saved list does not imply a
-connectivity check. **Add device** keeps the QR, nearby PIN, and invitation flows.
+connectivity check. **Add device** keeps the QR and invitation flows.
 **My identity** exposes only your public certificate and full SHA-256 fingerprint.
 
 **Edit** changes the local name and IP/port together. Names retain the CLI alias

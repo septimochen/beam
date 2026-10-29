@@ -2,7 +2,6 @@
 #include "beam/pairing.hpp"
 #include <QApplication>
 #include <QClipboard>
-#include <QComboBox>
 #include <QDialog>
 #include <QImage>
 #include <QLabel>
@@ -41,25 +40,11 @@ void show_pairing_dialog(QWidget* parent, const Config& config, Service& service
     error_status->setTextFormat(Qt::PlainText);
     error_status->setWordWrap(true);
     layout->addWidget(error_status);
-    auto* pin = new QLabel(&dialog);
-    pin->setTextFormat(Qt::PlainText);
-    layout->addWidget(pin);
     auto* qr = new QLabel(&dialog);
     qr->setAccessibleName("Pairing QR code");
     layout->addWidget(qr);
     auto* copy = new QPushButton("Copy invitation", &dialog);
     layout->addWidget(copy);
-    auto* nearby = new QComboBox(&dialog);
-    nearby->setAccessibleName("Nearby device");
-    layout->addWidget(nearby);
-    auto* browse = new QPushButton("Find nearby devices", &dialog);
-    layout->addWidget(browse);
-    auto* code = new QLineEdit(&dialog);
-    code->setMaxLength(6);
-    code->setPlaceholderText("Six-digit PIN shown on the other device");
-    layout->addWidget(code);
-    auto* pair = new QPushButton("Pair nearby", &dialog);
-    layout->addWidget(pair);
     auto* invitation = new QLineEdit(&dialog);
     invitation->setMaxLength(2048);
     invitation->setPlaceholderText("Paste a Beam invitation");
@@ -91,14 +76,6 @@ void show_pairing_dialog(QWidget* parent, const Config& config, Service& service
     QObject::connect(copy, &QPushButton::clicked, &dialog, [&] {
         QApplication::clipboard()->setText(QString::fromStdString(session.snapshot().invitation));
     });
-    QObject::connect(browse, &QPushButton::clicked, &dialog,
-                     [&] { attempt([&] { session.browse(); }); });
-    QObject::connect(pair, &QPushButton::clicked, &dialog, [&] {
-        attempt([&] {
-            session.join_pin(nearby->currentData().toString().toStdString(),
-                             code->text().toStdString());
-        });
-    });
     QObject::connect(join, &QPushButton::clicked, &dialog, [&] {
         attempt([&] { session.join(invitation->text().trimmed().toStdString()); });
     });
@@ -122,9 +99,7 @@ void show_pairing_dialog(QWidget* parent, const Config& config, Service& service
         const auto snapshot = session.snapshot();
         status->setText(QString::fromStdString(std::string(pairing_state_name(snapshot.state)) +
                                                ": " + snapshot.message));
-        pin->setText(QString::fromStdString("PIN: " + snapshot.pin));
         const bool hosting = snapshot.state == PairingState::hosting;
-        pin->setVisible(hosting);
         copy->setEnabled(hosting);
         qr->setVisible(hosting);
         approve->setVisible(snapshot.state == PairingState::approval);
@@ -151,19 +126,8 @@ void show_pairing_dialog(QWidget* parent, const Config& config, Service& service
                                                                Qt::FastTransformation));
             }
         }
-        if (nearby->count() != static_cast<int>(snapshot.nearby.size())) {
-            const auto selected = nearby->currentData();
-            nearby->clear();
-            for (const auto& device : snapshot.nearby)
-                nearby->addItem(QString::fromStdString(device.name),
-                                QString::fromStdString(device.endpoint));
-            const auto found = nearby->findData(selected);
-            if (found >= 0)
-                nearby->setCurrentIndex(found);
-        }
     });
     session.host();
-    session.browse();
     timer.start(100);
     dialog.exec();
     session.cancel();

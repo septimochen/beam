@@ -153,16 +153,12 @@ void report(NSError** output, const std::exception& error) {
             }
             if (action == "join")
                 _pairing->join(argument(0));
-            else if (action == "pin")
-                _pairing->join_pin(argument(0), argument(1));
             else if (action == "approve") {
                 if (service.is_sending() || service.is_checking())
                     throw std::logic_error("Wait for the active transfer before pairing");
                 service.stop_receiving();
                 _pairing->approve(argument(0));
-            } else if (action == "browse")
-                _pairing->browse();
-            else if (action == "reject")
+            } else if (action == "reject")
                 _pairing->reject();
             else if (action == "cancel")
                 _pairing->cancel();
@@ -177,13 +173,9 @@ void report(NSError** output, const std::exception& error) {
             rows += row + "\n";
         NSMutableArray<NSString*>* values = [NSMutableArray arrayWithArray:@[
             display(beam::pairing_state_name(snapshot.state)), display(snapshot.message),
-            display(snapshot.invitation), display(snapshot.pin), display(snapshot.remote_name),
-            display(snapshot.alias), display(std::to_string(snapshot.port)), display(rows)
+            display(snapshot.invitation), display(snapshot.remote_name), display(snapshot.alias),
+            display(std::to_string(snapshot.port)), display(rows)
         ]];
-        for (const auto& device : snapshot.nearby) {
-            [values addObject:display(device.name)];
-            [values addObject:display(device.endpoint)];
-        }
         return values;
 #else
         throw std::runtime_error("Network pairing is disabled in this build");

@@ -37,7 +37,7 @@ protocol v4; see [protocol](protocol.md) for compatibility and cancellation sema
 | 6 | Generic primary and fallback endpoints |
 | 7 | Desktop tray, drag-and-drop, notifications, and explicit clipboard sharing |
 | 8 | Android Kotlin/JNI app with share target, file picker, receiver, and device picker |
-| 9 | Authenticated LAN pairing: phone QR scan, nearby PIN entry, and invitation fallback |
+| 9 | Authenticated LAN pairing: phone QR scan and invitation fallback |
 
 Do not begin discovery, GUI, Android packaging, clipboard integration, or history
 before the direct transfer path is reliable on macOS and Linux.
@@ -165,10 +165,10 @@ See [Android](android.md) for build, install, pairing, and validation details.
 ## Phase 9: seamless LAN pairing
 
 - [x] Shared C++ pairing session with bounded invitations, cancellation, and value snapshots.
-- [x] Expiring, single-use QR/paste secrets and six-digit nearby PINs through Mbed TLS EC-JPAKE.
+- [x] Expiring, single-use QR/paste secrets through OpenSSL TLS 1.3 external PSK.
 - [x] Public certificate validation, fresh pinned mutual-TLS key proof, and approval on both devices.
 - [x] Locked atomic pairing journal, pending-trust isolation, and idempotent recovery.
-- [x] CLI host/nearby/join, native macOS/Qt Add device, Android CameraX/ZXing QR and NsdManager.
+- [x] CLI host/join, native macOS/Qt Add device, Android CameraX/ZXing QR.
 - [x] Preserve existing certificate stores, advanced manual pairing, and transfer protocol v4.
 - [x] macOS Debug checks, native bridge/UI pairing, ASan/UBSan, scaffold and pairing-disabled builds.
 - [x] Android Kotlin format/lint/unit checks, ARM64 APK, and Android 15 emulator QR/JNI pairing and camera-denial fallback.

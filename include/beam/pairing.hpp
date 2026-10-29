@@ -19,15 +19,10 @@ enum class PairingState {
     cancelled,
     waiting
 };
-struct PairingDevice {
-    std::string name;
-    std::string endpoint;
-};
 struct PairingSnapshot {
     PairingState state{PairingState::idle};
-    std::string message, invitation, pin, remote_name, alias;
+    std::string message, invitation, remote_name, alias;
     std::uint16_t port{};
-    std::vector<PairingDevice> nearby;
     // A square QR matrix represented as rows of '0' and '1'.
     std::vector<std::string> qr;
 };
@@ -54,8 +49,6 @@ class PairingSession {
     PairingSession& operator=(const PairingSession&) = delete;
     void host();
     void join(const std::string& invitation);
-    void join_pin(const std::string& endpoint, const std::string& pin);
-    void browse();
     void approve(const std::string& alias);
     void reject();
     void cancel();

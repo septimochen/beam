@@ -17,7 +17,6 @@ struct DiscoveryOptions {
     std::chrono::milliseconds timeout{3000};
     std::stop_token stop_token{};
     std::function<bool()> should_cancel{};
-    bool pairing{false};
 };
 class DiscoveryError : public std::runtime_error {
   public:

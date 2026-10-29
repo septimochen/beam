@@ -23,11 +23,11 @@ enum class Command {
     check,
     pairing_host,
     pairing_join,
-    pairing_pin,
-    pairing_approve,
+    // 14 was PIN pairing; keep remaining command IDs stable.
+    pairing_approve = 15,
     pairing_snapshot,
-    pairing_browse,
-    pairing_cancel,
+    // 17 was nearby pairing discovery.
+    pairing_cancel = 18,
     pairing_forget,
     pairing_reject,
     device_details,

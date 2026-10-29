@@ -7,10 +7,11 @@ for a first transfer.
 ## Build setup
 
 Requirements: CMake 3.25+, a C++23 compiler, Git, Perl, Make, and OpenSSL development
-headers/libraries (1.1.1+). Contributor checks also use clang-format 23 and clang-tidy 23.
-Install an OpenSSL-backed MsQuic 2.x runtime, version 2.4.0 or newer, through your
-system package manager. Beam also uses installed OpenSSL libcrypto for hashing,
-certificate verification, and random transfer IDs.
+headers/libraries (3.0+ for network pairing). Contributor checks also use clang-format
+23 and clang-tidy 23. Install an OpenSSL-backed MsQuic 2.x runtime, version 2.4.0 or
+newer, through your system package manager. Beam also uses installed OpenSSL libcrypto
+for hashing, certificate verification, and random transfer IDs; invitation pairing also
+uses libssl.
 
 On macOS, install the build tools with Homebrew:
 
@@ -23,7 +24,7 @@ export CLANG_TIDY="$(brew --prefix llvm)/bin/clang-tidy"
 Formatting and linting require LLVM 23; check the installed versions before running
 contributor checks. Bonjour is included with macOS.
 
-On Debian/Ubuntu, install `build-essential`, `libssl-dev`, `perl`, `cmake`, `git`,
+On Debian/Ubuntu, install `build-essential`, `libssl-dev` (OpenSSL 3.0+), `perl`, `cmake`, `git`,
 `libavahi-compat-libdnssd-dev`, and `avahi-daemon`. Linux discovery requires a
 running Avahi daemon. Install `clang-format-23` and `clang-tidy-23` from the
 [official LLVM package repository](https://apt.llvm.org/) for your distribution:
@@ -55,7 +56,7 @@ Beam does not install an AUR helper or add package repositories.
 From the repository root:
 
 ```sh
-make deps   # validate system MsQuic, then download/build the pairing dependency
+make deps   # validate system MsQuic
 make check  # formatting, clang-tidy/static analysis, build, and tests
 ```
 
@@ -114,7 +115,7 @@ make test BUILD_DIR=build-source \
 
 This pins MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`,
 initializes only its quictls TLS submodule, and installs into ignored
-`build/deps/install`; it also provisions pairing. That prefix is never searched
+`build/deps/install`. That prefix is never searched
 implicitly. On Linux, `BEAM_BUNDLE_MSQUIC=ON` bundles the custom runtime for
 installation; default installations depend on the system loader's MsQuic package.
 For `make install`, pass the same `CMAKE_ARGS` and a fresh `INSTALL_BUILD_DIR`.
@@ -268,19 +269,17 @@ correct callback lifetimes, deadlock freedom, or platform clipboard/drop policy.
 The full three-platform build/test matrix can be triggered manually in GitHub Actions.
 CI caches pinned native dependencies and Gradle downloads, and cancels superseded
 runs on the same ref/event. Native cache keys include provisioning/configuration
-inputs and Android's selected NDK/CMake versions; host caches also track the runner
-image. Provisioning remains explicit, and all build/test categories are retained.
+inputs and Android's selected NDK/CMake versions. Provisioning remains explicit,
+and all build/test categories are retained.
 Commit completed work with a descriptive message and push when a remote is configured;
 leave unrelated changes unstaged.
 
 ## Pairing dependencies
 
-`make deps` / `make deps-source` also run `make pairing-deps`, provisioning
-checksum-pinned Mbed TLS 4.2.0 and its matching TF-PSA-Crypto with EC-JPAKE and
-pthread locking. These static libraries are separate from MsQuic/quictls.
-`BEAM_PAIRING_ROOT` selects the installed prefix. `BEAM_ENABLE_PAIRING=OFF`
-removes network pairing and this dependency; manual PEM pairing and transfers
-remain available. Normal configuration never downloads dependencies.
+Network pairing uses the existing OpenSSL dependency (3.0 or newer), linking both
+SSL and Crypto. Android reuses its ABI-specific MsQuic/quictls archives.
+`BEAM_ENABLE_PAIRING=OFF` removes network pairing; manual PEM pairing and
+transfers remain available. Normal configuration never downloads dependencies.
 
 The MIT Nayuki QR encoder v1.8.0 is vendored with its license. Android's pinned
 CameraX, AndroidX Activity and ZXing dependencies, tool selection, APK packaging,

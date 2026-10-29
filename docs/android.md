@@ -79,13 +79,12 @@ is sufficient; `ANDROID_SDK_ROOT` is deprecated.
 
 ### Slow or failed dependency downloads
 
-The last MsQuic install line is followed by Mbed TLS preparation in
-`make android-deps`. Archive preparation now identifies the stage, reuses a
-checksum-verified archive from the desktop/Android cache when available, and
-shows download progress otherwise. Network downloads stop after 30 seconds of
-inactivity or five minutes total. Failed transfers are removed, and an incomplete
-archive from an earlier run is replaced automatically. Retry `make android-deps`;
-completed native builds are reused. Run `make android` after dependency setup
+`make android-deps` builds MsQuic and its quictls dependency. Archive preparation now
+identifies the stage, reuses a checksum-verified archive from the desktop/Android cache
+when available, and shows download progress otherwise. Network downloads stop after 30
+seconds of inactivity or five minutes total. Failed transfers are removed, and an
+incomplete archive from an earlier run is replaced automatically. Retry `make android-
+deps`; completed native builds are reused. Run `make android` after dependency setup
 succeeds.
 
 If Gradle reports `SSLHandshakeException` or `Remote host terminated the
@@ -109,15 +108,14 @@ The wrapper retries transient distribution-download failures three times with a
 30-second network timeout. TLS verification and the pinned distribution SHA-256
 remain enabled.
 
-The checked-in Gradle wrapper validates its distribution SHA-256; AGP provides
-built-in Kotlin. These tested build dependencies retain explicit versions.
-`make android-deps` explicitly downloads MsQuic v2.6.2 at commit
-`819ab74f851ee168504cbc392ec32e7bed1d82e9` and its pinned quictls submodule, plus
-checksum-verified Mbed TLS. It cross-compiles ARM64 static libraries and reuses
-that TLS build for Beam's EVP/X.509 operations. Normal CMake configuration downloads
-no native dependencies. Android imports the ARM64 quictls archives directly;
-host OpenSSL/pkg-config metadata cannot add libraries to the Android link.
-All generated output and local SDK configuration stay ignored.
+The checked-in Gradle wrapper validates its distribution SHA-256; AGP provides built-in
+Kotlin. These tested build dependencies retain explicit versions. `make android-deps`
+explicitly downloads MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`
+and its pinned quictls submodule. It cross-compiles ARM64 static libraries and reuses
+that TLS build for Beam's EVP/X.509 operations and invitation TLS pairing. Normal CMake
+configuration downloads no native dependencies. Android imports the ARM64 quictls
+archives directly; host OpenSSL/pkg-config metadata cannot add libraries to the Android
+link. All generated output and local SDK configuration stay ignored.
 
 The APK contains only `arm64-v8a`; other ABI overrides are rejected. Debug signing
 is automatic. Signed release builds use a private local keystore as described below.
@@ -238,14 +236,12 @@ needed for that manual APK installation.
 ## Pair and choose a device
 
 Choose **Manage devices → Add device** on Android and **Add device** on the other
-device. Scan the computer's QR, select a nearby device and enter its PIN, or paste
-its invitation. Approve on
-both screens. Android discovers/advertises `_beam-pair._tcp` through NsdManager
-only while this screen is open. The bundled ZXing decoder works offline through
-CameraX; Google Play Services are not required. Camera denial keeps paste/PIN
-available. Leaving the screen cancels pairing; recreation starts a new invitation.
-Transfers pause during setup and resume on return when previously enabled;
-explicit Stop remains respected. Full certificates and routes are saved for you.
+device. Scan the computer's QR or paste its invitation. Approve on both screens. The
+bundled ZXing decoder works offline through CameraX; Google Play Services are not
+required. Camera denial keeps invitation paste available. Leaving the screen cancels
+pairing; recreation starts a new invitation. Transfers pause during setup and resume on
+return when previously enabled; explicit Stop remains respected. Full certificates and
+routes are saved for you.
 
 The following manual PEM workflow remains available under **Manage devices and
 identity**:

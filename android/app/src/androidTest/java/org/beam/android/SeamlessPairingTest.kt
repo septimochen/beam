@@ -107,7 +107,7 @@ class SeamlessPairingTest {
           desktop.call(Command.PAIRING_HOST, "desktop")
           var invitation = await(desktop, "hosting")
           repeat(12) { index ->
-            val rows = invitation[7].lineSequence().filter { it.isNotEmpty() }.toList()
+            val rows = invitation[6].lineSequence().filter { it.isNotEmpty() }.toList()
             val size = (rows.size + 8) * 4
             val image =
               ByteArray(size * size) { index ->
@@ -127,8 +127,8 @@ class SeamlessPairingTest {
           val desktopApproval = await(desktop, "awaiting approval")
           val phoneApproval = await(phone, "awaiting approval")
           assertTrue(desktop.call(Command.PEERS).isEmpty())
-          desktop.call(Command.PAIRING_APPROVE, desktopApproval[5])
-          phone.call(Command.PAIRING_APPROVE, phoneApproval[5])
+          desktop.call(Command.PAIRING_APPROVE, desktopApproval[4])
+          phone.call(Command.PAIRING_APPROVE, phoneApproval[4])
           await(desktop, "paired")
           await(phone, "paired")
           assertEquals(phone.call(Command.IDENTITY)[0], desktop.call(Command.PEERS)[2])
@@ -144,7 +144,7 @@ class SeamlessPairingTest {
   }
 
   @Test
-  fun cameraDenialKeepsPasteAndPinAvailableAcrossPolling() {
+  fun cameraDenialKeepsPasteAvailableAcrossPolling() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     if (Build.VERSION.SDK_INT >= 37)
@@ -184,7 +184,7 @@ class SeamlessPairingTest {
         }
         expand(activity.window.decorView)
         assertTrue(labels.contains("Use invitation"))
-        assertTrue(labels.contains("Pair nearby"))
+        assertFalse(labels.contains("Pair nearby"))
       }
     } finally {
       instrumentation.runOnMainSync { activity.finish() }

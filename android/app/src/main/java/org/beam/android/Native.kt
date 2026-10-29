@@ -47,10 +47,10 @@ internal object Command {
   const val CHECK = 11
   const val PAIRING_HOST = 12
   const val PAIRING_JOIN = 13
-  const val PAIRING_PIN = 14
+  // 14 was PIN pairing.
   const val PAIRING_APPROVE = 15
   const val PAIRING_SNAPSHOT = 16
-  const val PAIRING_BROWSE = 17
+  // 17 was nearby pairing discovery.
   const val PAIRING_CANCEL = 18
   const val PAIRING_FORGET = 19
   const val PAIRING_REJECT = 20

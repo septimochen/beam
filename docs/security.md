@@ -16,8 +16,9 @@ current certificate authorization model and [protocol](protocol.md) for wire val
 - Persistent identity must survive network changes; an IP address is not
   device identity. Manual pairing must explicitly verify the full certificate fingerprint
   through an independent channel. Network pairing may instead use the reviewed
-  EC-JPAKE exchange, fresh pinned mutual-TLS key proof, and reciprocal approval
-  described in pairing.md before storing trust. Never treat a short PIN as a
+  TLS 1.3 external-PSK exchange with a random 256-bit invitation secret, fresh
+  pinned mutual-TLS key proof, and reciprocal approval described in pairing.md
+  before storing trust. Never treat a short PIN as a
   raw TLS PSK, skip key proof, or promote pending journal records to trust. See [pairing](pairing.md).
 - Paired transfers must check the exact leaf certificate and normal TLS validity
   and hostname rules. Never authorize another certificate solely because a paired

@@ -71,7 +71,7 @@ struct DevicesView: View {
               .font(.title3.bold())
             Text(
               model.devices.isEmpty
-                ? "Add a device with a QR code, a nearby PIN, or an invitation."
+                ? "Add a device with a QR code or an invitation."
                 : "Try another name or IP address."
             ).foregroundStyle(.secondary)
             if model.devices.isEmpty { Button("Add device", action: model.openPairing) }

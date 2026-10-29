@@ -24,7 +24,6 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         expected = 4;
         break;
     case Command::endpoint:
-    case Command::pairing_pin:
         expected = 2;
         break;
     case Command::unpair:
@@ -92,10 +91,8 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         pairing->host();
         break;
     case Command::pairing_join:
-    case Command::pairing_pin:
     case Command::pairing_approve:
     case Command::pairing_snapshot:
-    case Command::pairing_browse:
     case Command::pairing_cancel:
     case Command::pairing_forget:
     case Command::pairing_reject:
@@ -107,16 +104,12 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
         }
         if (command == Command::pairing_join)
             pairing->join(arguments[0]);
-        else if (command == Command::pairing_pin)
-            pairing->join_pin(arguments[0], arguments[1]);
         else if (command == Command::pairing_approve) {
             if (service.is_sending() || service.is_checking())
                 throw std::logic_error("Wait for the active transfer before pairing");
             service.stop_receiving();
             pairing->approve(arguments[0]);
-        } else if (command == Command::pairing_browse)
-            pairing->browse();
-        else if (command == Command::pairing_cancel)
+        } else if (command == Command::pairing_cancel)
             pairing->cancel();
         else if (command == Command::pairing_forget)
             pairing->forget_incomplete();
@@ -130,13 +123,10 @@ std::vector<std::string> Session::call(Command command, const std::vector<std::s
             std::vector<std::string> result{pairing_state_name(snapshot.state),
                                             snapshot.message,
                                             snapshot.invitation,
-                                            snapshot.pin,
                                             snapshot.remote_name,
                                             snapshot.alias,
                                             std::to_string(snapshot.port),
                                             rows};
-            for (const auto& device : snapshot.nearby)
-                result.insert(result.end(), {device.name, device.endpoint});
             return result;
         }
         break;

@@ -28,14 +28,14 @@ void send_hello(Socket& socket, const std::vector<std::string>& fields, std::sto
                 Deadline deadline);
 std::vector<std::string> read_hello(Socket& socket, std::stop_token stop, Deadline deadline);
 std::vector<std::string> local_addresses();
-// The first connection is authenticated by EC J-PAKE. A second, fresh TLS 1.3
+// The first connection is authenticated by a 256-bit invitation PSK. A second, fresh TLS 1.3
 // connection uses exact peer certificates and mandatory mutual authentication.
 class Tls {
     struct Impl;
     std::unique_ptr<Impl> impl;
 
   public:
-    Tls(Socket socket, bool server, std::string_view password, const Credentials& credentials,
+    Tls(Socket socket, bool server, std::string_view secret_hex, const Credentials& credentials,
         const DeviceIdentity& peer, std::stop_token stop, Deadline deadline);
     ~Tls();
     Tls(const Tls&) = delete;

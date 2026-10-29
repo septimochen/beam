@@ -370,7 +370,6 @@ final class DesktopModel: ObservableObject {
     pairingError = ""
     showPairing = true
     pairingAction("host", [Host.current().localizedName ?? "Beam Mac"])
-    pairingAction("browse")
   }
 
   func closePairing() {
@@ -382,11 +381,11 @@ final class DesktopModel: ObservableObject {
   func pairingAction(_ command: String, _ arguments: [String] = []) {
     do {
       let values = try bridge.pairing(command: command, arguments: arguments)
-      guard values.count >= 8 else { return }
+      guard values.count >= 7 else { return }
       pairingValues = values
       if values[0] != lastPairingState {
         lastPairingState = values[0]
-        if values[0] == "awaiting approval" { pairingAlias = values[5] }
+        if values[0] == "awaiting approval" { pairingAlias = values[4] }
         if values[0] == "paired" { refreshPeers() }
       }
     } catch { pairingError = error.localizedDescription }

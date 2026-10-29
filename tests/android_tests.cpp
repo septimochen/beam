@@ -76,6 +76,12 @@ void tests() {
     Temporary fixture;
     const auto receiver_port = port();
     Session android(fixture.root / "android", receiver_port), desktop(fixture.root / "desktop");
+    // Removed command IDs stay invalid; later JNI commands keep their values.
+    static_assert(static_cast<int>(Command::pairing_approve) == 15);
+    static_assert(static_cast<int>(Command::pairing_cancel) == 18);
+    static_assert(static_cast<int>(Command::import_devices) == 25);
+    rejects([&] { android.call(static_cast<Command>(14), {}); });
+    rejects([&] { android.call(static_cast<Command>(17), {}); });
     const auto phone = android.call(Command::identity, {}),
                laptop = desktop.call(Command::identity, {});
     const auto phone_cert = fixture.root / "phone.pem", laptop_cert = fixture.root / "laptop.pem";

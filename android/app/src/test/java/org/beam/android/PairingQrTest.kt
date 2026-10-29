@@ -27,7 +27,7 @@ class PairingQrTest {
 
   @Test
   fun decodesOfflineAndPreservesInvitation() {
-    val text = "beam-pair:1:ABC123"
+    val text = "beam-pair:2:ABC123"
     assertEquals(text, PairingQr.decode(image(text), 400, 400))
   }
 
@@ -37,7 +37,7 @@ class PairingQrTest {
     val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
     repeat(64) {
       val text =
-        "beam-pair:1:" +
+        "beam-pair:2:" +
           (0 until 350).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("")
       assertEquals(text, PairingQr.decode(image(text), 400, 400))
     }
@@ -47,6 +47,9 @@ class PairingQrTest {
   fun rejectsUnrelatedQrAndInvalidImageBounds() {
     assertThrows(IllegalArgumentException::class.java) {
       PairingQr.decode(image("https://example.com"), 400, 400)
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      PairingQr.decode(image("beam-pair:1:ABC123"), 400, 400)
     }
     assertThrows(IllegalArgumentException::class.java) {
       PairingQr.decode(ByteArray(1), Int.MAX_VALUE, Int.MAX_VALUE)

@@ -45,11 +45,11 @@ On the other device:
 ```
 
 Identity creation, public certificate exchange, and both transfer addresses are
-handled automatically. Both devices must be on the same LAN. For nearby PIN
-pairing, run `beam pairing nearby`, then `beam pairing join --endpoint IP:PORT`
-and enter the PIN shown on the other screen. Secrets are read from stdin.
+handled automatically. Both devices must be on the same LAN. Invitations are
+read from stdin. Update both devices for version 2 invitation pairing; existing
+paired transfers continue to work.
 
-Desktop apps provide **Add device**, QR display, nearby selection, and invitation
+Desktop apps provide **Add device**, QR display, and invitation
 paste. Android also scans QR codes. No accounts or internet service are required.
 See [pairing](docs/pairing.md) for recovery and advanced manual PEM pairing.
 
@@ -150,7 +150,7 @@ Use `make android-release` for a signed, optimized APK after configuring the
 With USB debugging enabled and your phone connected/authorized, run
 `make android-install`; see [phone installation](docs/android.md#install-on-your-phone).
 Open **Manage devices → Add device** on Android and **Add device** on the other
-device. Scan its QR code or enter its nearby PIN, then approve on both screens.
+device. Scan its QR code or paste its invitation, then approve on both screens.
 Choose a paired device and one file or text (including URLs), then tap **Send**. Other apps' **Share → Beam** opens the
 same review screen. Opening Beam starts reception after pairing and required
 permissions; **Stop receiving** pauses it.
@@ -159,7 +159,7 @@ and a brief completion message, with a separate notification when enabled. Use
 **Downloads** to find files. **Retry saving** appears only if a Downloads save failed
 or an older private file still needs saving.
 
-See [Android setup, pairing, and tests](docs/android.md) for QR/PIN pairing,
+See [Android setup, pairing, and tests](docs/android.md) for QR/invitation pairing,
 foreground controls, APK paths, and platform verification.
 
 ## Useful options and tips

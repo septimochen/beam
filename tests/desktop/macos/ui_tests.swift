@@ -285,7 +285,9 @@ private func tests() throws {
     invitation = try pairingLeft.pairing(command: "snapshot", arguments: [])
     return invitation[0] == "hosting"
   }
-  try require(!invitation[7].isEmpty && invitation[3].count == 6, "Pairing bridge lost QR or PIN")
+  try require(
+    invitation.count == 7 && !invitation[6].isEmpty && invitation[2].hasPrefix("beam-pair:2:"),
+    "Pairing bridge lost QR or version 2 invitation")
   _ = try pairingRight.pairing(command: "host", arguments: ["right"])
   _ = try pairingRight.pairing(command: "join", arguments: [invitation[2]])
   var leftApproval: [String] = []
@@ -297,8 +299,8 @@ private func tests() throws {
   }
   let beforeApproval = try pairingLeft.peers()
   try require(beforeApproval.isEmpty, "Pairing bridge granted trust before approval")
-  _ = try pairingLeft.pairing(command: "approve", arguments: [leftApproval[5]])
-  _ = try pairingRight.pairing(command: "approve", arguments: [rightApproval[5]])
+  _ = try pairingLeft.pairing(command: "approve", arguments: [leftApproval[4]])
+  _ = try pairingRight.pairing(command: "approve", arguments: [rightApproval[4]])
   try waitUntil {
     let left = try pairingLeft.pairing(command: "snapshot", arguments: [])
     let right = try pairingRight.pairing(command: "snapshot", arguments: [])

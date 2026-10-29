@@ -84,7 +84,8 @@ for destination_mode in default configured explicit; do
             expected_dir="$root/configured" ;;
         explicit) receive_args=(--output output); expected_dir=output ;;
     esac
-    HOME="$root/test-home" SSL_CERT_FILE=ca.pem "$beam" receive --once --listen "$port" "${receive_args[@]}" --cert server.pem --key server.key --ca ca.pem --timeout 5 --no-discovery >receiver.log 2>&1 &
+    # Bash 3.2 treats an empty array as unset under nounset.
+    HOME="$root/test-home" SSL_CERT_FILE=ca.pem "$beam" receive --once --listen "$port" ${receive_args[@]+"${receive_args[@]}"} --cert server.pem --key server.key --ca ca.pem --timeout 5 --no-discovery >receiver.log 2>&1 &
     receiver_pid=$!
     for attempt in {1..500}; do
         if grep -q '^Listening' receiver.log; then break; fi

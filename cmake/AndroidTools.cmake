@@ -170,9 +170,6 @@ else()
         execute_process(COMMAND "${android_cmake}" "-DANDROID_NDK=${ANDROID_NDK}" -DANDROID_ABI=arm64-v8a
             "-DBEAM_ANDROID_DEPS=${BEAM_ANDROID_DEPS}" -P "${CMAKE_CURRENT_LIST_DIR}/BootstrapAndroid.cmake"
             COMMAND_ERROR_IS_FATAL ANY)
-        execute_process(COMMAND "${android_cmake}" "-DANDROID_NDK=${ANDROID_NDK}" -DANDROID_ABI=arm64-v8a
-            "-DBEAM_DEPS_DIR=${BEAM_ANDROID_DEPS}/pairing" -P "${CMAKE_CURRENT_LIST_DIR}/BootstrapPairing.cmake"
-            COMMAND_ERROR_IS_FATAL ANY)
     elseif(BEAM_ANDROID_ACTION STREQUAL "test")
         execute_process(COMMAND "${android_cmake}" "-DBEAM_SOURCE_DIR=${project_dir}"
             "-DBEAM_ANDROID_DEPS=${BEAM_ANDROID_DEPS}" "-DANDROID_NDK=${ANDROID_NDK}"

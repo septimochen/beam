@@ -59,8 +59,6 @@
 !/cmake/**/*.cmake.in
 !/cmake/**/CMakeLists.txt
 !/cmake/**/*.cpp
-!/cmake/PairingMbedConfig.h
-!/cmake/PairingCryptoConfig.h
 !/third_party/
 !/third_party/qrcodegen/
 !/third_party/qrcodegen/*.cpp

@@ -5,23 +5,19 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <ifaddrs.h>
-#include <mbedtls/error.h>
-#include <mbedtls/net_sockets.h>
-#include <mbedtls/ssl.h>
-#include <mutex>
 // Required for IFF_*; glibc exposes these as self-referential enum macros.
 #include <net/if.h> // IWYU pragma: keep
 #include <netdb.h>
+#include <openssl/crypto.h>
+#include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/ssl.h>
+#include <openssl/x509v3.h>
 #include <poll.h>
-#include <psa/crypto.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <utility>
-
-#if !defined(MBEDTLS_KEY_EXCHANGE_ECJPAKE_ENABLED) || !defined(MBEDTLS_THREADING_PTHREAD)
-#error "Reprovision the pairing dependency with make pairing-deps (Android: make android-deps)"
-#endif
 
 namespace beam::pairing_transport {
 void check(std::stop_token stop, Deadline deadline) {
@@ -89,35 +85,46 @@ std::size_t read_length(const std::array<char, 4>& bytes) {
     checked(size > 0 && size <= pairing_protocol::max_frame, "Invalid pairing frame length");
     return size;
 }
-void tls_check(int code) {
-    if (code == 0)
-        return;
-    // Library error text carries no peer payload, credential, or PIN.
-    std::array<char, 256> error{};
-    mbedtls_strerror(code, error.data(), error.size());
-    throw std::runtime_error(std::string("Pairing authentication failed: ") + error.data());
-}
-int send_callback(void* context, const unsigned char* bytes, std::size_t size) noexcept {
-    const auto& socket = *static_cast<Socket*>(context);
+// A socket BIO keeps writes safe from SIGPIPE without changing process signal handlers.
+int bio_write(BIO* bio, const char* bytes, int size) noexcept {
+    BIO_clear_retry_flags(bio);
 #ifdef MSG_NOSIGNAL
     constexpr int flags = MSG_NOSIGNAL;
 #else
     constexpr int flags = 0;
 #endif
-    const auto count = ::send(socket.fd, bytes, size, flags);
-    if (count >= 0)
-        return static_cast<int>(count);
-    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-        return MBEDTLS_ERR_SSL_WANT_WRITE;
-    return MBEDTLS_ERR_NET_SEND_FAILED;
+    const auto count = ::send(static_cast<Socket*>(BIO_get_data(bio))->fd, bytes,
+                              static_cast<std::size_t>(size), flags);
+    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+        BIO_set_retry_write(bio);
+    return static_cast<int>(count);
 }
-int receive_callback(void* context, unsigned char* bytes, std::size_t size) noexcept {
-    const auto count = recv(static_cast<Socket*>(context)->fd, bytes, size, 0);
-    if (count >= 0)
-        return static_cast<int>(count);
-    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-        return MBEDTLS_ERR_SSL_WANT_READ;
-    return MBEDTLS_ERR_NET_RECV_FAILED;
+int bio_read(BIO* bio, char* bytes, int size) noexcept {
+    BIO_clear_retry_flags(bio);
+    const auto count =
+        recv(static_cast<Socket*>(BIO_get_data(bio))->fd, bytes, static_cast<std::size_t>(size), 0);
+    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+        BIO_set_retry_read(bio);
+    return static_cast<int>(count);
+}
+BIO_METHOD* socket_method() {
+    static const std::unique_ptr<BIO_METHOD, decltype(&BIO_meth_free)> method(
+        [] {
+            std::unique_ptr<BIO_METHOD, decltype(&BIO_meth_free)> value(
+                BIO_meth_new(BIO_get_new_index() | BIO_TYPE_SOURCE_SINK, "Beam pairing socket"),
+                BIO_meth_free);
+            checked(value && BIO_meth_set_write(value.get(), bio_write) == 1 &&
+                        BIO_meth_set_read(value.get(), bio_read) == 1 &&
+                        BIO_meth_set_ctrl(
+                            value.get(),
+                            +[](BIO*, int command, long, void*) noexcept -> long {
+                                return command == BIO_CTRL_FLUSH ? 1 : 0;
+                            }) == 1,
+                    "Create pairing socket BIO failed");
+            return value.release();
+        }(),
+        BIO_meth_free);
+    return method.get();
 }
 } // namespace
 Socket::Socket(int descriptor) : fd(descriptor) {
@@ -241,135 +248,170 @@ std::vector<std::string> local_addresses() {
 }
 struct Tls::Impl {
     Socket socket;
-    mbedtls_ssl_context ssl{};
-    mbedtls_ssl_config config{};
-    mbedtls_x509_crt own{}, peer{};
-    mbedtls_pk_context key{};
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> config{nullptr, SSL_CTX_free};
+    std::unique_ptr<SSL, decltype(&SSL_free)> ssl{nullptr, SSL_free};
+    std::array<unsigned char, 32> secret{};
     std::string fingerprint;
     std::stop_token stop;
     Deadline deadline;
     Impl(Socket value, std::stop_token token, Deadline limit)
-        : socket(std::move(value)), stop(token), deadline(limit) {
-        mbedtls_ssl_init(&ssl);
-        mbedtls_ssl_config_init(&config);
-        mbedtls_x509_crt_init(&own);
-        mbedtls_x509_crt_init(&peer);
-        mbedtls_pk_init(&key);
+        : socket(std::move(value)), stop(token), deadline(limit) {}
+    ~Impl() { OPENSSL_cleanse(secret.data(), secret.size()); }
+    // External PSK sessions describe this handshake only; they are never cached.
+    static int session(SSL* connection, SSL_SESSION** output) noexcept {
+        *output = nullptr;
+        auto* self = static_cast<Impl*>(SSL_get_app_data(connection));
+        const unsigned char cipher_id[]{0x13, 0x01}; // TLS_AES_128_GCM_SHA256
+        const auto* cipher = SSL_CIPHER_find(connection, cipher_id);
+        SSL_SESSION* value = SSL_SESSION_new();
+        if (!value || !cipher ||
+            SSL_SESSION_set1_master_key(value, self->secret.data(), self->secret.size()) != 1 ||
+            SSL_SESSION_set_cipher(value, cipher) != 1 ||
+            SSL_SESSION_set_protocol_version(value, TLS1_3_VERSION) != 1) {
+            SSL_SESSION_free(value);
+            return 0;
+        }
+        *output = value;
+        return 1;
     }
-    ~Impl() {
-        mbedtls_ssl_free(&ssl);
-        mbedtls_ssl_config_free(&config);
-        mbedtls_x509_crt_free(&own);
-        mbedtls_x509_crt_free(&peer);
-        mbedtls_pk_free(&key);
+    static int client_psk(SSL* connection, const EVP_MD* digest, const unsigned char** identity,
+                          std::size_t* size, SSL_SESSION** output) noexcept {
+        *output = nullptr;
+        if (digest && EVP_MD_type(digest) != NID_sha256)
+            return 0;
+        *identity = reinterpret_cast<const unsigned char*>("beam-pair/2");
+        *size = 11;
+        return session(connection, output);
+    }
+    static int server_psk(SSL* connection, const unsigned char* identity, std::size_t size,
+                          SSL_SESSION** output) noexcept {
+        *output = nullptr;
+        if (size != 11 || CRYPTO_memcmp(identity, "beam-pair/2", size) != 0)
+            return 0;
+        return session(connection, output);
+    }
+    static int verify(int valid, X509_STORE_CTX* store) noexcept {
+        const auto* connection = static_cast<SSL*>(
+            X509_STORE_CTX_get_ex_data(store, SSL_get_ex_data_X509_STORE_CTX_idx()));
+        const auto* self = static_cast<Impl*>(SSL_get_app_data(connection));
+        if (!valid || X509_STORE_CTX_get_error_depth(store) != 0)
+            return 0;
+        std::array<unsigned char, 32> digest{};
+        unsigned count = 0;
+        if (X509_digest(X509_STORE_CTX_get_current_cert(store), EVP_sha256(), digest.data(),
+                        &count) != 1 ||
+            count != 32 || self->fingerprint.size() != 64)
+            return 0;
+        std::array<char, 64> hex{};
+        for (std::size_t i = 0; i < digest.size(); ++i) {
+            hex[2 * i] = "0123456789abcdef"[digest[i] >> 4];
+            hex[2 * i + 1] = "0123456789abcdef"[digest[i] & 15];
+        }
+        return CRYPTO_memcmp(hex.data(), self->fingerprint.data(), hex.size()) == 0;
     }
     void again(int result) {
-        if (result == MBEDTLS_ERR_SSL_WANT_READ || result == MBEDTLS_ERR_SSL_WANT_WRITE)
-            wait(socket.fd, result == MBEDTLS_ERR_SSL_WANT_READ ? POLLIN : POLLOUT, stop, deadline);
+        const int error = SSL_get_error(ssl.get(), result);
+        if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE)
+            wait(socket.fd, error == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT, stop, deadline);
         else
-            tls_check(result);
+            throw std::runtime_error("Pairing authentication failed or connection closed");
     }
     void io(std::span<char> bytes, bool sending) {
         while (!bytes.empty()) {
             check(stop, deadline);
-            const int result =
-                sending
-                    ? mbedtls_ssl_write(&ssl, reinterpret_cast<const unsigned char*>(bytes.data()),
-                                        bytes.size())
-                    : mbedtls_ssl_read(&ssl, reinterpret_cast<unsigned char*>(bytes.data()),
-                                       bytes.size());
-            if (result > 0)
-                bytes = bytes.subspan(static_cast<std::size_t>(result));
-            else {
-                checked(result != 0, "Pairing connection closed");
+            ERR_clear_error();
+            std::size_t count = 0;
+            const int result = sending ? SSL_write_ex(ssl.get(), bytes.data(), bytes.size(), &count)
+                                       : SSL_read_ex(ssl.get(), bytes.data(), bytes.size(), &count);
+            if (result == 1) {
+                checked(count > 0, "Pairing connection closed");
+                bytes = bytes.subspan(count);
+            } else
                 again(result);
-            }
         }
     }
 };
-Tls::Tls(Socket socket, bool server, std::string_view password, const Credentials& credentials,
+Tls::Tls(Socket socket, bool server, std::string_view secret_hex, const Credentials& credentials,
          const DeviceIdentity& peer, std::stop_token stop, Deadline deadline)
     : impl(std::make_unique<Impl>(std::move(socket), stop, deadline)) {
-    static std::once_flag initialized;
-    std::call_once(initialized, [] {
-        checked(psa_crypto_init() == PSA_SUCCESS, "Initialize pairing cryptography failed");
-    });
     auto& p = *impl;
-    tls_check(mbedtls_ssl_config_defaults(
-        &p.config, server ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT,
-        MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT));
-    mbedtls_ssl_conf_session_tickets(&p.config, MBEDTLS_SSL_SESSION_TICKETS_DISABLED);
-    mbedtls_ssl_conf_new_session_tickets(&p.config, 0);
-#if defined(MBEDTLS_SSL_RENEGOTIATION)
-    mbedtls_ssl_conf_renegotiation(&p.config, MBEDTLS_SSL_RENEGOTIATION_DISABLED);
-#endif
-    const bool pake = !password.empty();
-    if (pake) {
-        static const int suites[]{MBEDTLS_TLS_ECJPAKE_WITH_AES_128_CCM_8, 0};
-        mbedtls_ssl_conf_min_tls_version(&p.config, MBEDTLS_SSL_VERSION_TLS1_2);
-        mbedtls_ssl_conf_max_tls_version(&p.config, MBEDTLS_SSL_VERSION_TLS1_2);
-        mbedtls_ssl_conf_ciphersuites(&p.config, suites);
-        // Authentication is EC J-PAKE, not a certificate handshake.
-        mbedtls_ssl_conf_authmode(&p.config, MBEDTLS_SSL_VERIFY_NONE);
+    p.config.reset(SSL_CTX_new(TLS_method()));
+    checked(p.config && SSL_CTX_set_min_proto_version(p.config.get(), TLS1_3_VERSION) == 1 &&
+                SSL_CTX_set_max_proto_version(p.config.get(), TLS1_3_VERSION) == 1 &&
+                SSL_CTX_set_num_tickets(p.config.get(), 0) == 1 &&
+                SSL_CTX_set_max_early_data(p.config.get(), 0) == 1,
+            "Configure pairing TLS failed");
+    SSL_CTX_set_options(p.config.get(), SSL_OP_NO_TICKET | SSL_OP_NO_RENEGOTIATION);
+    SSL_CTX_clear_options(p.config.get(), SSL_OP_ALLOW_NO_DHE_KEX);
+    SSL_CTX_set_session_cache_mode(p.config.get(), SSL_SESS_CACHE_OFF);
+    const bool bootstrap = !secret_hex.empty();
+    if (bootstrap) {
+        checked(pairing_protocol::hex_string(secret_hex, 64), "Invalid invitation secret");
+        const auto nibble = [](char c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
+        for (std::size_t i = 0; i < p.secret.size(); ++i)
+            p.secret[i] = static_cast<unsigned char>((nibble(secret_hex[2 * i]) << 4) |
+                                                     nibble(secret_hex[2 * i + 1]));
+        checked(SSL_CTX_set_ciphersuites(p.config.get(), "TLS_AES_128_GCM_SHA256") == 1,
+                "Configure invitation cipher failed");
+        SSL_CTX_set_psk_use_session_callback(p.config.get(), Impl::client_psk);
+        SSL_CTX_set_psk_find_session_callback(p.config.get(), Impl::server_psk);
     } else {
-        mbedtls_ssl_conf_min_tls_version(&p.config, MBEDTLS_SSL_VERSION_TLS1_3);
-        mbedtls_ssl_conf_max_tls_version(&p.config, MBEDTLS_SSL_VERSION_TLS1_3);
-        mbedtls_ssl_conf_tls13_key_exchange_modes(&p.config,
-                                                  MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL);
-        mbedtls_ssl_conf_authmode(&p.config, MBEDTLS_SSL_VERIFY_REQUIRED);
-        tls_check(mbedtls_x509_crt_parse_file(&p.own, credentials.certificate.c_str()));
-        tls_check(mbedtls_pk_parse_keyfile(&p.key, credentials.private_key.c_str(), nullptr));
-        tls_check(mbedtls_x509_crt_parse(
-            &p.peer, reinterpret_cast<const unsigned char*>(peer.certificate_pem.c_str()),
-            peer.certificate_pem.size() + 1));
-        mbedtls_ssl_conf_ca_chain(&p.config, &p.peer, nullptr);
-        tls_check(mbedtls_ssl_conf_own_cert(&p.config, &p.own, &p.key));
         p.fingerprint = peer.fingerprint;
-        mbedtls_ssl_conf_verify(
-            &p.config,
-            +[](void* context, mbedtls_x509_crt* certificate, int depth,
-                std::uint32_t* flags) -> int {
-                if (depth != 0) {
-                    *flags |= MBEDTLS_X509_BADCERT_NOT_TRUSTED;
-                    return 0;
-                }
-                std::array<unsigned char, 32> digest{};
-                unsigned count = 0;
-                if (EVP_Digest(certificate->raw.p, certificate->raw.len, digest.data(), &count,
-                               EVP_sha256(), nullptr) != 1 ||
-                    count != 32) {
-                    *flags |= MBEDTLS_X509_BADCERT_NOT_TRUSTED;
-                    return 0;
-                }
-                const auto& expected = static_cast<Impl*>(context)->fingerprint;
-                bool same = expected.size() == 64;
-                for (std::size_t i = 0; same && i < 32; ++i)
-                    same = expected[i * 2] == "0123456789abcdef"[digest[i] >> 4] &&
-                           expected[i * 2 + 1] == "0123456789abcdef"[digest[i] & 15];
-                if (!same)
-                    *flags |= MBEDTLS_X509_BADCERT_NOT_TRUSTED;
-                return 0;
-            },
-            &p);
+        std::unique_ptr<BIO, decltype(&BIO_free)> input(
+            BIO_new_mem_buf(peer.certificate_pem.data(),
+                            static_cast<int>(peer.certificate_pem.size())),
+            BIO_free);
+        std::unique_ptr<X509, decltype(&X509_free)> certificate(
+            input ? PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr) : nullptr, X509_free);
+        checked(certificate &&
+                    X509_STORE_add_cert(SSL_CTX_get_cert_store(p.config.get()),
+                                        certificate.get()) == 1 &&
+                    SSL_CTX_use_certificate_file(p.config.get(), credentials.certificate.c_str(),
+                                                 SSL_FILETYPE_PEM) == 1 &&
+                    SSL_CTX_use_PrivateKey_file(p.config.get(), credentials.private_key.c_str(),
+                                                SSL_FILETYPE_PEM) == 1 &&
+                    SSL_CTX_check_private_key(p.config.get()) == 1,
+                "Load pairing certificates failed");
+        SSL_CTX_set_verify(p.config.get(), SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
+                           Impl::verify);
+        SSL_CTX_set_verify_depth(p.config.get(), 0);
     }
-    tls_check(mbedtls_ssl_setup(&p.ssl, &p.config));
-    if (pake)
-        tls_check(mbedtls_ssl_set_hs_ecjpake_password(
-            &p.ssl, reinterpret_cast<const unsigned char*>(password.data()), password.size()));
+    p.ssl.reset(SSL_new(p.config.get()));
+    checked(p.ssl != nullptr, "Create pairing TLS failed");
+    SSL_set_app_data(p.ssl.get(), &p);
+    if (!bootstrap) {
+        SSL_set_hostflags(p.ssl.get(), X509_CHECK_FLAG_NEVER_CHECK_SUBJECT);
+        checked(
+            X509_VERIFY_PARAM_set1_host(SSL_get0_param(p.ssl.get()), peer.tls_name.c_str(), 0) == 1,
+            "Configure pairing identity name failed");
+    }
+    BIO* bio = BIO_new(socket_method());
+    checked(bio != nullptr, "Create pairing socket BIO failed");
+    BIO_set_data(bio, &p.socket);
+    BIO_set_init(bio, 1);
+    SSL_set_bio(p.ssl.get(), bio, bio);
+    if (server)
+        SSL_set_accept_state(p.ssl.get());
     else
-        tls_check(mbedtls_ssl_set_hostname(&p.ssl, peer.tls_name.c_str()));
-    mbedtls_ssl_set_bio(&p.ssl, &p.socket, send_callback, receive_callback, nullptr);
+        SSL_set_connect_state(p.ssl.get());
     for (;;) {
         check(stop, deadline);
-        const int result = mbedtls_ssl_handshake(&p.ssl);
-        if (result == 0)
+        ERR_clear_error();
+        const int result = SSL_do_handshake(p.ssl.get());
+        if (result == 1)
             break;
         p.again(result);
     }
+    checked(SSL_get_negotiated_group(p.ssl.get()) != 0, "Pairing requires ephemeral key exchange");
+    if (bootstrap)
+        checked(SSL_session_reused(p.ssl.get()) == 1, "Invitation authentication required");
+    else
+        checked(SSL_get_verify_result(p.ssl.get()) == X509_V_OK,
+                "Pairing certificate verification failed");
 }
 Tls::~Tls() = default;
 bool Tls::readable() const {
-    if (mbedtls_ssl_check_pending(&impl->ssl))
+    if (SSL_pending(impl->ssl.get()) > 0)
         return true;
     pollfd item{impl->socket.fd, POLLIN, 0};
     return poll(&item, 1, 0) > 0;

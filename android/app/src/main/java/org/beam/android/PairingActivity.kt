@@ -14,12 +14,10 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputFilter
 import android.view.View
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.camera.core.CameraSelector
@@ -38,22 +36,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 @SuppressLint("SetTextI18n")
 class PairingActivity : ComponentActivity() {
   private var session: NativeSession? = null
-  private lateinit var discovery: PairingDiscovery
   private val main = Handler(Looper.getMainLooper())
   private val cameraExecutor = Executors.newSingleThreadExecutor()
   private var provider: ProcessCameraProvider? = null
   private var cameraDialog: AlertDialog? = null
   private var running = false
   private lateinit var status: TextView
-  private lateinit var pinLabel: TextView
   private lateinit var errorLabel: TextView
   private lateinit var decline: Button
   private lateinit var qr: ImageView
   private lateinit var invitation: EditText
   private lateinit var alias: EditText
   private lateinit var approve: Button
-  private lateinit var nearby: Spinner
-  private lateinit var code: EditText
   private lateinit var approvalCard: LinearLayout
   private lateinit var connectionCard: LinearLayout
   private lateinit var invitationCard: LinearLayout
@@ -63,7 +57,6 @@ class PairingActivity : ComponentActivity() {
   private lateinit var forgetApproval: Button
   private lateinit var done: Button
   private val ui by lazy { BeamUi(this) }
-  private var devices = emptyList<Pair<String, String>>()
   private var lastInvitation = ""
   private var lastState = ""
   private var snapshot = emptyList<String>()
@@ -97,40 +90,10 @@ class PairingActivity : ComponentActivity() {
 
     connectionCard = ui.card()
     connectionCard.addView(button("Scan QR code", true) { scan() })
-    connectionCard.addView(ui.divider())
-    connectionCard.addView(ui.label("Nearby devices", 18f, true))
-    nearby =
-      Spinner(this).apply {
-        contentDescription = "Nearby device"
-        minimumHeight = ui.dp(48)
-        backgroundTintList = android.content.res.ColorStateList.valueOf(ui.accent)
-        adapter =
-          ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, listOf("Searching…"))
-      }
-    connectionCard.addView(nearby)
-    code =
-      input("Six-digit PIN", 6).apply {
-        inputType = android.text.InputType.TYPE_CLASS_NUMBER
-      }
-    connectionCard.addView(code)
-    val nearbyActions = ui.actionRow()
-    nearbyActions.addView(button("Refresh") { discovery.browse() }, ui.weight())
-    nearbyActions.addView(
-      button("Pair nearby") {
-        val endpoint =
-          devices.getOrNull(nearby.selectedItemPosition)?.second
-            ?: error("Choose a nearby device first")
-        call(Command.PAIRING_PIN, endpoint, code.text.toString())
-      },
-      ui.weight(),
-    )
-    connectionCard.addView(nearbyActions)
     column.addView(connectionCard)
 
     localCard = ui.card()
-    localCard.addView(ui.label("This device’s PIN", 18f, true))
-    pinLabel = ui.label("…", 32f, true).apply { typeface = android.graphics.Typeface.MONOSPACE }
-    localCard.addView(pinLabel)
+    localCard.addView(ui.label("This device’s invitation", 18f, true))
     qr =
       ImageView(this).apply {
         contentDescription = "Pairing QR code"
@@ -180,16 +143,6 @@ class PairingActivity : ComponentActivity() {
     column.addView(forgetApproval)
     done = button("Done", true) { finish() }.apply { visibility = View.GONE }
     column.addView(done)
-    discovery =
-      PairingDiscovery(this) { values ->
-        devices = values
-        nearby.adapter =
-          ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            values.map { it.first }.ifEmpty { listOf("No nearby devices") },
-          )
-      }
     val settings = getSharedPreferences("settings", MODE_PRIVATE)
     session =
       NativeSession(
@@ -226,7 +179,6 @@ class PairingActivity : ComponentActivity() {
         "Allow local network access in Beam first"
       }
       call(Command.PAIRING_HOST, name)
-      discovery.browse()
     }
     main.post(poll)
   }
@@ -234,7 +186,6 @@ class PairingActivity : ComponentActivity() {
   override fun onStop() {
     running = false
     main.removeCallbacks(poll)
-    discovery.close()
     cameraDialog?.dismiss()
     provider?.unbindAll()
     runCatching { session?.call(Command.PAIRING_CANCEL) }
@@ -266,16 +217,15 @@ class PairingActivity : ComponentActivity() {
         if (!running) return
         attempt {
           snapshot = checkNotNull(session).call(Command.PAIRING_SNAPSHOT)
-          if (snapshot.size >= 8) {
+          if (snapshot.size >= 7) {
             val state = snapshot[0]
             status.text =
               when (state) {
                 "hosting" -> ""
-                "awaiting approval" -> "Pair with ${snapshot[4]}?"
+                "awaiting approval" -> "Pair with ${snapshot[3]}?"
                 "paired" -> "Device added"
                 else -> snapshot[1]
               }
-            pinLabel.text = snapshot[3]
             approvalCard.isVisible = state == "awaiting approval"
             connectionCard.isVisible = state in listOf("hosting", "incomplete")
             localCard.isVisible = state == "hosting"
@@ -286,13 +236,12 @@ class PairingActivity : ComponentActivity() {
             done.isVisible = state == "paired"
             if (state != lastState) {
               lastState = state
-              if (state == "awaiting approval") alias.setText(snapshot[5])
+              if (state == "awaiting approval") alias.setText(snapshot[4])
               if (state == "paired") setResult(RESULT_OK)
             }
-            discovery.advertise(if (state == "hosting") snapshot[6].toInt() else 0, name)
             if (snapshot[2] != lastInvitation) {
               lastInvitation = snapshot[2]
-              val rows = snapshot[7].lineSequence().filter { it.isNotEmpty() }.toList()
+              val rows = snapshot[6].lineSequence().filter { it.isNotEmpty() }.toList()
               if (rows.isEmpty()) qr.setImageDrawable(null)
               else {
                 val size = rows.size + 8
@@ -362,7 +311,7 @@ class PairingActivity : ComponentActivity() {
                 val text = PairingQr.decode(data, image.width, image.height)
                 if (
                   text.length <= 2048 &&
-                    text.startsWith("beam-pair:1:") &&
+                    text.startsWith("beam-pair:2:") &&
                     scanning.compareAndSet(true, false)
                 )
                   main.post {
@@ -395,7 +344,7 @@ class PairingActivity : ComponentActivity() {
     super.onRequestPermissionsResult(code, permissions, results)
     if (code == 22) {
       if (results.firstOrNull() == PackageManager.PERMISSION_GRANTED) attempt { startCamera() }
-      else errorLabel.text = "Camera access denied. Use a PIN or paste an invitation."
+      else errorLabel.text = "Camera access denied. Paste an invitation."
     }
   }
 }
