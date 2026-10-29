@@ -131,8 +131,9 @@ class ProgressLine {
         const auto percent = static_cast<int>(fraction * 100);
         std::cerr << "\r\033[2K[" << std::string(static_cast<std::size_t>(filled), '=')
                   << std::string(static_cast<std::size_t>(width - filled), ' ') << "] " << percent
-                  << "% " << human_size(progress.bytes) << " / " << human_size(progress.total)
-                  << " (" << human_size(progress.bytes_per_second) << "/s)" << std::flush;
+                  << "% " << human_size(static_cast<long double>(progress.bytes)) << " / "
+                  << human_size(static_cast<long double>(progress.total)) << " ("
+                  << human_size(progress.bytes_per_second) << "/s)" << std::flush;
         active_ = true;
     }
 };
@@ -640,8 +641,8 @@ int transfer_command(int argc, char** argv, bool receive) {
                 update.stage == beam::TransferStage::transferring ||
                 update.stage == beam::TransferStage::complete) {
                 if (progress_line.terminal)
-                    std::cerr << ": " << human_size(update.bytes) << " / "
-                              << human_size(update.total);
+                    std::cerr << ": " << human_size(static_cast<long double>(update.bytes)) << " / "
+                              << human_size(static_cast<long double>(update.total));
                 else
                     std::cerr << ": " << update.bytes << "/" << update.total << " bytes";
             }
@@ -736,7 +737,7 @@ int transfer_command(int argc, char** argv, bool receive) {
             } else {
                 std::cerr << "Received and verified " << result.filename << " (";
                 if (progress_line.terminal)
-                    std::cerr << human_size(result.bytes);
+                    std::cerr << human_size(static_cast<long double>(result.bytes));
                 else
                     std::cerr << result.bytes << " bytes";
                 std::cerr << ", SHA-256)\n";
@@ -760,7 +761,7 @@ int transfer_command(int argc, char** argv, bool receive) {
         std::cout << beam::content_type(result.kind) << " ";
     std::cout << result.filename << " (";
     if (isatty(STDOUT_FILENO))
-        std::cout << human_size(result.bytes);
+        std::cout << human_size(static_cast<long double>(result.bytes));
     else
         std::cout << result.bytes << " bytes";
     std::cout << ", SHA-256)\n";
