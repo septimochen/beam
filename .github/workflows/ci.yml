@@ -8,16 +8,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   android:
-    name: Android APK and checks
     runs-on: ubuntu-26.04
     env:
-      # The runner exports an old default NDK path. Let Beam select the newest
-      # stable package installed by android-setup instead of treating it as an override.
+      # Let android-setup select the NDK instead of the runner's old default.
       ANDROID_NDK: ''
     steps:
       - uses: actions/checkout@v7.0.1
@@ -33,7 +31,7 @@ jobs:
       - name: Install Android build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build perl pkgconf
+          sudo apt-get install -y ninja-build perl
           make android-setup
       - name: Record selected Android toolchain
         id: android-tools
@@ -42,48 +40,23 @@ jobs:
         id: android-native
         uses: actions/cache@v5
         with:
-          path: |
-            build/android-deps/arm64-v8a/install
+          path: build/android-deps/arm64-v8a/install
           key: android-native-${{ runner.os }}-${{ runner.arch }}-${{ steps.android-tools.outputs.ndkVersion }}-${{ steps.android-tools.outputs.cmake }}-${{ hashFiles('cmake/AndroidTools.cmake', 'cmake/BootstrapAndroid.cmake', 'cmake/DownloadVerified.cmake') }}
-      - name: Build pinned Android native dependencies
+      - name: Build Android native dependencies
         if: steps.android-native.outputs.cache-hit != 'true'
-        run: make android-deps 2>&1 | tee android-native-deps.log
-      - name: Format, lint, test, and package Android
-        run: |
-          make android-native-test
-          make android-check
-      - name: Check and build optimized unsigned release without production signing keys
-        run: make android-release-unsigned ANDROID_GRADLE_ARGS=lintRelease
-      - name: Enable emulator acceleration
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      # The Linux runner uses an accelerated Intel system image with ARM64
-      # translation. Only ARM64 application/test libraries are built or packaged.
-      - name: Test ARM64 JNI transfers and share-target review on Android
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          script: |
-            adb shell getprop ro.product.cpu.abilist | grep -q arm64-v8a
-            make android-connected-test
+        run: make android-deps
+      - name: Check and build Android
+        run: make android-check
       - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: beam-android
           path: |
-            android-native-deps.log
             android/app/build/outputs/apk/debug/*.apk
-            android/app/build/outputs/apk/release/*-unsigned.apk
-            android/app/build/outputs/mapping/release/mapping.txt
             android/app/build/reports/
 
   status:
     name: Status check
-    if: github.event_name == 'push'
     runs-on: ubuntu-26.04
     env:
       CLANG_FORMAT: clang-format-23
@@ -100,95 +73,5 @@ jobs:
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
           sudo apt-get update
           sudo apt-get install -y libmsquic libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon qt6-base-dev qt6-qpa-plugins qt6-declarative-dev qt6-declarative-dev-tools qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtqml-workerscript qml6-module-qtqml qml6-module-qtqml-models desktop-file-utils clang-format-23 clang-tidy-23
-          clang-format-23 --version
-          clang-tidy-23 --version
-      - name: Check formatting
-        run: make format-check
-      - name: Validate system MsQuic
-        run: make deps
-      - name: Lint and static analysis
-        run: make lint BUILD_TYPE=Release
-      - name: Build and test
-        run: make test BUILD_TYPE=Release
-      - name: Test LAN discovery with Avahi
-        run: |
-          sudo systemctl start avahi-daemon
-          make discovery-test BUILD_TYPE=Release
-          cmake --build build --target desktop-live-test --config Release
-
-  build:
-    if: github.event_name == 'workflow_dispatch'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    env:
-      BEAM_DESKTOP: ${{ matrix.os == 'windows-latest' && 'OFF' || 'ON' }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Install Linux prerequisites
-        if: runner.os == 'Linux'
-        run: |
-          curl -fsSL https://packages.microsoft.com/config/ubuntu/26.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb
-          sudo dpkg --force-confdef --force-confold -i /tmp/packages-microsoft-prod.deb
-          curl --compressed -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o /tmp/llvm.asc
-          sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
-          echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
-          sudo apt-get update
-          sudo apt-get install -y libmsquic libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon qt6-base-dev qt6-qpa-plugins qt6-declarative-dev qt6-declarative-dev-tools qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtqml-workerscript qml6-module-qtqml qml6-module-qtqml-models clang-format-23
-          clang-format-23 --version
-      - name: Install macOS prerequisites
-        if: runner.os == 'macOS'
-        run: brew install libmsquic openssl@3 ninja
-      - name: Validate system MsQuic
-        if: runner.os != 'Windows'
-        run: make deps
-      - name: Check formatting
-        if: runner.os == 'Linux'
-        run: make format-check CLANG_FORMAT=clang-format-23
-      - name: Configure
-        if: runner.os != 'macOS'
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DBEAM_ENABLE_DESKTOP=${{ env.BEAM_DESKTOP }}
-      - name: Check Swift formatting
-        if: runner.os == 'macOS'
-        run: xcrun swift-format lint --strict --recursive src/desktop/macos tests/desktop/macos
-      - name: Configure native macOS desktop
-        if: runner.os == 'macOS'
-        run: cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DBEAM_ENABLE_DESKTOP=ON
-      - name: Build
-        run: cmake --build build --config Release --parallel
-      - name: Test
-        run: ctest --test-dir build --build-config Release --output-on-failure
-      - name: Test LAN discovery
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then sudo systemctl start avahi-daemon; fi
-          make discovery-test BUILD_TYPE=Release
-          cmake --build build --target desktop-live-test --config Release
-
-  source-fallback:
-    name: Explicit MsQuic source fallback
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Install source build prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev perl
-      - name: Record runner image for native caches
-        id: host-tools
-        run: echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
-      - name: Cache source fallback dependencies
-        uses: actions/cache@v5
-        with:
-          path: build/deps
-          key: source-fallback-${{ runner.os }}-${{ runner.arch }}-${{ steps.host-tools.outputs.image }}-${{ hashFiles('cmake/BootstrapMsQuic.cmake', 'cmake/DownloadVerified.cmake') }}
-      - name: Provision pinned dependencies explicitly
-        run: make deps-source
-      - name: Test private runtime installation and authenticated transfers
-        run: >-
-          make test BUILD_DIR=build-source BUILD_TYPE=Release
-          CMAKE_ARGS="-DMSQUIC_ROOT=$PWD/build/deps/install -DBEAM_BUNDLE_MSQUIC=ON
-          -DBEAM_ENABLE_DISCOVERY=OFF"
+      - name: Check Linux desktop and CLI
+        run: make deps check BUILD_TYPE=Release

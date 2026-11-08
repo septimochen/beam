@@ -155,9 +155,9 @@ Use `make desktop` / `make desktop-test`. Native macOS builds use Ninja and a
 separate `build/macos/dev` directory, keeping existing Qt build caches separate.
 The [macOS lifecycle guide](macos-lifecycle.md) covers development/production bundle
 identities, Debug/Release builds, safe upgrades, and targeted registration cleanup.
-A normal CLI build has no Swift or Qt dependency. Main-branch Linux CI and manual
-macOS/Linux builds enable `BEAM_ENABLE_DESKTOP`; Linux UI tests use Qt's offscreen
-platform, while macOS tests exercise the Swift model and Objective-C++ bridge.
+A normal CLI build has no Swift or Qt dependency. Linux CI enables
+`BEAM_ENABLE_DESKTOP`; Linux UI tests use Qt's offscreen platform, while local
+macOS tests exercise the Swift model and Objective-C++ bridge.
 `make format` / `make format-check` also use Apple's bundled `xcrun swift-format`
 on macOS; `make lint` includes configured Objective-C++ translation units. See
 [desktop](desktop.md) for launch paths, clipboard privacy, and native checks.
@@ -248,8 +248,9 @@ A feature is complete when it builds on applicable supported platforms, handles 
 cleans up resources, avoids data loss, produces useful errors, preserves architecture
 boundaries, and has appropriate tests. Record platform validation limits honestly.
 Documentation-only changes need link/content checks rather than new executable tests.
-The automatic CI status check runs formatting, `make lint`, and tests only on pushes
-to `main`. `make check` runs the same categories locally. `make lint` uses LLVM 23
+CI runs Linux desktop/CLI checks and Android debug checks on pushes to `main`
+or manual dispatch. The Linux job uses `make check` for formatting, static analysis,
+build, and tests. `make lint` uses LLVM 23
 and the root `.clang-tidy` configuration, with warnings treated as errors. It runs
 Clang Static Analyzer plus focused checks for unused direct includes,
 assertion side effects, duplicated branches, dangling views, use after move, unused
@@ -271,11 +272,12 @@ clang-tidy; an explicit SDK in the compilation flags takes precedence. Editor
 clang-tidy integrations should use the same configuration and compilation database.
 Static analysis complements the focused integration/UI tests: it cannot prove
 correct callback lifetimes, deadlock freedom, or platform clipboard/drop policy.
-The full three-platform build/test matrix can be triggered manually in GitHub Actions.
-CI caches pinned native dependencies and Gradle downloads, and cancels superseded
-runs on the same ref/event. Native cache keys include provisioning/configuration
-inputs and Android's selected NDK/CMake versions. Provisioning remains explicit,
-and all build/test categories are retained.
+CI has two jobs: Linux checks and an Android debug APK with signing validation,
+Kotlin formatting, lint, and JVM tests. It caches Android native dependencies and
+Gradle downloads, and cancels superseded runs on the same ref. Native cache keys
+include provisioning/configuration inputs and Android's selected NDK/CMake versions.
+Source-fallback builds, macOS/Windows builds, live LAN tests, Android emulator tests,
+and optimized Android release packaging remain available as local commands.
 Commit completed work with a descriptive message and push when a remote is configured;
 leave unrelated changes unstaged.
 

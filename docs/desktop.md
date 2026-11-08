@@ -277,7 +277,7 @@ macOS clipboard tests need access to a desktop pasteboard session.
 Run complete macOS checks with `make check BUILD_DIR=build/macos/dev
 CMAKE_ARGS='-G Ninja -DBEAM_ENABLE_DESKTOP=ON'`; use `BUILD_DIR=build-desktop` and
 omit `-G Ninja` for Linux. Linux main-branch CI enables the desktop
-build and runs its tests and static analysis; manual macOS/Linux builds do too.
+build and runs its tests and static analysis. Run macOS checks locally.
 Windows remains the CLI scaffold. Automated tests cannot confirm native menu bar/tray,
 drag gestures, clipboard permissions, or OS notification delivery. To check these
 on a desktop, pair two devices, send a file by dropping it, send a reviewed
@@ -292,7 +292,7 @@ compositor focus behavior, native tray rendering, or notification delivery.
 
 `make desktop-live-test` additionally tests the desktop worker's own live LAN
 advertisement/withdrawal during repeated paired transfers. It requires Bonjour
-or a running Avahi daemon and local multicast access, and also runs in Linux CI.
+or a running Avahi daemon and local multicast access; run it locally.
 
 ## Device management
 

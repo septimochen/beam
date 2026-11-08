@@ -179,7 +179,7 @@ Create the properties file above with the chosen passwords, then apply mode 600
 to it and the keystore. Reuse existing signing files; do not overwrite a key used
 for distributed releases. See [Android app signing](https://developer.android.com/studio/publish/app-signing).
 
-CI and developers without a release key can explicitly build the same optimized
+Developers without a release key can explicitly build the same optimized
 variant without signing:
 
 ```sh
@@ -187,8 +187,8 @@ make android-release-unsigned
 ```
 
 This produces `app-release-unsigned.apk`, which cannot be installed until signed.
-It ignores local signing credentials. CI builds this variant and publishes the
-unsigned APK and R8 mapping; production signing keys are not needed in CI.
+It ignores local signing credentials. CI builds and publishes only the debug APK;
+production signing keys are not needed in CI.
 `make android` and `make android-install` continue to use the debug APK.
 To install an already-built signed release, use
 `make android-install-apk ANDROID_APK="$PWD/android/app/build/outputs/apk/release/app-release.apk"`.
@@ -371,7 +371,7 @@ make android-connected-test   # requires a running ARM64 emulator or attached AR
 `android-native-test` needs pkgconf (`brew install pkgconf` or your distribution's
 `pkgconf` package). It configures ARM64 with host metadata advertising
 `libjitterentropy` and `zstd`, and rejects either dependency in the generated
-Android link graph. CI runs it before building the APK.
+Android link graph. Run it locally when changing native dependency configuration.
 
 The signing checks in `android-check` print the failed Gradle task and its full
 output when unsigned-release validation or debug assembly fails, before cleaning
@@ -392,11 +392,9 @@ Linux/Android storage uses search-only ancestor handles and atomic no-replace
 rename, retaining
 symlink rejection and collision protection in the app sandbox. Main-branch Android
 CI builds only ARM64, checks signing input validation and Kotlin/lint/JUnit,
-and uploads the debug APK plus an explicitly unsigned optimized release APK.
-Its accelerated Linux emulator uses an Intel system image with
-ARM64 translation; CI verifies ARM64 ABI availability before running the JNI/UI
-tests against the ARM64 APK. Local device tests should use an ARM64 emulator or
-phone. Set `ANDROID_SERIAL` when multiple devices are attached.
+and uploads the debug APK and check reports. Emulator/device tests and optimized
+release packaging run locally. Use an ARM64 emulator or phone for device tests.
+Set `ANDROID_SERIAL` when multiple devices are attached.
 
 Physical-device LAN/Tailscale interoperability, OEM background policy, notification
 delivery, and third-party document-provider behavior require device checks; emulator
