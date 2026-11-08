@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <iostream>
@@ -51,6 +52,13 @@ int serve(const QString& mode, const QString& directory) {
         window.showMinimized();
     else
         window.hide();
+    if (mode == "panel") {
+        window.show_transfers();
+        require(window.transfer_panel()->transientParent() == nullptr,
+                "transfer panel depends on hidden main window");
+        window.transfer_panel()->close();
+        QTimer::singleShot(100, &window, [] { std::cout << "panel-closed" << std::endl; });
+    }
     std::cout << "primary" << std::endl;
     QTimer::singleShot(20000, qApp, &QApplication::quit);
     return QApplication::exec();
@@ -96,10 +104,12 @@ void tests(const QString& executable) {
     }
     QTemporaryDir directory;
     require(directory.isValid(), "cannot create temporary test directory");
-    for (const auto* mode : {"hidden", "minimized", "quit"}) {
+    for (const auto* mode : {"hidden", "minimized", "panel", "quit"}) {
         Process primary;
         primary.start(QApplication::applicationFilePath(), {"--serve", mode, directory.path()});
         require(primary.line() == "primary", "first launch did not acquire the service");
+        if (QString(mode) == "panel")
+            require(primary.line() == "panel-closed", "closing transfer panel stopped app");
         launch_again(executable);
         require(primary.line() == "activated", "second launch did not restore the existing window");
         if (QString(mode) == "quit") {

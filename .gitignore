@@ -90,3 +90,6 @@
 !/third_party/msquic/include/*.h
 !/third_party/msquic/README.md
 !/third_party/msquic/LICENSE
+
+!/src/**/*.qml
+!/tests/**/*.qml

@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
     QApplication::setApplicationName("beam-desktop");
     QApplication::setDesktopFileName("beam");
     QApplication::setApplicationVersion(QString::fromStdString(std::string(beam::version())));
-    QApplication::setQuitOnLastWindowClosed(true);
+    QApplication::setQuitOnLastWindowClosed(false);
     QCommandLineParser parser;
     parser.setApplicationDescription("Beam tray app for explicitly paired devices. Closing hides "
                                      "to the tray when available; use Quit Beam to stop workers.");

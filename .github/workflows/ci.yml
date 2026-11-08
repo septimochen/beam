@@ -99,7 +99,7 @@ jobs:
           sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
           sudo apt-get update
-          sudo apt-get install -y libmsquic libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon qt6-base-dev qt6-qpa-plugins desktop-file-utils clang-format-23 clang-tidy-23
+          sudo apt-get install -y libmsquic libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon qt6-base-dev qt6-qpa-plugins qt6-declarative-dev qt6-declarative-dev-tools qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtqml-workerscript qml6-module-qtqml qml6-module-qtqml-models desktop-file-utils clang-format-23 clang-tidy-23
           clang-format-23 --version
           clang-tidy-23 --version
       - name: Check formatting
@@ -136,7 +136,7 @@ jobs:
           sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
           echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/resolute/ llvm-toolchain-resolute-23 main' | sudo tee /etc/apt/sources.list.d/llvm23.list
           sudo apt-get update
-          sudo apt-get install -y libmsquic libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon qt6-base-dev qt6-qpa-plugins clang-format-23
+          sudo apt-get install -y libmsquic libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon qt6-base-dev qt6-qpa-plugins qt6-declarative-dev qt6-declarative-dev-tools qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtqml-workerscript qml6-module-qtqml qml6-module-qtqml-models clang-format-23
           clang-format-23 --version
       - name: Install macOS prerequisites
         if: runner.os == 'macOS'

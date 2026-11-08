@@ -1,32 +1,26 @@
 #include "window.hpp"
 #include "beam/identity.hpp"
-#include "devices_dialog.hpp"
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
-#include <QComboBox>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
-#include <QGroupBox>
-#include <QHBoxLayout>
 #include <QIcon>
-#include <QLabel>
-#include <QLineEdit>
 #include <QLocale>
 #include <QMenu>
 #include <QMimeData>
-#include <QPlainTextEdit>
-#include <QProgressBar>
-#include <QPushButton>
+#include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QSettings>
+#include <QSysInfo>
 #include <QSystemTrayIcon>
 #include <QTimer>
 #include <QUrl>
-#include <QVBoxLayout>
-#include <QWidgetAction>
 #include <array>
+
+void qml_register_types_Beam();
 
 namespace beam::desktop {
 namespace {
@@ -62,11 +56,6 @@ QString stage_name(TransferStage stage) {
     }
     return {};
 }
-void plain(QLabel* label) {
-    label->setTextFormat(Qt::PlainText);
-    label->setWordWrap(true);
-    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
-}
 } // namespace
 std::filesystem::path dropped_file(const QMimeData& mime) {
     const auto urls = mime.urls();
@@ -77,298 +66,196 @@ std::filesystem::path dropped_file(const QMimeData& mime) {
     return path;
 }
 Window::Window(Config configuration, const std::filesystem::path& receive_directory)
-    : config(std::move(configuration)), service(config) {
-    setWindowTitle("Beam");
-    setWindowIcon(icon());
-    resize(640, 580);
-    setAcceptDrops(true);
-    auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(24, 24, 24, 24);
-    layout->setSpacing(14);
-    auto* title = new QLabel("Beam", this);
-    auto font = title->font();
-    font.setPointSize(24);
-    font.setBold(true);
-    title->setFont(font);
-    layout->addWidget(title);
-    auto* subtitle = new QLabel("Share directly with your paired devices.", this);
-    layout->addWidget(subtitle);
-
-    auto* send_group = new QGroupBox("Send", this);
-    auto* send_layout = new QVBoxLayout(send_group);
-    auto* peer_row = new QHBoxLayout;
-    auto* peer_label = new QLabel("Device", this);
-    peers = new QComboBox(this);
-    peers->setObjectName("peers");
-    peer_label->setBuddy(peers);
-    auto* refresh = new QPushButton("Refresh devices", this);
-    refresh->setObjectName("refreshPeers");
-    peer_row->addWidget(peer_label);
-    peer_row->addWidget(peers, 1);
-    peer_row->addWidget(refresh);
-    auto* manage = new QPushButton("Manage devices…", this);
-    manage->setObjectName("manageDevices");
-    peer_row->addWidget(manage);
-    connect(manage, &QPushButton::clicked, this, [this] {
-        try {
-            show_devices_dialog(
-                this, config, service,
-                [this] {
-                    poll();
-                    refresh_peers();
-                },
-                connectivity_status);
-        } catch (const std::exception& error) {
-            send_status->setText(display(error.what()));
-        }
-    });
-    send_layout->addLayout(peer_row);
-    check_button = new QPushButton("Check connectivity", this);
-    check_button->setObjectName("checkConnectivity");
-    connectivity_status = new QLabel(this);
-    connectivity_status->setObjectName("connectivityStatus");
-    plain(connectivity_status);
-    send_layout->addWidget(check_button);
-    send_layout->addWidget(connectivity_status);
-    connect(check_button, &QPushButton::clicked, this, [this] {
-        try {
-            service.check_peer(bytes(peers->currentText()));
-            connectivity_status->setText("Checking…");
-            check_button->setEnabled(false);
-        } catch (const std::exception& error) {
-            connectivity_status->setText(display(error.what()));
-        }
-    });
-    connect(refresh, &QPushButton::clicked, this, [this] { refresh_peers(); });
-
-    auto* selection_row = new QHBoxLayout;
-    kind = new QComboBox(this);
-    kind->setObjectName("kind");
-    kind->addItems({"File", "Text"});
-    kind->setAccessibleName("Content type");
-    auto* choose = new QPushButton("Choose file…", this);
-    auto* clipboard = new QPushButton("Load clipboard text", this);
-    clipboard->setObjectName("loadClipboard");
-    selection_row->addWidget(kind);
-    selection_row->addWidget(choose);
-    selection_row->addWidget(clipboard);
-    send_layout->addLayout(selection_row);
-    file = new QLineEdit(this);
-    file->setObjectName("file");
-    file->setReadOnly(true);
-    file->setPlaceholderText("Choose a file or drop it into this window");
-    file->setAccessibleName("Selected file");
-    send_layout->addWidget(file);
-    text = new QPlainTextEdit(this);
-    text->setObjectName("content");
-    text->setPlaceholderText("Review the text or URL before sending");
-    text->setAccessibleName("Content to send");
-    text->setMaximumHeight(100);
-    text->setAcceptDrops(false);
-    text->viewport()->setAcceptDrops(false);
-    text->hide();
-    connect(text, &QPlainTextEdit::textChanged, this, [this] { clipboard_snapshot.reset(); });
-    send_layout->addWidget(text);
-    auto* copy_text = new QPushButton("Copy to clipboard", this);
-    auto* text_header = new QHBoxLayout;
-    text_header->addStretch();
-    text_header->addWidget(copy_text);
-    send_layout->insertLayout(send_layout->indexOf(text), text_header);
-    copy_text->hide();
-    connect(kind, &QComboBox::currentIndexChanged, this,
-            [copy_text](int index) { copy_text->setVisible(index != 0); });
-    connect(copy_text, &QPushButton::clicked, this,
-            [this] { QApplication::clipboard()->setText(text->toPlainText()); });
-    connect(kind, &QComboBox::currentIndexChanged, this, [this](int index) {
-        file->setVisible(index == 0);
-        text->setVisible(index != 0);
-    });
-    connect(choose, &QPushButton::clicked, this, [this] {
-        const auto path = QFileDialog::getOpenFileName(this, "Choose one file");
-        if (!path.isEmpty()) {
-            try {
-                validate_request({"selection", ContentKind::file, bytes(path), {}});
-                file->setText(path);
-                kind->setCurrentIndex(0);
-            } catch (const std::exception& error) {
-                send_status->setText(display(error.what()));
-            }
-        }
-    });
-    connect(clipboard, &QPushButton::clicked, this, [this] { load_clipboard(); });
-    auto* privacy = new QLabel(
-        "Clipboard text is read only when you click Load. Nothing is sent until you click Send.",
-        this);
-    plain(privacy);
-    send_layout->addWidget(privacy);
-    auto* buttons = new QHBoxLayout;
-    send_button = new QPushButton("Send", this);
-    send_button->setObjectName("send");
-    cancel_button = new QPushButton("Cancel send", this);
-    cancel_button->setEnabled(false);
-    buttons->addWidget(send_button);
-    buttons->addWidget(cancel_button);
-    buttons->addStretch();
-    send_layout->addLayout(buttons);
-    connect(send_button, &QPushButton::clicked, this, [this] { send_selection(); });
-    connect(cancel_button, &QPushButton::clicked, this, [this] { service.cancel_send(); });
-    send_progress = new QProgressBar(this);
-    send_progress->setRange(0, 100);
-    send_progress->setValue(0);
-    send_progress->setAccessibleName("Send progress");
-    send_layout->addWidget(send_progress);
-    send_status = new QLabel("Choose a paired device and content.", this);
-    send_status->setObjectName("sendStatus");
-    plain(send_status);
-    send_layout->addWidget(send_status);
-    layout->addWidget(send_group);
-
-    auto* receive_group = new QGroupBox("Receive", this);
-    auto* receive_layout = new QVBoxLayout(receive_group);
-    auto* folder_row = new QHBoxLayout;
-    output = new QLineEdit(receive_directory.empty()
-                               ? QSettings("Beam", "Beam").value("receiveDirectory").toString()
-                               : display(receive_directory.string()),
-                           this);
-    use_default_directory = output->text().isEmpty();
+    : config(std::move(configuration)), service(config), menu(std::make_unique<QMenu>()),
+      engine(std::make_unique<QQmlApplicationEngine>()) {
+    static const bool registered = [] {
+        qml_register_types_Beam();
+        return true;
+    }();
+    Q_UNUSED(registered)
+    QApplication::setQuitOnLastWindowClosed(false);
+    auto output = receive_directory.empty()
+                      ? QSettings("Beam", "Beam").value("receiveDirectory").toString()
+                      : display(receive_directory.string());
+    use_default_directory = output.isEmpty();
     if (use_default_directory)
-        output->setText(QDir::home().filePath("Downloads"));
-    output->setObjectName("output");
-    output->setReadOnly(true);
-    output->setPlaceholderText("Choose where received content is saved");
-    output->setAccessibleName("Receive folder");
-    auto* folder_button = new QPushButton("Choose folder…", this);
-    folder_row->addWidget(output, 1);
-    folder_row->addWidget(folder_button);
-    receive_layout->addLayout(folder_row);
-    connect(folder_button, &QPushButton::clicked, this, [this] {
-        const auto path = QFileDialog::getExistingDirectory(this, "Receive folder", output->text());
-        select_receive_directory(bytes(path));
-    });
-    receive_progress = new QProgressBar(this);
-    receive_progress->setRange(0, 100);
-    receive_progress->setValue(0);
-    receive_progress->setAccessibleName("Receive progress");
-    receive_layout->addWidget(receive_progress);
-    receive_status = new QLabel("Stopped.", this);
-    receive_status->setObjectName("receiveStatus");
-    plain(receive_status);
-    receive_layout->addWidget(receive_status);
-    auto* received_header = new QHBoxLayout;
-    received_header->addWidget(new QLabel("Received text", this));
-    received_header->addStretch();
-    auto* copy_received = new QPushButton("Copy to clipboard", this);
-    copy_received->setObjectName("copyReceived");
-    received_header->addWidget(copy_received);
-    receive_layout->addLayout(received_header);
-    received_text = new QPlainTextEdit(this);
-    received_text->setObjectName("receivedText");
-    received_text->setReadOnly(true);
-    received_text->setMaximumHeight(120);
-    receive_layout->addWidget(received_text);
-    connect(copy_received, &QPushButton::clicked, this,
-            [this] { QApplication::clipboard()->setText(received_text->toPlainText()); });
-    layout->addWidget(receive_group);
-    last_result = new QLabel("No completed transfers yet.", this);
-    last_result->setObjectName("lastResult");
-    plain(last_result);
-    layout->addWidget(last_result);
-    auto* hint = new QLabel("Choose Add device to pair on your local network.", this);
-    plain(hint);
-    layout->addWidget(hint);
-
+        output = QDir::home().filePath("Downloads");
+    values = {{"output", output},
+              {"file", ""},
+              {"receivedText", ""},
+              {"hasReceivedText", false},
+              {"sendStatus", "Choose a paired device and content."},
+              {"receiveStatus", "Stopped."},
+              {"lastResult", "No completed transfers yet."},
+              {"sendProgress", 0.0},
+              {"receiveProgress", 0.0},
+              {"sendBusy", false},
+              {"receiveBusy", false},
+              {"deviceError", ""},
+              {"deviceStatus", ""},
+              {"connectivityStatus", ""},
+              {"page", 0},
+              {"pairingOpen", false}};
+#ifdef BEAM_HAS_PAIRING
+    values["pairingSupported"] = true;
+#else
+    values["pairingSupported"] = false;
+#endif
     tray = new QSystemTrayIcon(icon(), this);
     tray->setToolTip("Beam");
-    auto* menu = new QMenu(this);
-    auto* tray_content = new QWidget(menu);
-    tray_content->setMinimumWidth(280);
-    tray_content->setMaximumWidth(360);
-    auto* tray_layout = new QVBoxLayout(tray_content);
-    tray_send_status = new QLabel("Send: idle", tray_content);
-    tray_receive_status = new QLabel("Receive: idle", tray_content);
-    plain(tray_send_status);
-    plain(tray_receive_status);
-    tray_send_progress = new QProgressBar(tray_content);
-    tray_receive_progress = new QProgressBar(tray_content);
-    for (auto* progress : {tray_send_progress, tray_receive_progress}) {
-        progress->setRange(0, 100);
-        progress->setValue(0);
-    }
-    tray_layout->addWidget(tray_send_status);
-    tray_layout->addWidget(tray_send_progress);
-    tray_layout->addWidget(tray_receive_status);
-    tray_layout->addWidget(tray_receive_progress);
-    auto* progress_action = new QWidgetAction(menu);
-    progress_action->setDefaultWidget(tray_content);
-    menu->addAction(progress_action);
+    tray_send = menu->addAction("Send: idle");
+    tray_receive = menu->addAction("Receive: idle");
+    tray_send->setEnabled(false);
+    tray_receive->setEnabled(false);
     menu->addSeparator();
-    connect(menu->addAction("Open Beam"), &QAction::triggered, this, [this] { show_window(); });
+    connect(menu->addAction("Show transfers…"), &QAction::triggered, this, &Window::show_transfers);
+    connect(menu->addAction("Open Beam"), &QAction::triggered, this, &Window::show_window);
     connect(menu->addAction("Load clipboard text…"), &QAction::triggered, this, [this] {
         show_window();
+        values["page"] = 0;
         load_clipboard();
     });
     menu->addSeparator();
     connect(menu->addAction("Quit Beam"), &QAction::triggered, qApp, &QApplication::quit);
-    tray->setContextMenu(menu);
+    tray->setContextMenu(menu.get());
     connect(tray, &QSystemTrayIcon::activated, this,
             [this](QSystemTrayIcon::ActivationReason reason) {
                 if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick)
                     show_window();
             });
+    connect(this, &Window::changed, this, [this] { last_snapshot = state(); });
+    engine->setInitialProperties({{"model", QVariant::fromValue(this)}});
+    engine->load(QUrl("qrc:/beam/Beam/Main.qml"));
+    if (engine->rootObjects().isEmpty())
+        throw std::runtime_error("Cannot load the Beam QML interface");
+    main_window = qobject_cast<QQuickWindow*>(engine->rootObjects().front());
+    if (!main_window)
+        throw std::runtime_error("Beam QML root is not a window");
+    panel = main_window->findChild<QQuickWindow*>("transferPanel");
+    if (!panel)
+        throw std::runtime_error("Cannot load the transfer panel");
+    main_window->setIcon(icon());
+    panel->setIcon(icon());
+    main_window->installEventFilter(this);
     tray->show();
     auto* timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, [this] { poll(); });
+    connect(timer, &QTimer::timeout, this, &Window::poll);
     timer->start(100);
     refresh_peers();
 }
+Window::~Window() {
+#ifdef BEAM_HAS_PAIRING
+    pairing.reset();
+#endif
+    tray->hide();
+    tray->setContextMenu(nullptr);
+    engine.reset();
+}
+QVariantMap Window::state() const {
+    auto result = values;
+    result["sending"] = service.is_sending();
+    result["checking"] = service.is_checking();
+    result["deviceChecks"] = device_checks;
+    return result;
+}
+void Window::set_content(const QString& value) {
+    if (outgoing == value)
+        return;
+    outgoing = value;
+    clipboard_snapshot.reset();
+    emit changed();
+}
+void Window::set_peer(const QString& value) {
+    if (selected_peer == value)
+        return;
+    selected_peer = value;
+    emit changed();
+}
+void Window::set_kind(int value) {
+    if (value != 0 && value != 1)
+        return;
+    selection = value;
+    emit changed();
+}
 void Window::show_window() {
-    showNormal();
-    raise();
-    activateWindow();
+    main_window->showNormal();
+    main_window->raise();
+    main_window->requestActivate();
+}
+void Window::show_share() {
+    values["page"] = 0;
+    emit changed();
+}
+void Window::show_transfers() {
+    panel->showNormal();
+    panel->raise();
+    panel->requestActivate();
+}
+void Window::hide() { main_window->hide(); }
+void Window::showMinimized() { main_window->showMinimized(); }
+bool Window::isVisible() const { return main_window->isVisible(); }
+bool Window::isMinimized() const { return main_window->windowState() == Qt::WindowMinimized; }
+void Window::attempt(const std::function<void()>& action) {
+    values["deviceError"] = "";
+    try {
+        action();
+    } catch (const std::exception& error) {
+        values["deviceError"] = display(error.what());
+    }
+    emit changed();
 }
 void Window::refresh_peers() {
-    const auto selected = peers->currentText();
-    peers->clear();
+    QStringList names;
+    QVariantList devices;
     try {
-        IdentityStore store(config.state_directory);
-        for (const auto& peer : store.peers())
-            peers->addItem(display(peer.name));
-        const auto index = peers->findText(selected);
-        if (index >= 0)
-            peers->setCurrentIndex(index);
-        if (peers->count() == 0)
-            send_status->setText("No paired devices. Choose Add device to pair.");
+        for (const auto& peer : IdentityStore(config.state_directory).peers()) {
+            names.append(display(peer.name));
+            devices.append(QVariantMap{{"name", display(peer.name)},
+                                       {"endpoint", display(peer.endpoint)},
+                                       {"fallback", display(peer.fallback_endpoint)}});
+        }
+        if (names.isEmpty())
+            values["sendStatus"] = "No paired devices. Choose Add device to pair.";
     } catch (const std::exception& error) {
-        send_status->setText("Pairing setup needed: " + display(error.what()));
+        values["sendStatus"] = "Pairing setup needed: " + display(error.what());
     }
-    send_button->setEnabled(peers->count() > 0 && !service.is_sending());
+    values["peers"] = names;
+    values["devices"] = devices;
+    if (!names.contains(selected_peer))
+        selected_peer = names.isEmpty() ? QString{} : names.front();
     restart_receiving();
+    emit changed();
+}
+void Window::open_devices() {
+    attempt([this] {
+        IdentityStore(config.state_directory, true).initialize();
+        values["page"] = 1;
+        refresh_peers();
+    });
 }
 void Window::start_receiving_when_ready() {
     if (!receive_start_pending || service.is_receiving())
         return;
     receive_start_pending = false;
-    if (peers->count() == 0) {
-        receive_status->setText("Choose Add device to pair a device.");
+    if (values["peers"].toStringList().isEmpty()) {
+        values["receiveStatus"] = "Choose Add device to pair a device.";
         return;
     }
-    start_receiving();
-}
-void Window::start_receiving() {
     try {
+        const auto directory = bytes(values["output"].toString());
         if (use_default_directory)
-            std::filesystem::create_directory(bytes(output->text()));
-        service.start_receiving(bytes(output->text()));
-        receive_status->setText("Starting…");
+            std::filesystem::create_directory(directory);
+        service.start_receiving(directory);
+        values["receiveStatus"] = "Starting…";
     } catch (const std::exception& error) {
-        receive_status->setText("Transfer stopped: " + display(error.what()));
+        values["receiveStatus"] = "Transfer stopped: " + display(error.what());
     }
 }
 void Window::restart_receiving() {
     receive_start_pending = true;
     if (service.is_receiving()) {
         service.stop_receiving();
-        receive_status->setText("Updating receive settings…");
+        values["receiveStatus"] = "Updating receive settings…";
     } else {
         start_receiving_when_ready();
     }
@@ -376,14 +263,31 @@ void Window::restart_receiving() {
 void Window::select_receive_directory(const std::filesystem::path& directory) {
     if (directory.empty())
         return;
-    output->setText(display(directory.string()));
-    QSettings("Beam", "Beam").setValue("receiveDirectory", output->text());
+    values["output"] = display(directory.string());
+    QSettings("Beam", "Beam").setValue("receiveDirectory", values["output"]);
     use_default_directory = false;
     restart_receiving();
+    emit changed();
+}
+void Window::choose_file() {
+    const auto path = QFileDialog::getOpenFileName(nullptr, "Choose one file");
+    if (path.isEmpty())
+        return;
+    try {
+        validate_request({"selection", ContentKind::file, bytes(path), {}});
+        values["file"] = path;
+        selection = 0;
+    } catch (const std::exception& error) {
+        values["sendStatus"] = display(error.what());
+    }
+    emit changed();
+}
+void Window::choose_folder() {
+    select_receive_directory(bytes(
+        QFileDialog::getExistingDirectory(nullptr, "Receive folder", values["output"].toString())));
 }
 void Window::load_clipboard() {
     try {
-        // No clipboard watchers, startup reads, PRIMARY selection, or clipboard writes.
         const auto* mime = QApplication::clipboard()->mimeData(QClipboard::Clipboard);
         if (!mime || !mime->hasText())
             throw std::invalid_argument("Clipboard has no text; choose a file for other content");
@@ -392,153 +296,171 @@ void Window::load_clipboard() {
             throw std::invalid_argument("Clipboard text exceeds 64 KiB");
         const auto content = bytes(snapshot);
         validate_content(ContentKind::text, content);
-        text->setPlainText(snapshot);
+        // The editor normalizes line endings; preserve the original until a user edit.
+        outgoing = snapshot;
+        outgoing.replace("\r\n", "\n").replace('\r', '\n');
         clipboard_snapshot = content;
-        kind->setCurrentIndex(1);
-        send_status->setText("Clipboard snapshot loaded. Review it, choose a device, then Send.");
+        selection = 1;
+        values["sendStatus"] = "Clipboard snapshot loaded. Review it, choose a device, then Send.";
     } catch (const std::exception& error) {
-        send_status->setText(display(error.what()));
+        values["sendStatus"] = display(error.what());
     }
+    emit changed();
+}
+void Window::copy_text(bool received) {
+    QApplication::clipboard()->setText(received ? values["receivedText"].toString() : outgoing);
 }
 void Window::send_selection() {
     try {
-        SendRequest request;
-        request.peer = bytes(peers->currentText());
-        request.kind = static_cast<ContentKind>(kind->currentIndex() + 1);
-        request.file = bytes(file->text());
-        if (request.kind != ContentKind::file) {
-            const auto value = text->toPlainText();
-            if (value.size() > static_cast<qsizetype>(max_text_size))
+        if (values["pairingOpen"].toBool())
+            throw std::logic_error("Close Add device before sending");
+        SendRequest request{bytes(selected_peer),
+                            selection == 0 ? ContentKind::file : ContentKind::text,
+                            bytes(values["file"].toString()),
+                            {}};
+        if (selection == 1) {
+            if (outgoing.size() > static_cast<qsizetype>(max_text_size))
                 throw std::invalid_argument("Text exceeds 64 KiB");
-            request.content = clipboard_snapshot.value_or(bytes(value));
+            request.content = clipboard_snapshot.value_or(bytes(outgoing));
         }
         service.send(std::move(request));
-        send_button->setEnabled(false);
-        cancel_button->setEnabled(true);
-        send_progress->setValue(0);
-        send_status->setText("Sending…");
+        values["sendProgress"] = 0.0;
+        values["sendBusy"] = true;
+        values["sendStatus"] = "Sending…";
     } catch (const std::exception& error) {
-        send_status->setText(display(error.what()));
+        values["sendStatus"] = display(error.what());
     }
+    emit changed();
+}
+void Window::cancel_send() { service.cancel_send(); }
+void Window::check_peer(const QString& name) {
+    attempt([&] {
+        if (values["pairingOpen"].toBool())
+            throw std::logic_error("Close Add device before checking connectivity");
+        service.check_peer(bytes(name));
+        checked_peer = name;
+        values["connectivityStatus"] = "Checking…";
+        device_checks[name] = "Checking…";
+    });
 }
 void Window::poll() {
     for (const auto& event : service.take_events())
         report(event);
-    send_button->setEnabled(!service.is_sending() && peers->count() > 0);
-    cancel_button->setEnabled(service.is_sending());
-    if (receive_start_pending) {
-        receive_status->setText("Updating receive settings…");
-        start_receiving_when_ready();
-    }
-    check_button->setEnabled(peers->count() > 0 && !service.is_checking());
-    tray_send_status->setText("Send: " + send_status->text());
-    tray_receive_status->setText("Receive: " + receive_status->text());
-    for (const auto& pair : {std::pair{send_progress, tray_send_progress},
-                             std::pair{receive_progress, tray_receive_progress}}) {
-        pair.second->setRange(pair.first->minimum(), pair.first->maximum());
-        pair.second->setValue(pair.first->value());
-    }
+    start_receiving_when_ready();
+    poll_pairing();
+    tray_send->setText("Send: " + values["sendStatus"].toString());
+    tray_receive->setText("Receive: " + values["receiveStatus"].toString());
+    if (state() != last_snapshot)
+        emit changed();
 }
 void Window::report(const Event& event) {
     if (event.direction == Direction::check) {
-        connectivity_status->setText(display(event.message));
+        values["connectivityStatus"] = display(event.message);
+        device_checks[checked_peer] = display(event.message);
         return;
     }
-    auto* status = event.direction == Direction::send ? send_status : receive_status;
-    auto* progress = event.direction == Direction::send ? send_progress : receive_progress;
+    const bool send = event.direction == Direction::send;
+    const auto status = send ? "sendStatus" : "receiveStatus";
+    const auto progress = send ? "sendProgress" : "receiveProgress";
+    const auto busy = send ? "sendBusy" : "receiveBusy";
     QString message;
     switch (event.kind) {
     case EventKind::progress: {
         const auto& update = event.progress;
-        const bool counted =
-            update.stage == TransferStage::hashing || update.stage == TransferStage::transferring;
-        progress->setRange(0, counted ? 100 : 0);
-        if (counted)
-            progress->setValue(
-                update.total == 0
-                    ? 0
-                    : static_cast<int>(100.0L * static_cast<long double>(update.bytes) /
-                                       static_cast<long double>(update.total)));
+        const bool counted = update.stage == TransferStage::transferring;
+        values[busy] = !counted;
+        const auto fraction = update.total == 0 ? 0.0
+                                                : static_cast<double>(update.bytes) /
+                                                      static_cast<double>(update.total);
+        values[progress] = counted ? fraction : 0.0;
         auto label = stage_name(update.stage);
-        if (update.stage == TransferStage::transferring)
+        if (counted)
             label += QString(" · %1% · %2 / %3 · %4/s")
-                         .arg(progress->value())
+                         .arg(static_cast<int>(fraction * 100))
                          .arg(human_size(update.bytes), human_size(update.total),
                               human_size(update.bytes_per_second));
-        status->setText(label);
+        values[status] = label;
         return;
     }
     case EventKind::listening:
-        status->setText(QString("Listening for paired devices on port %1.").arg(config.port));
+        values["receiveBusy"] = false;
+        values["receiveProgress"] = 0.0;
+        values[status] = QString("Listening for paired devices on port %1.").arg(config.port);
         return;
     case EventKind::completed:
-        if (event.direction == Direction::receive && event.result.kind == ContentKind::text)
-            received_text->setPlainText(display(event.result.text));
-        progress->setRange(0, 100);
-        progress->setValue(100);
-        message = event.direction == Direction::send
-                      ? "Sent and verified with " + display(event.message)
-                      : "Received and verified " + display(event.result.filename);
+        if (!send && event.result.kind == ContentKind::text) {
+            values["receivedText"] = display(event.result.text);
+            values["hasReceivedText"] = true;
+        }
+        values[progress] = 1.0;
+        values[busy] = false;
+        message = send ? "Sent and verified with " + display(event.message)
+                       : "Received and verified " + display(event.result.filename);
         message += " (" + human_size(event.result.bytes) + ")";
         break;
     case EventKind::failed:
-        progress->setRange(0, 100);
-        progress->setValue(0);
+        values[progress] = 0.0;
+        values[busy] = false;
         message = "Transfer stopped: " + display(event.message);
         break;
     case EventKind::warning:
-        status->setText("LAN advertisement unavailable: " + display(event.message));
+        values[status] = "LAN advertisement unavailable: " + display(event.message);
         return;
     case EventKind::stopped:
-        progress->setRange(0, 100);
-        progress->setValue(0);
-        // Preserve any useful startup failure instead of replacing it with Stopped.
-        if (!status->text().startsWith("Transfer stopped:"))
-            status->setText("Receiver stopped.");
+        values[progress] = 0.0;
+        values[busy] = false;
+        if (values["peers"].toStringList().isEmpty())
+            values[status] = "Choose Add device to pair a device.";
+        else if (!values[status].toString().startsWith("Transfer stopped:"))
+            values[status] = "Receiver stopped.";
         return;
     }
-    status->setText(message);
-    last_result->setText(message);
+    values[status] = message;
+    values["lastResult"] = message;
     if (QSystemTrayIcon::isSystemTrayAvailable() && QSystemTrayIcon::supportsMessages())
         tray->showMessage("Beam", message,
                           event.kind == EventKind::failed ? QSystemTrayIcon::Warning
                                                           : QSystemTrayIcon::Information);
 }
-void Window::dragEnterEvent(QDragEnterEvent* event) {
-    try {
-        if (!(event->possibleActions() & Qt::CopyAction)) {
+bool Window::eventFilter(QObject* watched, QEvent* event) {
+    if (watched != main_window)
+        return QObject::eventFilter(watched, event);
+    if (event->type() == QEvent::Close) {
+        if (QSystemTrayIcon::isSystemTrayAvailable()) {
+            main_window->hide();
             event->ignore();
-            return;
+            return true;
         }
-        static_cast<void>(dropped_file(*event->mimeData()));
-        event->setDropAction(Qt::CopyAction);
-        event->accept();
-    } catch (const std::exception&) {
-        event->ignore();
+        panel->hide();
+        QApplication::quit();
     }
-}
-void Window::dropEvent(QDropEvent* event) {
-    try {
-        if (!(event->possibleActions() & Qt::CopyAction)) {
-            event->ignore();
-            return;
+    if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove ||
+        event->type() == QEvent::Drop) {
+        auto* drop = static_cast<QDropEvent*>(event);
+        try {
+            if (!(drop->possibleActions() & Qt::CopyAction)) {
+                drop->ignore();
+                return true;
+            }
+            const auto path = dropped_file(*drop->mimeData());
+            if (event->type() == QEvent::Drop) {
+                values["file"] = display(path.string());
+                selection = 0;
+                values["sendStatus"] = "File selected. Choose a device, then Send.";
+                emit changed();
+            }
+            drop->setDropAction(Qt::CopyAction);
+            drop->accept();
+        } catch (const std::exception& error) {
+            if (event->type() == QEvent::Drop) {
+                values["sendStatus"] = display(error.what());
+                emit changed();
+            }
+            drop->ignore();
         }
-        file->setText(display(dropped_file(*event->mimeData()).string()));
-        kind->setCurrentIndex(0);
-        send_status->setText("File selected. Choose a device, then Send.");
-        event->setDropAction(Qt::CopyAction);
-        event->accept();
-    } catch (const std::exception& error) {
-        send_status->setText(display(error.what()));
-        event->ignore();
+        // Intercept before Quick's text editor can insert URLs or negotiate a move.
+        return true;
     }
-}
-void Window::closeEvent(QCloseEvent* event) {
-    if (QSystemTrayIcon::isSystemTrayAvailable()) {
-        hide();
-        event->ignore();
-    } else {
-        event->accept();
-    }
+    return QObject::eventFilter(watched, event);
 }
 } // namespace beam::desktop

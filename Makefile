@@ -9,6 +9,7 @@ CXX_SOURCES := $(shell find include src tests cmake -name "*.cpp" -o -name "*.hp
 SWIFT_SOURCES := $(shell find src tests tools -name "*.swift")
 JAVA_SOURCES := $(shell find android/app/src -name "*.java")
 SWIFT_FORMAT ?= xcrun swift-format
+QMLFORMAT ?= qmlformat
 ifeq ($(shell uname -s),Darwin)
 # make desktop defaults to Debug in build/macos/dev; BUILD_TYPE=Release uses
 # build/macos/release. BUILD_DIR and DESKTOP_BUILD_DIR can override these paths.
@@ -44,7 +45,7 @@ ADB ?= $(if $(ANDROID_HOME),$(ANDROID_HOME)/platform-tools/adb,adb)
 ANDROID_SERIAL ?=
 ANDROID_APK ?= $(CURDIR)/android/app/build/outputs/apk/debug/app-debug.apk
 
-.PHONY: all deps deps-source configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-release android-release-unsigned android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
+.PHONY: qml-format qml-format-check qml-lint all deps deps-source configure build test check icons icons-native install uninstall macos-cleanup android-install android-install-apk android android-release android-release-unsigned android-setup android-toolchain android-deps android-native-test android-check android-format android-format-check android-connected-test desktop desktop-test desktop-live-test routing-test content-test pairing-test devices-test discovery-test lint format format-check format-version clean help
 all: build
 
 deps:
@@ -167,6 +168,15 @@ lint: configure
 		-DBEAM_CLANG_TIDY="$(CLANG_TIDY)" -DBEAM_CLANG_TIDY_CHECKS="$(CLANG_TIDY_CHECKS)" \
 		-P cmake/RunClangTidy.cmake
 
+qml-format:
+	$(CMAKE) -DBEAM_SOURCE_DIR="$(CURDIR)" -DBEAM_QMLFORMAT="$(QMLFORMAT)" -DBEAM_WRITE=ON -P cmake/QmlFormat.cmake
+
+qml-format-check:
+	$(CMAKE) -DBEAM_SOURCE_DIR="$(CURDIR)" -DBEAM_QMLFORMAT="$(QMLFORMAT)" -P cmake/QmlFormat.cmake
+
+qml-lint: configure
+	$(CMAKE) --build "$(BUILD_DIR)" --target beam-desktop-ui_qmllint
+
 format-version:
 	@formatter_version="$$($(CLANG_FORMAT) --version)"; \
 	case "$$formatter_version" in \
@@ -195,6 +205,7 @@ help:
 	@echo "deps: check system MsQuic; deps-source: explicitly build pinned MsQuic"
 	@echo "build: configure and compile; test: build and run tests; check: format, lint, and tests"
 	@echo "format: apply clang-format; format-check: verify formatting"
+	@echo "qml-format / qml-format-check: format QML; qml-lint: check configured Linux desktop QML"
 	@echo "clean: delete build/, build-* and Android build output, including local dependencies/toolchains"
 	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"

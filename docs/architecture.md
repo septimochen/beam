@@ -66,7 +66,11 @@ rather than copying transfer logic; Android uses Kotlin through JNI.
 Add platform directories only when implementing their functionality.
 
 The optional desktop app lives in `src/desktop`: shared worker ownership is in
-`service.hpp/.cpp`, Linux Qt UI is in `qt/`, and native macOS UI is in `macos/`.
+`service.hpp/.cpp`, Linux Qt Quick/QML UI is in `qt/`, and native macOS UI is in `macos/`.
+Linux's GUI-thread QObject controller exposes value snapshots and commands to
+embedded QML views. The main window, transfer panel, and standard tray menu share
+that controller; native dialogs, clipboard reads, and copy-only file-drop validation
+stay in C++. Qt Widgets is retained only for platform integration, not screen layouts.
 SwiftUI owns macOS controls; AppKit owns the menu bar, window lifecycle, file
 dialogs, drops, and explicit clipboard access. A small Objective-C++ bridge
 translates C++ exceptions to NSError and drains value snapshots on the main

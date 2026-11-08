@@ -178,6 +178,16 @@ First release targets LAN only. No rendezvous service, relay, account, or remote
 pairing infrastructure is added. See [pairing](pairing.md) for the authentication
 protocol, interruption recovery, and deployment limits.
 
+## Linux desktop refresh
+
+- Qt Quick/QML Share and Devices views follow the macOS layout, with system
+  light/dark colors and shared controls for pairing, edits, and backup review.
+- Portable tray status entries show transfer progress; Show transfers opens a
+  compact graphical panel sharing the same C++ controller and workers.
+- QML binding/transfer/pairing checks, format/lint, and relocated-app startup tests
+  supplement the existing worker and single-instance checks. Native tray/focus
+  behavior still requires validation on the user's desktop.
+
 ## Device management
 
 - [x] Shared transactional rename, primary/fallback endpoint edits, and verified public certificate replacement.

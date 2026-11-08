@@ -145,7 +145,12 @@ required.
 The deployment version follows the selected macOS SDK, including cached desktop
 builds formerly targeting 13.0. Swift bridge PCHs stay in the build directory,
 and the shared C++ runtime is linked once across the C++/Objective-C++ boundary.
-Linux uses Qt 6.4+ Widgets (`qt6-base-dev` and `qt6-qpa-plugins` on Debian/Ubuntu).
+Linux uses Qt 6.4+ Quick/QML and Quick Controls 2; Widgets supplies native
+file dialogs and the tray. Install Qt declarative development tools and QML runtime
+modules alongside Qt base; see [desktop prerequisites](desktop.md#build-and-run).
+`make qml-format` and `make qml-format-check` format/check QML with `qmlformat`.
+`make qml-lint BUILD_DIR=build-desktop CMAKE_ARGS='-DBEAM_ENABLE_DESKTOP=ON'`
+checks the configured QML module. Desktop CTest includes both QML checks.
 Use `make desktop` / `make desktop-test`. Native macOS builds use Ninja and a
 separate `build/macos/dev` directory, keeping existing Qt build caches separate.
 The [macOS lifecycle guide](macos-lifecycle.md) covers development/production bundle

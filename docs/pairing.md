@@ -195,7 +195,7 @@ keeps an explicit receiving Stop in effect.
 
 ## Device management
 
-Open **Devices** in macOS, or **Manage devices** in Linux/Android. Search by device
+Open **Devices** in macOS/Linux, or **Manage devices** in Android. Search by device
 name or address. Each card shows saved primary and fallback endpoints and a separate
 **Check connection** action. Checks use authenticated QUIC/TLS, transfer no content,
 and show the result of that check; refreshing the saved list does not imply a

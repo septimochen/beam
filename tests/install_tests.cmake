@@ -109,6 +109,20 @@ if(BEAM_HAS_DESKTOP)
         list(APPEND executables "${prefix}/bin/beam-desktop")
     endif()
 endif()
+if(BEAM_HAS_DESKTOP AND NOT APPLE)
+    # --version bypasses the engine. Launch the relocated app to verify embedded QML
+    # and system imports with a private bus, so an existing Beam cannot mask errors.
+    find_program(dbus_run_session dbus-run-session REQUIRED)
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env QT_QPA_PLATFORM=offscreen
+        QT_QUICK_BACKEND=software QML_IMPORT_PATH= QML2_IMPORT_PATH= LD_LIBRARY_PATH=
+        "XDG_CONFIG_HOME=${root}/qml-config" "XDG_DATA_HOME=${root}/qml-data"
+        "${dbus_run_session}" -- "${prefix}/bin/beam-desktop"
+        --state-dir "${root}/qml-state" --output "${root}" --no-discovery
+        TIMEOUT 3 RESULT_VARIABLE qml_launch ERROR_VARIABLE qml_errors OUTPUT_VARIABLE qml_output)
+    if(NOT qml_launch MATCHES "[Tt]imeout" OR qml_errors MATCHES "qrc:/beam/.*(Error|TypeError|ReferenceError|is not installed|unavailable)")
+        message(FATAL_ERROR "Relocated QML app failed to start: ${qml_launch} ${qml_errors} ${qml_output}")
+    endif()
+endif()
 foreach(executable IN LISTS executables)
     execute_process(COMMAND "${CMAKE_COMMAND}" -E env QT_QPA_PLATFORM=offscreen
         LD_LIBRARY_PATH= DYLD_LIBRARY_PATH= "${executable}" --version COMMAND_ERROR_IS_FATAL ANY)

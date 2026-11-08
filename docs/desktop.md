@@ -1,6 +1,6 @@
 # Desktop app
 
-Beam has an optional native SwiftUI/AppKit app on macOS and Qt 6 Widgets tray
+Beam has an optional native SwiftUI/AppKit app on macOS and Qt Quick/QML tray
 app on Linux. Both frontends use the same shared C++ desktop service and
 identity store, paired certificates, wire protocol v4, safe primary/fallback
 fallback, streamed file transfer, and text validation as the CLI. Each frontend owns
@@ -23,8 +23,14 @@ configuration sets the deployment target to the selected macOS SDK version
 (`xcrun --sdk macosx --show-sdk-version`, currently 27.0 on the development Mac),
 including existing build trees that cached the old 13.0 target. Use a matching
 current OS and dependencies to run that build. `CMAKE_OSX_SYSROOT` selects an
-alternative SDK; the desktop deployment target follows it. On Linux, install Qt 6.4+ Widgets
-(`qt6-base-dev` and `qt6-qpa-plugins` on Debian/Ubuntu). Ordinary CLI builds do not
+alternative SDK; the desktop deployment target follows it. On Linux, install Qt 6.4+
+with Widgets (tray and native dialogs), QML, Quick, and Quick Controls 2.
+On Debian/Ubuntu install `qt6-base-dev`, `qt6-qpa-plugins`, `qt6-declarative-dev`,
+`qt6-declarative-dev-tools`, and the runtime modules `qml6-module-qtquick`,
+`qml6-module-qtquick-window`, `qml6-module-qtquick-layouts`,
+`qml6-module-qtquick-controls`, `qml6-module-qtquick-templates`,
+`qml6-module-qtqml`, `qml6-module-qtqml-models`, and
+`qml6-module-qtqml-workerscript`. Ordinary CLI builds do not
 find or link either UI toolkit. Normal configuration never downloads dependencies.
 
 ```sh
@@ -139,6 +145,24 @@ Options are `--state-dir DIR`, `--output DIR`, `--listen PORT` (default 4269), a
 available. The default receive folder is `~/Downloads`. `--output` overrides
 configuration and the remembered folder for that launch. Use `--help` for usage.
 
+## Linux appearance and tray
+
+Linux uses a Qt Quick Controls interface with the same Share/Devices navigation,
+Send/Receive sections, and searchable device cards as macOS. Shared QML components
+provide rounded cards, spacing, accessible controls, and system light/dark colors.
+The app uses Linux fonts and normal compositor-managed window decorations.
+Pairing, device edits, certificate inspection, and backup review use the same QML
+appearance. Native system file/folder pickers remain available.
+
+The tray menu shows live send/receive stage, payload percentage, transferred/total
+size, and speed as standard text entries, so desktop-rendered menus retain them.
+**Show transfers…** opens a compact window with separate graphical progress bars,
+status, **Cancel send**, and **Open Beam**. It shares the main window's controller
+and workers. Closing it dismisses only the panel. On Wayland the compositor places
+this window; Beam does not assume tray coordinates or require shell extensions.
+The old custom-widget tray menu rows are replaced by portable text entries.
+Tray availability, click activation, and notifications depend on the desktop host.
+
 ## Everyday sharing
 
 Choose a paired device. Click **Choose file** or drop one local regular file
@@ -213,8 +237,8 @@ limit as other text. An unchanged clipboard snapshot preserves its original line
 editing uses the text editor's line endings.
 
 The app does not watch clipboard changes, read it at startup, send automatically,
-or write received data to the clipboard automatically. On Linux/X11, the stock Qt
-text editor still uses PRIMARY for selection and middle-click paste; explicit
+or write received data to the clipboard automatically. On Linux/X11, Qt text editing
+may use PRIMARY for selection and middle-click paste; explicit
 Load/Copy actions use the regular clipboard. A later clipboard change does not
 change the loaded snapshot. Only text is supported;
 use file selection for images and other binary content. Received text stays in
@@ -236,8 +260,15 @@ changed trust, cancellation, and worker shutdown. UI tests check local drop
 validation, explicit clipboard snapshots, size limits, plain-text status, and
 unpaired sends. Native macOS tests additionally exercise error translation,
 CLI option validation, paired file/text transfers through the bridge,
-notification metadata, repeated receiving, and joined shutdown. Linux tests use
-Qt's offscreen platform. Single-instance tests use `dbus-run-session` (the `dbus`
+notification metadata, repeated receiving, and joined shutdown. Linux tests load
+the actual QML screens and use Qt's offscreen platform with
+software rendering. They exercise C++ controller actions, QML bindings, exact
+clipboard snapshots, copy-only drops, verified transfers, and panel reopening.
+`make qml-format` / `make qml-format-check` use `qmlformat`; `make qml-lint
+BUILD_DIR=build-desktop CMAKE_ARGS='-DBEAM_ENABLE_DESKTOP=ON'` checks the QML module.
+Desktop CTest runs QML format/lint checks too. The install test launches a relocated
+app on a private D-Bus session to check embedded QML and system runtime imports.
+Single-instance tests use `dbus-run-session` (the `dbus`
 package) to isolate repeated/concurrent launches, hidden/minimized window restoration,
 and restart after exit or process termination. They require no tray, discovery
 daemon, or public network;
@@ -252,7 +283,12 @@ drag gestures, clipboard permissions, or OS notification delivery. To check thes
 on a desktop, pair two devices, send a file by dropping it, send a reviewed
 clipboard snapshot, receive repeated items, cancel a transfer, hide/reopen from
 the tray, relaunch Beam while its window is hidden or minimized and confirm it
-receives focus without adding a tray icon, and quit during an active receive.
+receives focus without adding a tray icon, open **Show transfers…**, confirm both
+progress bars and tray status during a
+transfer, close/reopen the panel, and quit during an active receive. Check system
+light/dark colors, keyboard navigation, and display scaling on Hyprland/Wayland
+and a desktop with a host-rendered tray menu. Offscreen tests cannot establish
+compositor focus behavior, native tray rendering, or notification delivery.
 
 `make desktop-live-test` additionally tests the desktop worker's own live LAN
 advertisement/withdrawal during repeated paired transfers. It requires Bonjour
@@ -260,7 +296,7 @@ or a running Avahi daemon and local multicast access, and also runs in Linux CI.
 
 ## Device management
 
-macOS has separate **Share** and **Devices** views; Linux opens **Manage devices**.
+macOS and Linux have separate **Share** and **Devices** views.
 The Devices view provides searchable cards, primary/fallback endpoints, individual
 connection checks, QR/invitation pairing, local rename/address edits,
 certificate inspection/replacement, and confirmed unpairing. **Backup & restore**

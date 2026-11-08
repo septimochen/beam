@@ -126,8 +126,9 @@ do not remain as extra application search results.
 macOS uses a native SwiftUI/AppKit app; install and select full Xcode and install
 Ninja (`brew install ninja`). Desktop builds target the selected macOS SDK
 version and always compile native icon appearances. See [Xcode setup](assets/icons/README.md#native-macos-appearances).
-Linux uses Qt 6 Widgets (`qt6-base-dev` and
-`qt6-qpa-plugins` on Debian/Ubuntu). Run `make desktop`, then launch
+Linux uses Qt 6.4+ Quick/QML with Qt base/declarative packages and QML runtime
+modules; see [Linux desktop prerequisites](docs/desktop.md#build-and-run).
+Run `make desktop`, then launch
 `build-desktop/beam-desktop` on Linux or `open build/macos/dev/apps.noindex/beam-desktop.app`
 on macOS. Choose **Add device** to pair, then choose a device, drop or select one
 file, then click **Send**. After pairing, reception starts automatically when the

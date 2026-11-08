@@ -1,135 +1,92 @@
-#include "pairing_dialog.hpp"
-#include "beam/pairing.hpp"
+#include "window.hpp"
 #include <QApplication>
 #include <QClipboard>
-#include <QDialog>
-#include <QImage>
-#include <QLabel>
-#include <QLineEdit>
-#include <QPixmap>
-#include <QPushButton>
-#include <QScrollArea>
 #include <QSysInfo>
-#include <QTimer>
-#include <QVBoxLayout>
 
 namespace beam::desktop {
-void show_pairing_dialog(QWidget* parent, const Config& config, Service& service) {
-    if (service.is_sending() || service.is_checking())
-        throw std::logic_error("Wait for the active transfer before pairing");
-    PairingSession session(
-        {config.state_directory, QSysInfo::machineHostName().toUtf8().toStdString(), config.port});
-    QDialog dialog(parent);
-    dialog.setWindowTitle("Add device");
-    dialog.resize(540, 720);
-    auto* outer = new QVBoxLayout(&dialog);
-    auto* scroll = new QScrollArea(&dialog);
-    auto* content = new QWidget(scroll);
-    scroll->setWidgetResizable(true);
-    scroll->setWidget(content);
-    outer->addWidget(scroll);
-    auto* layout = new QVBoxLayout(content);
-    auto* help = new QLabel("Open Add device on both devices on the same local network.", &dialog);
-    help->setWordWrap(true);
-    layout->addWidget(help);
-    auto* status = new QLabel(&dialog);
-    status->setTextFormat(Qt::PlainText);
-    status->setWordWrap(true);
-    layout->addWidget(status);
-    auto* error_status = new QLabel(&dialog);
-    error_status->setTextFormat(Qt::PlainText);
-    error_status->setWordWrap(true);
-    layout->addWidget(error_status);
-    auto* qr = new QLabel(&dialog);
-    qr->setAccessibleName("Pairing QR code");
-    layout->addWidget(qr);
-    auto* copy = new QPushButton("Copy invitation", &dialog);
-    layout->addWidget(copy);
-    auto* invitation = new QLineEdit(&dialog);
-    invitation->setMaxLength(2048);
-    invitation->setPlaceholderText("Paste a Beam invitation");
-    layout->addWidget(invitation);
-    auto* join = new QPushButton("Use invitation", &dialog);
-    layout->addWidget(join);
-    auto* alias = new QLineEdit(&dialog);
-    alias->setMaxLength(63);
-    alias->setPlaceholderText("Local alias for this device");
-    layout->addWidget(alias);
-    auto* approve = new QPushButton("Approve device", &dialog);
-    layout->addWidget(approve);
-    auto* decline = new QPushButton("Decline", &dialog);
-    layout->addWidget(decline);
-    auto* again = new QPushButton("New invitation", &dialog);
-    layout->addWidget(again);
-    auto* forget = new QPushButton("Forget pending approval", &dialog);
-    layout->addWidget(forget);
-    auto* close = new QPushButton("Done", &dialog);
-    layout->addWidget(close);
-    const auto attempt = [error_status](const std::function<void()>& action) {
+void Window::open_pairing() {
+    attempt([&] {
+#ifdef BEAM_HAS_PAIRING
+        if (service.is_sending() || service.is_checking())
+            throw std::logic_error("Wait for the active transfer before pairing");
+        if (pairing)
+            return;
+        pairing = std::make_unique<PairingSession>(
+            PairingOptions{config.state_directory,
+                           QSysInfo::machineHostName().toUtf8().toStdString(), config.port});
+        values["pairingOpen"] = true;
         try {
-            error_status->clear();
-            action();
-        } catch (const std::exception& error) {
-            error_status->setText(QString::fromUtf8(error.what()));
+            pairing->host();
+        } catch (...) {
+            pairing.reset();
+            values["pairingOpen"] = false;
+            throw;
         }
-    };
-    QObject::connect(copy, &QPushButton::clicked, &dialog, [&] {
-        QApplication::clipboard()->setText(QString::fromStdString(session.snapshot().invitation));
+        previous_pairing = PairingState::idle;
+        poll_pairing();
+#else
+        throw std::logic_error("Network pairing is disabled in this build");
+#endif
     });
-    QObject::connect(join, &QPushButton::clicked, &dialog, [&] {
-        attempt([&] { session.join(invitation->text().trimmed().toStdString()); });
-    });
-    QObject::connect(approve, &QPushButton::clicked, &dialog, [&] {
-        attempt([&] {
+}
+void Window::close_pairing() {
+#ifdef BEAM_HAS_PAIRING
+    pairing.reset(); // Cancels and joins before the invitation disappears.
+#endif
+    values["pairingOpen"] = false;
+    values["pairing"] = QVariantMap{};
+    refresh_peers();
+}
+void Window::pairing_action(const QString& action, const QString& value) {
+    attempt([&] {
+#ifdef BEAM_HAS_PAIRING
+        if (!pairing)
+            throw std::logic_error("Open Add device first");
+        if (action == "copy") {
+            const auto snapshot = pairing->snapshot();
+            if (snapshot.state == PairingState::hosting)
+                QApplication::clipboard()->setText(QString::fromStdString(snapshot.invitation));
+        } else if (action == "join") {
+            pairing->join(value.trimmed().toUtf8().toStdString());
+        } else if (action == "approve") {
             service.stop_receiving();
-            session.approve(alias->text().toStdString());
-        });
-    });
-    QObject::connect(again, &QPushButton::clicked, &dialog,
-                     [&] { attempt([&] { session.host(); }); });
-    QObject::connect(forget, &QPushButton::clicked, &dialog,
-                     [&] { attempt([&] { session.forget_incomplete(); }); });
-    QObject::connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
-    QObject::connect(decline, &QPushButton::clicked, &dialog,
-                     [&] { attempt([&] { session.reject(); }); });
-    PairingState previous = PairingState::idle;
-    std::string last_invitation;
-    QTimer timer;
-    QObject::connect(&timer, &QTimer::timeout, &dialog, [&] {
-        const auto snapshot = session.snapshot();
-        status->setText(QString::fromStdString(std::string(pairing_state_name(snapshot.state)) +
-                                               ": " + snapshot.message));
-        const bool hosting = snapshot.state == PairingState::hosting;
-        copy->setEnabled(hosting);
-        qr->setVisible(hosting);
-        approve->setVisible(snapshot.state == PairingState::approval);
-        decline->setVisible(snapshot.state == PairingState::approval);
-        alias->setVisible(snapshot.state == PairingState::approval);
-        forget->setVisible(snapshot.state == PairingState::incomplete);
-        if (snapshot.state != previous) {
-            previous = snapshot.state;
-            if (snapshot.state == PairingState::approval)
-                alias->setText(QString::fromStdString(snapshot.alias));
+            pairing->approve(value.toUtf8().toStdString());
+        } else if (action == "reject") {
+            pairing->reject();
+        } else if (action == "host") {
+            pairing->host();
+        } else if (action == "forget") {
+            pairing->forget_incomplete();
+        } else {
+            throw std::invalid_argument("Unknown pairing action");
         }
-        if (snapshot.invitation != last_invitation) {
-            last_invitation = snapshot.invitation;
-            if (!snapshot.qr.empty()) {
-                const int size = static_cast<int>(snapshot.qr.size());
-                QImage image(size + 8, size + 8, QImage::Format_RGB32);
-                image.fill(Qt::white);
-                for (int y = 0; y < size; ++y)
-                    for (int x = 0; x < size; ++x)
-                        if (snapshot.qr[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] ==
-                            '1')
-                            image.setPixelColor(x + 4, y + 4, Qt::black);
-                qr->setPixmap(QPixmap::fromImage(image).scaled(280, 280, Qt::KeepAspectRatio,
-                                                               Qt::FastTransformation));
-            }
-        }
+        poll_pairing();
+#else
+        Q_UNUSED(action)
+        Q_UNUSED(value)
+        throw std::logic_error("Network pairing is disabled in this build");
+#endif
     });
-    session.host();
-    timer.start(100);
-    dialog.exec();
-    session.cancel();
+}
+void Window::poll_pairing() {
+#ifdef BEAM_HAS_PAIRING
+    if (!pairing)
+        return;
+    const auto snapshot = pairing->snapshot();
+    QStringList rows;
+    for (const auto& row : snapshot.qr)
+        rows.append(QString::fromStdString(row));
+    values["pairing"] =
+        QVariantMap{{"state", QString::fromLatin1(pairing_state_name(snapshot.state))},
+                    {"message", QString::fromStdString(snapshot.message)},
+                    {"remoteName", QString::fromStdString(snapshot.remote_name)},
+                    {"alias", QString::fromStdString(snapshot.alias)},
+                    {"qr", rows}};
+    if (snapshot.state != previous_pairing) {
+        previous_pairing = snapshot.state;
+        if (snapshot.state == PairingState::paired)
+            refresh_peers();
+    }
+#endif
 }
 } // namespace beam::desktop

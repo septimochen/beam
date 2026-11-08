@@ -1,29 +1,29 @@
 #include "beam/identity.hpp"
 #include "desktop/qt/window.hpp"
-#include <QAbstractButton>
+#include <QAction>
 #include <QApplication>
 #include <QClipboard>
-#include <QComboBox>
-#include <QDialog>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QIcon>
-#include <QLabel>
-#include <QLineEdit>
-#include <QMessageBox>
+#include <QImage>
+#include <QMenu>
 #include <QMimeData>
+#include <QPalette>
 #include <QPixmap>
-#include <QPlainTextEdit>
-#include <QPushButton>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QSettings>
+#include <QSystemTrayIcon>
 #include <QTemporaryDir>
-#include <QTimer>
 #include <QUrl>
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
+#include <source_location>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
@@ -41,7 +41,9 @@ template <typename Action> void rejects(Action action) {
     }
     throw std::logic_error("invalid drop accepted");
 }
-template <typename Condition> void await(Condition condition) {
+template <typename Condition>
+void await(Condition condition,
+           const std::source_location& location = std::source_location::current()) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
     do {
         QApplication::processEvents();
@@ -49,7 +51,8 @@ template <typename Condition> void await(Condition condition) {
             return;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     } while (std::chrono::steady_clock::now() < deadline);
-    throw std::runtime_error("desktop UI state timed out");
+    throw std::runtime_error("desktop UI state timed out at line " +
+                             std::to_string(location.line()));
 }
 std::uint16_t reserve_port() {
     const auto descriptor = socket(AF_INET, SOCK_DGRAM, 0);
@@ -64,12 +67,21 @@ std::uint16_t reserve_port() {
     require(bound == 0 && result == 0, "cannot reserve UI test port");
     return ntohs(address.sin_port);
 }
+QQuickItem* visual_item(QQuickItem* root, const QString& name) {
+    if (root->objectName() == name)
+        return root;
+    for (auto* child : root->childItems())
+        if (auto* found = visual_item(child, name))
+            return found;
+    return nullptr;
+}
 void tests() {
     QTemporaryDir temporary;
     require(temporary.isValid(), "cannot create UI fixture");
     const auto root = std::filesystem::canonical(temporary.path().toUtf8().toStdString());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, temporary.path());
     std::ofstream(root / "hello.txt") << "test";
     QMimeData mime;
     mime.setUrls({QUrl::fromLocalFile(QString::fromStdString((root / "hello.txt").string()))});
@@ -93,88 +105,93 @@ void tests() {
     auto* clipboard = QApplication::clipboard();
     clipboard->setText("private clipboard\r\n世界");
     beam::desktop::Window window({root / "missing-state", 4269, false});
-    require(!window.windowIcon().pixmap(32, 32).isNull(), "packaged app icon cannot be loaded");
-    auto* content = window.findChild<QPlainTextEdit*>("content");
-    auto* load = window.findChild<QPushButton*>("loadClipboard");
-    auto* send = window.findChild<QPushButton*>("send");
-    auto* kind = window.findChild<QComboBox*>("kind");
-    require(content && load && send && kind, "missing desktop controls");
-    require(!window.findChild<QPushButton*>("receive"), "receive toggle is still present");
-    require(window.findChild<QLineEdit*>("output")->text() == QDir::home().filePath("Downloads"),
+    require(!window.view()->icon().pixmap(32, 32).isNull(), "packaged icon cannot be loaded");
+    auto* content = window.view()->findChild<QQuickItem*>("content");
+    auto* load = window.view()->findChild<QQuickItem*>("loadClipboard");
+    auto* send = window.view()->findChild<QQuickItem*>("send");
+    require(content && load && send, "missing QML controls");
+    const auto click = [](QObject* button) {
+        require(QMetaObject::invokeMethod(button, "clicked"), "cannot invoke QML action");
+    };
+    require(window.state()["output"].toString() == QDir::home().filePath("Downloads"),
             "unset receive folder did not default to Downloads");
-    require(content->toPlainText().isEmpty(), "startup read the clipboard");
+    require(window.content().isEmpty(), "startup read clipboard");
     require(!send->isEnabled(), "unpaired send enabled");
-    require(window.findChild<QPushButton*>("manageDevices") != nullptr,
-            "device management is missing");
-    QTimer::singleShot(0, &window, [&] {
-        auto* manager = window.findChild<QDialog*>("devicesDialog");
-        require(manager && manager->findChild<QPushButton*>("importDevices"),
-                "first-use device management cannot import a backup");
-        manager->accept();
-    });
-    window.findChild<QPushButton*>("manageDevices")->click();
-    load->click();
-    require(content->toPlainText().contains("private clipboard") && kind->currentIndex() == 1,
-            "explicit clipboard load failed");
-    require(clipboard->text() == "private clipboard\r\n世界", "desktop wrote the clipboard");
+    click(window.view()->findChild<QQuickItem*>("manageDevices"));
+    require(window.state()["page"].toInt() == 1 &&
+                window.view()->findChild<QQuickItem*>("importDevices"),
+            "first-use device management cannot import backup");
+    window.show_share();
+    click(load);
+    require(window.content().contains("private clipboard") && window.kind() == 1 &&
+                content->property("text").toString() == window.content(),
+            "explicit clipboard load did not update QML editor");
+    require(clipboard->text() == "private clipboard\r\n世界", "desktop wrote clipboard");
     clipboard->setText("later clipboard");
     QApplication::processEvents();
-    require(!content->toPlainText().contains("later"), "clipboard was watched after snapshot");
+    require(!window.content().contains("later"), "clipboard watched after snapshot");
     clipboard->setText(QString(static_cast<qsizetype>(beam::max_text_size + 1), 'x'));
-    load->click();
-    require(!content->toPlainText().startsWith('x'),
-            "oversized clipboard replaced valid selection");
-    auto* status = window.findChild<QLabel*>("sendStatus");
-    require(status && status->textFormat() == Qt::PlainText,
-            "status interprets remote text as markup");
-    require(status->text().contains("exceeds"), "clipboard validation error missing");
-    mime.setUrls({QUrl::fromLocalFile(QString::fromStdString((root / "hello.txt").string()))});
-    QDropEvent drop(QPointF(20, 20), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
-    QApplication::sendEvent(&window, &drop);
-    // Drop dispatch requires an accepted drag-enter first; test that complete path.
-    QDragEnterEvent enter(QPoint(20, 20), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
-    QApplication::sendEvent(&window, &enter);
-    QApplication::sendEvent(&window, &drop);
-    require(enter.isAccepted() && drop.isAccepted(), "window did not accept valid file drop");
-    require(kind->currentIndex() == 0 &&
-                window.findChild<QLineEdit*>("file")->text().endsWith("hello.txt"),
-            "drop did not select file");
-    require(!send->isEnabled(), "drop automatically enabled unpaired send");
-    QDragEnterEvent move_only(QPoint(20, 20), Qt::MoveAction, &mime, Qt::LeftButton,
-                              Qt::NoModifier);
-    QApplication::sendEvent(&window, &move_only);
-    require(!move_only.isAccepted(), "move-only drag could delete the source file");
-    QDropEvent move_drop(QPointF(20, 20), Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
-    QApplication::sendEvent(&window, &move_drop);
-    require(!move_drop.isAccepted(), "move-only drop was accepted");
-    QDragEnterEvent mixed(QPoint(20, 20), Qt::CopyAction | Qt::MoveAction, &mime, Qt::LeftButton,
-                          Qt::ShiftModifier);
-    QApplication::sendEvent(&window, &mixed);
-    QDropEvent mixed_drop(QPointF(20, 20), Qt::CopyAction | Qt::MoveAction, &mime, Qt::LeftButton,
-                          Qt::ShiftModifier);
-    QApplication::sendEvent(&window, &mixed_drop);
-    require(mixed.isAccepted() && mixed.dropAction() == Qt::CopyAction && mixed_drop.isAccepted() &&
-                mixed_drop.dropAction() == Qt::CopyAction,
-            "mixed drag did not negotiate a copy");
-    kind->setCurrentIndex(1);
-    content->setPlainText("reviewed text");
-    window.findChild<QLineEdit*>("file")->clear();
+    click(load);
+    require(!window.content().startsWith('x') &&
+                window.state()["sendStatus"].toString().contains("exceeds"),
+            "oversized clipboard replaced selection or lost error");
+    clipboard->setText(QString(32769, QChar(0x754c)));
+    click(load);
+    require(!window.content().startsWith(QChar(0x754c)), "UTF-8 byte limit bypassed");
+    window.show();
     QApplication::processEvents();
-    QDragEnterEvent editor_enter(QPoint(20, 20), Qt::CopyAction, &mime, Qt::LeftButton,
-                                 Qt::NoModifier);
-    QApplication::sendEvent(content->viewport(), &editor_enter);
-    QDropEvent editor_drop(QPointF(20, 20), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
-    QApplication::sendEvent(content->viewport(), &editor_drop);
-    require(content->toPlainText() == "reviewed text" && kind->currentIndex() == 0 &&
-                window.findChild<QLineEdit*>("file")->text().endsWith("hello.txt"),
-            "editor drop bypassed the window's file selection");
-    kind->setCurrentIndex(1);
+    content->forceActiveFocus();
+    content->setProperty("text", "reviewed text");
+    require(window.content() == "reviewed text", "QML editor edits did not reach controller");
+    mime.setUrls({QUrl::fromLocalFile(QString::fromStdString((root / "hello.txt").string()))});
+    // Window filter runs before the editor, including drops over its text area.
+    const auto drop_at_window = [&](Qt::DropActions actions, bool accepted) {
+        QDragEnterEvent enter(QPoint(20, 20), actions, &mime, Qt::LeftButton, Qt::ShiftModifier);
+        QApplication::sendEvent(window.view(), &enter);
+        QDropEvent drop(QPointF(20, 20), actions, &mime, Qt::LeftButton, Qt::ShiftModifier);
+        QApplication::sendEvent(window.view(), &drop);
+        require(enter.isAccepted() == accepted && drop.isAccepted() == accepted,
+                "incorrect drag/drop acceptance");
+        if (accepted)
+            require(enter.dropAction() == Qt::CopyAction && drop.dropAction() == Qt::CopyAction,
+                    "file drop negotiated a move");
+    };
+    drop_at_window(Qt::CopyAction, true);
+    require(window.kind() == 0 && window.state()["file"].toString().endsWith("hello.txt") &&
+                window.content() == "reviewed text" && !send->isEnabled(),
+            "drop changed reviewed text or enabled unpaired send");
+    drop_at_window(Qt::MoveAction, false);
+    drop_at_window(Qt::CopyAction | Qt::MoveAction, true);
     mime.setUrls({QUrl("https://example.com/one"), QUrl("https://example.com/two")});
-    QDragEnterEvent remote_enter(QPoint(20, 20), Qt::CopyAction, &mime, Qt::LeftButton,
-                                 Qt::NoModifier);
-    QApplication::sendEvent(content->viewport(), &remote_enter);
-    require(!remote_enter.isAccepted() && content->toPlainText() == "reviewed text",
-            "editor accepted remote URLs as a file drop");
+    drop_at_window(Qt::CopyAction, false);
+    require(window.content() == "reviewed text", "remote URLs entered editor");
+
+    window.show_transfers();
+    require(window.transfer_panel()->isVisible(), "transfer panel did not open");
+    window.transfer_panel()->close();
+    window.show_transfers();
+    require(window.transfer_panel()->isVisible(), "transfer panel did not reopen");
+    window.transfer_panel()->hide();
+    if (qEnvironmentVariableIsSet("BEAM_UI_SCREENSHOT")) {
+        await([&] { return window.view()->isExposed(); });
+        require(window.view()->grabWindow().save(qEnvironmentVariable("BEAM_UI_SCREENSHOT")),
+                "cannot save UI preview");
+    }
+
+    const auto saved_palette = QApplication::palette();
+    auto dark_palette = saved_palette;
+    dark_palette.setColor(QPalette::Window, QColor("#17191f"));
+    dark_palette.setColor(QPalette::Base, QColor("#22252d"));
+    dark_palette.setColor(QPalette::Text, QColor("#f1f3f8"));
+    dark_palette.setColor(QPalette::WindowText, QColor("#f1f3f8"));
+    dark_palette.setColor(QPalette::PlaceholderText, QColor("#b3bac8"));
+    QApplication::setPalette(dark_palette);
+    await([&] { return window.view()->color() == QColor("#17191f"); });
+    if (qEnvironmentVariableIsSet("BEAM_UI_SCREENSHOT"))
+        require(window.view()->grabWindow().save(qEnvironmentVariable("BEAM_UI_SCREENSHOT") +
+                                                 ".dark.png"),
+                "cannot save dark UI preview");
+    QApplication::setPalette(saved_palette);
 
     const auto left = root / "left", right = root / "right", output = root / "received";
     std::filesystem::create_directory(output);
@@ -188,132 +205,214 @@ void tests() {
     beam::IdentityStore(right).pair("left", root / "left.pem", left_identity.fingerprint);
     {
         beam::desktop::Window first({right, port, false});
-        await([&] {
-            return first.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
-        });
-        require(first.findChild<QLineEdit*>("output")->text() == QDir::home().filePath("Downloads"),
+        await([&] { return first.state()["receiveStatus"].toString().startsWith("Listening"); });
+        require(first.state()["output"].toString() == QDir::home().filePath("Downloads"),
                 "first launch did not receive in Downloads");
     }
     {
         beam::desktop::Window automatic({right, port, false});
-        auto* receive_status = automatic.findChild<QLabel*>("receiveStatus");
-        await([&] { return receive_status->text().startsWith("Listening"); });
+        await(
+            [&] { return automatic.state()["receiveStatus"].toString().startsWith("Listening"); });
         automatic.select_receive_directory(output);
-        await([&] { return receive_status->text().startsWith("Listening"); });
-        beam::desktop::Service sender({left, port, false});
-        sender.send({"right", beam::ContentKind::file, root / "hello.txt", {}});
+        await(
+            [&] { return automatic.state()["receiveStatus"].toString().startsWith("Listening"); });
+        beam::desktop::Window sender({left, reserve_port(), false}, output);
+        QMimeData file;
+        file.setUrls({QUrl::fromLocalFile(QString::fromStdString((root / "hello.txt").string()))});
+        QDropEvent drop(QPointF(20, 20), Qt::CopyAction, &file, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(sender.view(), &drop);
+        click(sender.view()->findChild<QQuickItem*>("send"));
         await([&] {
-            return std::filesystem::exists(output / "hello.txt") && !sender.is_sending() &&
-                   automatic.findChild<QLabel*>("lastResult")->text().contains("hello.txt") &&
-                   receive_status->text().startsWith("Listening");
+            return std::filesystem::exists(output / "hello.txt") &&
+                   !sender.state()["sending"].toBool() &&
+                   automatic.state()["lastResult"].toString().contains("hello.txt") &&
+                   sender.state()["sendStatus"].toString().startsWith("Sent and verified") &&
+                   automatic.state()["receiveStatus"].toString().startsWith("Listening");
         });
+        require(sender.state()["sendProgress"].toDouble() == 1.0 &&
+                    !sender.state()["sendBusy"].toBool(),
+                "verified send did not complete progress");
+        sender.show_transfers();
+        require(sender.transfer_panel()->isVisible(), "completed transfers panel failed");
+        const auto* panel_send = sender.transfer_panel()->findChild<QObject*>("panelSend");
+        require(panel_send && panel_send->property("progress").toDouble() == 1.0 &&
+                    panel_send->property("status").toString() ==
+                        sender.state()["sendStatus"].toString(),
+                "transfer panel did not share verified progress");
+        const auto actions = sender.findChild<QSystemTrayIcon*>()->contextMenu()->actions();
+        require(std::any_of(actions.begin(), actions.end(),
+                            [](const QAction* action) {
+                                return action->text().startsWith("Send: Sent and verified");
+                            }),
+                "standard tray menu lost verified result");
         std::filesystem::remove(output / "hello.txt");
+        // Unedited snapshots retain CRLF and supplementary Unicode through QML and QUIC.
+        const QString original = "exact clipboard\r\n世界 😀";
+        clipboard->setText(original);
+        sender.load_clipboard();
         clipboard->setText("unchanged clipboard");
-        sender.send({"right", beam::ContentKind::text, {}, "automatic receive"});
+        click(sender.view()->findChild<QQuickItem*>("send"));
         await([&] {
-            return automatic.findChild<QPlainTextEdit*>("receivedText")->toPlainText() ==
-                       "automatic receive" &&
-                   !sender.is_sending();
+            return automatic.state()["receivedText"].toString() == original &&
+                   automatic.state()["receiveStatus"].toString().startsWith("Listening") &&
+                   !sender.state()["sending"].toBool();
         });
-        require(std::filesystem::is_empty(output), "received text created a file");
-        require(clipboard->text() == "unchanged clipboard",
-                "receive wrote clipboard automatically");
-        automatic.findChild<QPushButton*>("copyReceived")->click();
-        require(clipboard->text() == "automatic receive", "explicit Copy lost received text");
-        automatic.findChild<QPushButton*>("checkConnectivity")->click();
+        require(std::filesystem::is_empty(output), "received text created file");
+        require(clipboard->text() == "unchanged clipboard", "receive wrote clipboard");
+        click(automatic.view()->findChild<QQuickItem*>("copyReceived"));
+        require(clipboard->text() == original, "explicit Copy lost received text");
+        sender.set_content("<b>plain text</b>");
+        sender.send_selection();
         await([&] {
-            return automatic.findChild<QLabel*>("connectivityStatus")
-                ->text()
-                .contains("unavailable");
+            return automatic.state()["receivedText"].toString() == "<b>plain text</b>" &&
+                   !sender.state()["sending"].toBool();
         });
-        automatic.findChild<QPushButton*>("refreshPeers")->click();
-        await([&] { return receive_status->text().startsWith("Listening"); });
+        auto* received = automatic.view()->findChild<QQuickItem*>("receivedText");
+        require(received->property("textFormat").toInt() == 0 &&
+                    received->property("text").toString() == "<b>plain text</b>",
+                "received text interpreted markup");
+        automatic.check_peer("left");
+        await([&] { return !automatic.state()["checking"].toBool(); });
+        automatic.refresh_peers();
+        await(
+            [&] { return automatic.state()["receiveStatus"].toString().startsWith("Listening"); });
+        if (qEnvironmentVariableIsSet("BEAM_UI_SCREENSHOT")) {
+            automatic.open_devices();
+            automatic.show();
+            await([&] { return automatic.view()->isExposed(); });
+            require(automatic.view()->grabWindow().save(qEnvironmentVariable("BEAM_UI_SCREENSHOT") +
+                                                        ".devices.png"),
+                    "cannot save devices preview");
+            automatic.show_transfers();
+            await([&] { return automatic.transfer_panel()->isExposed(); });
+            require(automatic.transfer_panel()->grabWindow().save(
+                        qEnvironmentVariable("BEAM_UI_SCREENSHOT") + ".transfers.png"),
+                    "cannot save panel preview");
+        }
     }
-    QSettings("Beam", "Beam").setValue("receiveDirectory", QString::fromStdString(output.string()));
     {
         beam::desktop::Window restored({right, port, false});
-        await([&] {
-            return restored.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
-        });
-        require(restored.findChild<QLineEdit*>("output")->text() ==
-                    QString::fromStdString(output.string()),
+        await([&] { return restored.state()["receiveStatus"].toString().startsWith("Listening"); });
+        require(restored.state()["output"].toString() == QString::fromStdString(output.string()),
                 "launch lost remembered folder");
     }
     {
         beam::desktop::Window invalid({right, port, false}, root / "missing-output");
         await([&] {
-            return invalid.findChild<QLabel*>("receiveStatus")
-                ->text()
-                .startsWith("Transfer stopped:");
+            return invalid.state()["receiveStatus"].toString().startsWith("Transfer stopped:");
         });
-        require(invalid.findChild<QLineEdit*>("output")->text().endsWith("missing-output"),
-                "explicit output lost to remembered folder");
-        invalid.findChild<QPushButton*>("refreshPeers")->click();
+        require(invalid.state()["output"].toString().endsWith("missing-output"),
+                "explicit output lost precedence");
+        invalid.refresh_peers();
         await([&] {
-            return invalid.findChild<QLabel*>("receiveStatus")
-                ->text()
-                .startsWith("Transfer stopped:");
+            return invalid.state()["receiveStatus"].toString().startsWith("Transfer stopped:");
         });
         invalid.select_receive_directory(output);
+        await([&] { return invalid.state()["receiveStatus"].toString().startsWith("Listening"); });
+        invalid.begin_edit("left");
+        require(!invalid.save_device({{"name", "Invalid name"}}) &&
+                    !invalid.state()["deviceError"].toString().isEmpty(),
+                "invalid edit accepted or error missing");
+        require(invalid.save_device(
+                    {{"name", "renamed"}, {"endpoint", "127.0.0.1:4269"}, {"fallback", ""}}),
+                "valid edit failed");
+        require(beam::IdentityStore(right).peer("renamed").identity.fingerprint ==
+                    left_identity.fingerprint,
+                "rename changed trust");
+        require(!invalid.restore_devices(), "restore skipped preview");
+        invalid.show_identity();
+        require(invalid.state()["identity"].toMap()["fingerprint"].toString() ==
+                    QString::fromStdString(right_identity.fingerprint),
+                "identity view exposes wrong certificate");
+        invalid.open_devices();
+        invalid.show();
         await([&] {
-            return invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
+            return visual_item(invalid.view()->contentItem(), "unpairDevice-renamed") != nullptr;
         });
-        const auto extra = beam::IdentityStore(root / "extra", true).initialize();
-        std::ofstream(root / "extra.pem") << extra.certificate_pem;
-        beam::IdentityStore(right).pair("spare", root / "extra.pem", extra.fingerprint);
-        invalid.findChild<QPushButton*>("refreshPeers")->click();
-        await([&] {
-            return invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
-        });
-        auto* manage = invalid.findChild<QPushButton*>("manageDevices");
-        auto* devices = invalid.findChild<QComboBox*>("peers");
-        devices->setCurrentText("left");
-        const auto confirm = [&](QMessageBox::StandardButton answer) {
-            const auto selected = devices->currentText();
-            QTimer::singleShot(0, &invalid, [&, answer, selected] {
-                auto* manager = invalid.findChild<QDialog*>("devicesDialog");
-                require(manager != nullptr, "device manager did not open");
-                require(manager->findChild<QPushButton*>("exportDevices") &&
-                            manager->findChild<QPushButton*>("importDevices"),
-                        "backup actions missing");
-                manager->findChild<QLineEdit*>("deviceSearch")->setText(selected);
-                QTimer::singleShot(0, manager, [&, answer, manager] {
-                    auto* dialog = manager->findChild<QMessageBox*>();
-                    require(dialog != nullptr, "unpair skipped confirmation");
-                    dialog->button(answer)->click();
-                });
-                auto* unpair = manager->findChild<QPushButton*>("unpairDevice-" + selected);
-                require(unpair != nullptr, "device card lacks unpair");
-                unpair->click();
-                manager->accept();
-            });
-            manage->click();
-        };
-        confirm(QMessageBox::Cancel);
-        require(beam::IdentityStore(right).peers().size() == 2, "cancelled unpair changed trust");
-        confirm(QMessageBox::Yes);
-        await([&] {
-            return devices->count() == 1 && devices->currentText() == "spare" &&
-                   invalid.findChild<QLabel*>("receiveStatus")->text().startsWith("Listening");
-        });
+        auto* remove = visual_item(invalid.view()->contentItem(), "unpairDevice-renamed");
+        auto* confirmation = invalid.view()->findChild<QObject*>("unpairConfirmation");
+        require(confirmation != nullptr, "QML unpair confirmation missing");
+        click(remove);
+        require(confirmation->property("visible").toBool() &&
+                    beam::IdentityStore(right).peers().size() == 1,
+                "unpair skipped confirmation");
+        require(QMetaObject::invokeMethod(confirmation, "reject"), "cannot cancel unpair dialog");
+        require(beam::IdentityStore(right).peers().size() == 1, "cancelled unpair changed trust");
+        click(remove);
+        click(invalid.view()->findChild<QQuickItem*>("confirmUnpair"));
+        await(
+            [&] { return invalid.state()["receiveStatus"].toString().contains("pair a device"); });
+        require(invalid.state()["peers"].toStringList().isEmpty() &&
+                    !invalid.view()->findChild<QQuickItem*>("send")->isEnabled(),
+                "last-peer unpair left stale controls");
         require(beam::IdentityStore(right).identity().fingerprint == right_identity.fingerprint &&
                     beam::IdentityStore(left).peer("right").identity.fingerprint ==
                         right_identity.fingerprint,
                 "unpair changed identity or remote trust");
-        confirm(QMessageBox::Yes);
-        await([&] {
-            return invalid.findChild<QLabel*>("receiveStatus")->text().contains("pair a device");
-        });
-        require(devices->count() == 0 && !invalid.findChild<QPushButton*>("send")->isEnabled(),
-                "last-device unpair left stale controls");
+#ifdef BEAM_HAS_PAIRING
+        invalid.open_pairing();
+        // Hosts without a multicast-capable interface can report a visible startup error.
+        if (invalid.state()["pairingOpen"].toBool()) {
+            invalid.pairing_action("join", "invalid invitation");
+            require(!invalid.state()["deviceError"].toString().isEmpty(),
+                    "invalid invitation error lost");
+            invalid.close_pairing();
+            require(!invalid.state()["pairingOpen"].toBool() &&
+                        invalid.state()["pairing"].toMap().isEmpty(),
+                    "pairing close retained invitation");
+        }
+#endif
     }
+#ifdef BEAM_HAS_PAIRING
+    {
+        const auto partner_state = root / "pairing-partner";
+        const auto ui_state = root / "pairing-ui";
+        beam::IdentityStore(partner_state, true).initialize();
+        beam::IdentityStore(ui_state, true).initialize();
+        beam::PairingOptions options{partner_state, "Pairing partner", reserve_port()};
+        options.addresses = {"127.0.0.1"};
+        beam::PairingSession partner(options);
+        partner.host();
+        beam::desktop::Window joining({ui_state, reserve_port(), false}, output);
+        joining.show();
+        joining.open_pairing();
+        require(joining.state()["pairingOpen"].toBool(), "QML pairing dialog failed to host");
+        joining.pairing_action("join", QString::fromStdString(partner.snapshot().invitation));
+        await([&] {
+            return joining.state()["pairing"].toMap()["state"].toString() == "awaiting approval" &&
+                   partner.snapshot().state == beam::PairingState::approval;
+        });
+        auto* alias = joining.view()->findChild<QQuickItem*>("pairingAlias");
+        auto* approve = joining.view()->findChild<QQuickItem*>("approveDevice");
+        require(alias && approve && alias->isVisible() && approve->isVisible() &&
+                    !alias->property("text").toString().isEmpty(),
+                "pairing approval controls or suggested alias missing");
+        partner.approve("qml");
+        require(beam::IdentityStore(ui_state).peers().empty(),
+                "pairing trusted peer before local approval");
+        alias->setProperty("text", "partner");
+        click(approve);
+        await([&] {
+            return joining.state()["pairing"].toMap()["state"].toString() == "paired" &&
+                   partner.snapshot().state == beam::PairingState::paired;
+        });
+        require(beam::IdentityStore(ui_state).peer("partner").identity.fingerprint ==
+                    beam::IdentityStore(partner_state).identity().fingerprint,
+                "QML pairing stored wrong identity");
+        require(QMetaObject::invokeMethod(joining.view()->findChild<QObject*>("pairingDialog"),
+                                          "close"),
+                "cannot close QML pairing dialog");
+        await([&] { return !joining.state()["pairingOpen"].toBool(); });
+    }
+#endif
 }
 } // namespace
 int main(int argc, char** argv) {
     QApplication application(argc, argv);
+    QApplication::setQuitOnLastWindowClosed(false);
     try {
         tests();
-        std::cout << "desktop UI tests passed\n";
+        std::cout << "desktop QML UI tests passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
