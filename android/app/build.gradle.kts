@@ -128,6 +128,8 @@ android {
   lint {
     abortOnError = true
     warningsAsErrors = true
+    // Keep pinned build-tool update notices visible without failing CI on new releases.
+    informational += "AndroidGradlePluginVersion"
     // Beam intentionally ships ARM64 only; native Intel ChromeOS is out of scope.
     disable += "ChromeOsAbiSupport"
   }

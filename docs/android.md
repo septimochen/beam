@@ -109,8 +109,12 @@ The wrapper retries transient distribution-download failures three times with a
 remain enabled.
 
 The checked-in Gradle wrapper validates its distribution SHA-256; AGP provides built-in
-Kotlin. These tested build dependencies retain explicit versions. `make android-deps`
-explicitly downloads MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`
+Kotlin. These tested build dependencies retain explicit versions. Lint reports
+`AndroidGradlePluginVersion` build-tool update notices as informational so new
+upstream releases do not break CI; other lint warnings remain errors. Review and
+validate build-tool upgrades explicitly.
+
+`make android-deps` explicitly downloads MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`
 and its pinned quictls submodule. It cross-compiles ARM64 static libraries and reuses
 that TLS build for Beam's EVP/X.509 operations and invitation TLS pairing. Normal CMake
 configuration downloads no native dependencies. Android imports the ARM64 quictls
