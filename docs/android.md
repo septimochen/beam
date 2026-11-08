@@ -35,7 +35,7 @@ to upgrade. It requires `sdkmanager` on `PATH` or in
 See the [SDK Manager documentation](https://developer.android.com/tools/sdkmanager).
 
 Builds use the newest complete, stable packages already installed in that SDK,
-without querying the network for tool versions. `make android-toolchain` shows
+without querying the network for SDK tool versions. `make android-toolchain` shows
 the selection. Make and Gradle share the same selector, including direct Gradle
 and Android Studio builds. Preview packages are excluded. Beam currently needs
 platform 37+, NDK 28+, and CMake 3.25+; Android 10 remains the minimum device OS.
@@ -104,15 +104,24 @@ systemProp.http.nonProxyHosts=localhost|127.*
 Use the address/port of your own running proxy and remove these local settings
 when it is no longer needed. Keep proxy credentials out of the repository.
 See [Gradle's proxy documentation](https://docs.gradle.org/current/userguide/networking.html#sec:accessing_the_web_via_a_proxy).
-The wrapper retries transient distribution-download failures three times with a
-30-second network timeout. TLS verification and the pinned distribution SHA-256
-remain enabled.
+Every `android/gradlew` invocation resolves the latest stable Gradle from the
+[official current-release API](https://services.gradle.org/versions/current), with
+three retries and bounded timeouts. It generates ignored wrapper properties with
+that release's SHA-256 and uses `downloads.gradle.org` for the distribution,
+avoiding the failing `services.gradle.org/distributions` route. Distribution
+downloads also retry three times with a 30-second network timeout. TLS verification
+and distribution checksum validation remain enabled; failed release lookups stop
+the build instead of silently using an older version. Cached distributions are reused.
+CI resolves the version before restoring the Gradle cache so its key includes the
+selected release. Run `make android-gradle` before importing into Android Studio,
+and again to refresh the IDE's generated wrapper settings. CMake must be on `PATH`
+for direct wrapper invocations. This rolling policy can expose compatibility changes
+in future Gradle releases.
 
-The checked-in Gradle wrapper validates its distribution SHA-256; AGP provides built-in
-Kotlin. These tested build dependencies retain explicit versions. Lint reports
+AGP provides built-in Kotlin and retains an explicit version. Lint reports
 `AndroidGradlePluginVersion` build-tool update notices as informational so new
 upstream releases do not break CI; other lint warnings remain errors. Review and
-validate build-tool upgrades explicitly.
+validate AGP upgrades explicitly.
 
 `make android-deps` explicitly downloads MsQuic v2.6.2 at commit `819ab74f851ee168504cbc392ec32e7bed1d82e9`
 and its pinned quictls submodule. It cross-compiles ARM64 static libraries and reuses

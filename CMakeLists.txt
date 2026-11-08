@@ -147,6 +147,10 @@ if(BUILD_TESTING)
             "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/android-tools-test"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/android_tools_tests.cmake")
+        add_test(NAME gradle-latest COMMAND "${CMAKE_COMMAND}"
+            "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/gradle-latest-test"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/gradle_latest_tests.cmake")
         add_test(NAME uninstall COMMAND "${CMAKE_COMMAND}"
             "-DBEAM_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/uninstall-test"

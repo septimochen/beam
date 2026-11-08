@@ -107,6 +107,10 @@ android-setup:
 android-toolchain:
 	$(CMAKE) -P cmake/AndroidTools.cmake
 
+.PHONY: android-gradle
+android-gradle:
+	$(CMAKE) -P cmake/GradleLatest.cmake
+
 android-deps:
 	$(CMAKE) -DBEAM_ANDROID_ACTION=deps -DBEAM_ANDROID_DEPS="$(ANDROID_DEPS_DIR)" -P cmake/AndroidTools.cmake
 
@@ -216,6 +220,7 @@ help:
 	@echo "desktop: native Swift macOS (BUILD_DIR/macos/dev) or Qt Linux (BUILD_DIR-desktop); desktop-test: worker and UI checks"
 	@echo "desktop-live-test: authenticated desktop worker transfers with live LAN advertisement and withdrawal"
 	@echo "android-setup: install latest stable SDK/NDK/CMake tools; android-toolchain: show selected installed versions"
+	@echo "android-gradle: resolve latest stable Gradle and generate verified wrapper settings (also automatic in gradlew)"
 	@echo "android-deps: pinned native dependencies for ARM64; android: ARM64 debug APK"
 	@echo "android-release: signed optimized ARM64 APK; android-release-unsigned: unsigned APK for validation/CI"
 	@echo "android-native-test: configure Android ARM64 with incompatible host OpenSSL metadata"

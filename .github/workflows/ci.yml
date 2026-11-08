@@ -19,6 +19,8 @@ jobs:
       ANDROID_NDK: ''
     steps:
       - uses: actions/checkout@v7.0.1
+      - name: Resolve latest stable Gradle before restoring its cache
+        run: make android-gradle
       - uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin

@@ -74,7 +74,7 @@
 !/android/app/proguard-rules.pro
 !/android/gradlew
 !/android/gradle/wrapper/gradle-wrapper.jar
-!/android/gradle/wrapper/gradle-wrapper.properties
+!/android/gradle/wrapper/gradle-wrapper.properties.in
 !/android/native/CMakeLists.txt
 # Never admit generated Gradle/native output or local SDK settings.
 /android/.gradle/
