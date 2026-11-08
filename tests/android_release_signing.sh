@@ -6,6 +6,17 @@ trap 'rm -rf -- "$root"' EXIT
 export BEAM_ANDROID_SIGNING_PROPERTIES="$root/signing.properties"
 gradle_args=("$@")
 gradle() { "$source_dir/android/gradlew" -p "$source_dir/android" "${gradle_args[@]}" "$@"; }
+accept() {
+    local status=0
+    gradle "$@" > "$root/output" 2>&1 || status=$?
+    if ((status != 0)); then
+        printf 'Expected Gradle success for:' >&2
+        printf ' %s' "$@" >&2
+        printf '\n' >&2
+        cat "$root/output" >&2
+        return "$status"
+    fi
+}
 reject() {
     local expected=$1
     shift
@@ -33,7 +44,7 @@ EOF
 reject 'Release keystore is missing:' :app:verifyReleaseSigning -PbeamUnsignedRelease=false
 
 # Neither explicit unsigned validation nor debug builds need release credentials.
-gradle :app:verifyReleaseSigning -PbeamUnsignedRelease=true > "$root/output" 2>&1
+accept :app:verifyReleaseSigning -PbeamUnsignedRelease=true
 rm -- "$BEAM_ANDROID_SIGNING_PROPERTIES"
-gradle :app:assembleDebug > "$root/output" 2>&1
+accept :app:assembleDebug
 echo 'Release signing validation and debug independence passed.'

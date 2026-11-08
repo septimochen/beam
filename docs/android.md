@@ -373,6 +373,10 @@ make android-connected-test   # requires a running ARM64 emulator or attached AR
 `libjitterentropy` and `zstd`, and rejects either dependency in the generated
 Android link graph. CI runs it before building the APK.
 
+The signing checks in `android-check` print the failed Gradle task and its full
+output when unsigned-release validation or debug assembly fails, before cleaning
+up their temporary signing fixtures.
+
 Native session tests cover invalid commands, byte bounds/NULs, unsupported kinds,
 fingerprint rejection, authenticated file/text transfers, exact Unicode bytes,
 trust edits during reception, revocation, and persistent identity. JVM tests
