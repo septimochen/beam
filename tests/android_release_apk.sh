@@ -10,8 +10,11 @@ trap 'rm -rf -- "$root"' EXIT
 sdk=$(sed -n 's/^sdk=//p' "$root/toolchain")
 version=$(sed -n 's/^buildTools=//p' "$root/toolchain")
 tools="$sdk/build-tools/$version"
+app_version=$("${CMAKE:-cmake}" -P "$source_dir/cmake/BeamVersion.cmake")
+app_code=$(sed -n 's/^androidVersionCode=//p' "$source_dir/version.properties")
 "$tools/aapt2" dump badging "$apk" > "$root/manifest"
-grep -Fq "package: name='org.beam.android'" "$root/manifest"
+grep -Fq "package: name='org.beam.android' versionCode='$app_code' versionName='$app_version'" "$root/manifest"
+"$tools/zipalign" -c -P 16 4 "$apk"
 if grep -q '^application-debuggable' "$root/manifest"; then
     echo 'Release APK is debuggable' >&2
     exit 1
@@ -48,4 +51,4 @@ if "$tools/apksigner" verify "$apk" > "$root/signature" 2>&1; then
 else
     [[ $mode == unsigned ]] || { cat "$root/signature" >&2; exit 1; }
 fi
-echo "Release APK validated: $mode, nondebuggable, ARM64, JNI entry points preserved."
+echo "Release APK validated: $app_version ($app_code), $mode, nondebuggable, ARM64, aligned, JNI entry points preserved."

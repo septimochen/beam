@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -33,6 +34,12 @@ class ReceiveStatusTest {
     folder.mkdirs()
     val name = "retry-${UUID.randomUUID()}.bin"
     val source = File(folder, name).apply { writeBytes(byteArrayOf(1, 2, 3)) }
+    val otherFolder = File(context.filesDir, "inbox-${UUID.randomUUID()}")
+    val previousPort = preferences.getInt("port", 4269)
+    val previousTimeout = preferences.getInt("timeout", 30)
+    val previousFolder = preferences.getString("folder", null)
+    val hadPort = preferences.contains("port")
+    val hadTimeout = preferences.contains("timeout")
     val ready = CountDownLatch(1)
     var core: TransferService? = null
     val connection =
@@ -62,6 +69,9 @@ class ReceiveStatusTest {
       error("Receive status did not settle")
     }
     try {
+      assertThrows(IOException::class.java) {
+        ReceivedDownloads(context.contentResolver).save(source) { throw IOException("Copy failed") }
+      }
       activity =
         instrumentation.startActivitySync(
           Intent(context, MainActivity::class.java)
@@ -79,9 +89,20 @@ class ReceiveStatusTest {
       assertTrue(ready.await(10, TimeUnit.SECONDS))
       instrumentation.waitForIdleSync()
       instrumentation.runOnMainSync {
+        val service = checkNotNull(core)
         assertFalse(preferences.contains("lastReceivedFile"))
-        assertEquals("", checkNotNull(core).receivedFileStatus)
-        assertTrue(checkNotNull(core).hasUnsavedFiles)
+        assertEquals("", service.receivedFileStatus)
+        assertTrue(service.hasUnsavedFiles)
+        val error =
+          assertThrows(IllegalStateException::class.java) {
+            service.saveSettings(otherFolder.name, previousPort, previousTimeout)
+          }
+        assertTrue(error.message.orEmpty().contains("Retry saving"))
+        assertFalse(otherFolder.exists())
+        assertTrue(source.isFile)
+        val newTimeout = if (previousTimeout == 30) 31 else 30
+        service.saveSettings(service.receiveFolder, previousPort, newTimeout)
+        assertEquals(newTimeout, service.timeoutSeconds)
         val retry =
           descendants(checkNotNull(activity).window.decorView).filterIsInstance<Button>().single {
             it.text == "Retry saving"
@@ -97,24 +118,36 @@ class ReceiveStatusTest {
       }
       await { checkNotNull(core).receivedFileStatus.isEmpty() }
       instrumentation.runOnMainSync {
-        assertFalse(checkNotNull(core).status.contains(name))
+        val service = checkNotNull(core)
+        assertFalse(service.status.contains(name))
         val retry =
           descendants(checkNotNull(activity).window.decorView).filterIsInstance<Button>().single {
             it.text == "Retry saving"
           }
         assertFalse(retry.isShown)
+        service.saveSettings(otherFolder.name, previousPort, previousTimeout)
+        assertEquals(otherFolder.name, service.receiveFolder)
       }
     } finally {
       instrumentation.runOnMainSync { activity?.finish() }
       if (bound) context.unbindService(connection)
       context.stopService(Intent(context, TransferService::class.java))
       source.delete()
+      otherFolder.delete()
       context.contentResolver.delete(
         MediaStore.Downloads.EXTERNAL_CONTENT_URI,
         "${MediaStore.Downloads.DISPLAY_NAME} = ?",
         arrayOf(name),
       )
-      preferences.edit().remove("lastReceivedFile").commit()
+      preferences
+        .edit()
+        .apply {
+          remove("lastReceivedFile")
+          if (hadPort) putInt("port", previousPort) else remove("port")
+          if (hadTimeout) putInt("timeout", previousTimeout) else remove("timeout")
+          putString("folder", previousFolder)
+        }
+        .commit()
     }
   }
 }

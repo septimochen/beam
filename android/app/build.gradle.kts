@@ -4,6 +4,22 @@ plugins {
   id("com.android.application")
 }
 
+val beamVersion =
+  Properties().apply {
+    val metadata = layout.projectDirectory.file("../../version.properties")
+    providers.fileContents(metadata).asText.get().reader().use { load(it) }
+  }
+val beamVersionName = beamVersion.getProperty("version", "")
+val beamVersionCode = beamVersion.getProperty("androidVersionCode", "").toIntOrNull()
+
+require(beamVersionName.matches(Regex("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"))) {
+  "version.properties must define version=MAJOR.MINOR.PATCH"
+}
+
+require(beamVersionCode != null && beamVersionCode in 1..2_100_000_000) {
+  "version.properties must define androidVersionCode between 1 and 2100000000"
+}
+
 val toolchain =
   providers
     .exec {
@@ -78,8 +94,8 @@ android {
     applicationId = "org.beam.android"
     minSdk = 29
     targetSdk = platformVersion[0]
-    versionCode = 10
-    versionName = "0.10.0"
+    versionCode = beamVersionCode
+    versionName = beamVersionName
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     ndk {
       abiFilters += "arm64-v8a"

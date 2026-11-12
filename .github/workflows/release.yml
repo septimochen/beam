@@ -1,0 +1,45 @@
+name: Release artifacts
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event_name != 'push' || !github.event.deleted
+    runs-on: ubuntu-26.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release commit
+        id: version
+        run: |
+          args=()
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            args+=("-DBEAM_RELEASE_TAG=$GITHUB_REF_NAME")
+          fi
+          version=$(cmake "${args[@]}" -P cmake/BeamVersion.cmake)
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            if [[ $(git cat-file -t "$GITHUB_REF") != tag ]]; then
+              echo 'Create an annotated release tag.' >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+              echo 'The release tag must point to a commit on main.' >&2
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_version: ${{ needs.validate.outputs.version }}

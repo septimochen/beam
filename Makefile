@@ -86,6 +86,11 @@ else
 endif
 	@echo 'Installed Beam. Add $(INSTALL_PREFIX)/bin to PATH if needed.'
 
+.PHONY: package-linux
+package-linux:
+	$(MAKE) build BUILD_TYPE=Release CMAKE_ARGS='$(CMAKE_ARGS) -DBEAM_ENABLE_DESKTOP=ON -DBEAM_BUNDLE_MSQUIC=OFF -DCMAKE_INSTALL_BINDIR=bin -DCMAKE_INSTALL_DATADIR=share -DBEAM_DESKTOP_ENTRY_DIR=share/applications'
+	bash scripts/package-linux.sh "$(abspath $(BUILD_DIR))" "$(CMAKE)"
+
 uninstall:
 	$(CMAKE) -DINSTALL_PREFIX="$(INSTALL_PREFIX)" -DAPPLICATIONS_DIR="$(APPLICATIONS_DIR)" \
 		-DBEAM_MACOS_BUNDLE_ID="$(MACOS_BUNDLE_ID)" \
@@ -122,7 +127,7 @@ android-release:
 	bash tests/android_release_apk.sh "$(CURDIR)/android/app/build/outputs/apk/release/app-release.apk" signed
 
 android-release-unsigned:
-	./android/gradlew -p android assembleRelease $(ANDROID_GRADLE_ARGS) -PbeamUnsignedRelease=true
+	./android/gradlew -p android lintRelease assembleRelease $(ANDROID_GRADLE_ARGS) -PbeamUnsignedRelease=true
 	bash tests/android_release_apk.sh "$(CURDIR)/android/app/build/outputs/apk/release/app-release-unsigned.apk" unsigned
 
 android-native-test:
@@ -212,6 +217,7 @@ help:
 	@echo "qml-format / qml-format-check: format QML; qml-lint: check configured Linux desktop QML"
 	@echo "clean: delete build/, build-* and Android build output, including local dependencies/toolchains"
 	@echo "lint: run clang-tidy 23 and static analysis for configured sources using .clang-tidy"
+	@echo "package-linux: build CLI and desktop release tarballs on Ubuntu 26.04 x86-64"
 	@echo "discovery-test: live mDNS registration/browse/withdrawal (requires Bonjour/Avahi and LAN access)"
 	@echo "pairing-test: identity storage and paired localhost transfers (requires QUIC build)"
 	@echo "devices-test: device edits, certificate replacement, backup restore and CLI checks"

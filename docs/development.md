@@ -276,8 +276,10 @@ CI has two jobs: Linux checks and an Android debug APK with signing validation,
 Kotlin formatting, lint, and JVM tests. It caches Android native dependencies and
 Gradle downloads, and cancels superseded runs on the same ref. Native cache keys
 include provisioning/configuration inputs and Android's selected NDK/CMake versions.
-Source-fallback builds, macOS/Windows builds, live LAN tests, Android emulator tests,
-and optimized Android release packaging remain available as local commands.
+The [release workflow](release.md#cut-a-release) reuses those checks and packages
+Linux tarballs and an optimized unsigned Android APK. Source-fallback builds,
+macOS/Windows builds, live LAN tests, and Android emulator tests remain available
+as local commands.
 Commit completed work with a descriptive message and push when a remote is configured;
 leave unrelated changes unstaged.
 

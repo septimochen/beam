@@ -8,6 +8,9 @@ Beam transfers one payload at a time between explicitly paired devices, with an
 macOS/Linux CLI and desktop apps and an Android Kotlin/JNI app.
 See the [roadmap](docs/ROADMAP.md) for upcoming features.
 
+Release downloads target Ubuntu 26.04 x86-64 and ARM64 Android. See the
+[download and installation guide](docs/release.md#install-a-release).
+
 ## Quick start
 
 ### 1. Build Beam on both devices

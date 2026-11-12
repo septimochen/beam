@@ -195,9 +195,9 @@ variant without signing:
 make android-release-unsigned
 ```
 
-This produces `app-release-unsigned.apk`, which cannot be installed until signed.
-It ignores local signing credentials. CI builds and publishes only the debug APK;
-production signing keys are not needed in CI.
+This runs release lint and produces `app-release-unsigned.apk`, which can be
+installed after signing. The [release workflow](release.md#cut-a-release) builds
+this APK in CI. The maintainer signs the workflow's APK locally with the release key.
 `make android` and `make android-install` continue to use the debug APK.
 To install an already-built signed release, use
 `make android-install-apk ANDROID_APK="$PWD/android/app/build/outputs/apk/release/app-release.apk"`.
@@ -401,8 +401,8 @@ Linux/Android storage uses search-only ancestor handles and atomic no-replace
 rename, retaining
 symlink rejection and collision protection in the app sandbox. Main-branch Android
 CI builds only ARM64, checks signing input validation and Kotlin/lint/JUnit,
-and uploads the debug APK and check reports. Emulator/device tests and optimized
-release packaging run locally. Use an ARM64 emulator or phone for device tests.
+and uploads the debug APK and check reports. The release workflow runs optimized
+packaging. Use an ARM64 emulator or phone for connected tests.
 Set `ANDROID_SERIAL` when multiple devices are attached.
 
 Physical-device LAN/Tailscale interoperability, OEM background policy, notification

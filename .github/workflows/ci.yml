@@ -3,12 +3,17 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_version:
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ inputs.release_version || 'check' }}
   cancel-in-progress: true
 
 jobs:
@@ -19,6 +24,8 @@ jobs:
       ANDROID_NDK: ''
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Resolve latest stable Gradle before restoring its cache
         run: make android-gradle
       - uses: actions/setup-java@v6.1.0
@@ -50,12 +57,42 @@ jobs:
       - name: Check and build Android
         run: make android-check
       - uses: actions/upload-artifact@v7.0.2
-        if: always()
+        if: ${{ always() && !inputs.release_version }}
         with:
           name: beam-android
           path: |
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/reports/
+      - name: Build and validate Android release candidate
+        if: inputs.release_version
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          make android-release-unsigned
+          mkdir -p build/release/android-symbols
+          cp android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            "build/release/beam-android-v$RELEASE_VERSION-arm64-v8a-unsigned.apk"
+          cp android/app/build/outputs/mapping/release/mapping.txt build/release/android-symbols/
+          {
+            git rev-parse HEAD
+            java -version
+            cmake -DBEAM_ANDROID_ACTION=properties -P cmake/AndroidTools.cmake
+            sed -n '/^distributionUrl=/p; /^distributionSha256Sum=/p' android/gradle/wrapper/gradle-wrapper.properties
+          } > build/release/android-symbols/toolchain.txt 2>&1
+      - uses: actions/upload-artifact@v7.0.2
+        if: inputs.release_version
+        with:
+          name: beam-android-unsigned-v${{ inputs.release_version }}
+          path: build/release/beam-android-v${{ inputs.release_version }}-arm64-v8a-unsigned.apk
+          if-no-files-found: error
+          overwrite: true
+      - uses: actions/upload-artifact@v7.0.2
+        if: inputs.release_version
+        with:
+          name: beam-android-symbols-v${{ inputs.release_version }}
+          path: build/release/android-symbols/
+          if-no-files-found: error
+          overwrite: true
 
   status:
     name: Status check
@@ -66,6 +103,8 @@ jobs:
       CMAKE_ARGS: -DBEAM_ENABLE_DESKTOP=ON
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Install check prerequisites
         run: |
           curl -fsSL https://packages.microsoft.com/config/ubuntu/26.04/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb
@@ -77,3 +116,38 @@ jobs:
           sudo apt-get install -y libmsquic libssl-dev perl libavahi-compat-libdnssd-dev avahi-daemon qt6-base-dev qt6-qpa-plugins qt6-declarative-dev qt6-declarative-dev-tools qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtqml-workerscript qml6-module-qtqml qml6-module-qtqml-models desktop-file-utils clang-format-23 clang-tidy-23
       - name: Check Linux desktop and CLI
         run: make deps check BUILD_TYPE=Release
+      - name: Package Linux desktop and CLI
+        if: inputs.release_version
+        run: make package-linux
+      - name: Smoke-test Linux archives with runtime packages
+        if: inputs.release_version
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          docker run --rm --volume "$PWD/build/release:/artifacts:ro" \
+            --volume "$PWD/tests/linux_release_archives.sh:/test-archives.sh:ro" \
+            ubuntu:26.04 bash -euc '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends ca-certificates curl
+              curl -fsSL https://packages.microsoft.com/config/ubuntu/26.04/packages-microsoft-prod.deb -o /tmp/msprod.deb
+              dpkg -i /tmp/msprod.deb
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                libmsquic libssl3t64 libavahi-compat-libdnssd1 libstdc++6 \
+                libqt6dbus6 libqt6widgets6 libqt6quickcontrols2-6 qt6-qpa-plugins \
+                qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts \
+                qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtqml \
+                qml6-module-qtqml-models qml6-module-qtqml-workerscript \
+                dbus-daemon desktop-file-utils binutils
+              bash /test-archives.sh /artifacts "$1"
+            ' _ "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v7.0.2
+        if: inputs.release_version
+        with:
+          name: beam-linux-v${{ inputs.release_version }}
+          path: |
+            build/release/beam-cli-v${{ inputs.release_version }}-linux-ubuntu26.04-x86_64.tar.gz
+            build/release/beam-desktop-v${{ inputs.release_version }}-linux-ubuntu26.04-x86_64.tar.gz
+          if-no-files-found: error
+          overwrite: true

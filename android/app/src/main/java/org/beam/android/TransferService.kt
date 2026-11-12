@@ -347,6 +347,9 @@ class TransferService : Service() {
       "Stop transfers and connectivity checks before editing settings"
     }
     validateSettings(folder, port, timeout)
+    check(folder == receiveFolder || pendingDownloads().isEmpty()) {
+      "Retry saving pending files to Downloads before changing the receive folder."
+    }
     val destination = File(filesDir, folder)
     check(destination.isDirectory || destination.mkdir()) { "Cannot create receive folder" }
     val replacement =
